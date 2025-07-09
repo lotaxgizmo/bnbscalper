@@ -14,7 +14,7 @@
 
     <script type="module">
         import { getCandles } from './binance.js';
-        import { time, symbol, limit } from './config.js';
+        import { time, symbol, limit, mediumPercentile, highPercentile } from './config.js';
 
         async function updateChart() {
             const candles = await getCandles(symbol, time, limit);
@@ -32,8 +32,8 @@
             // Calculate averages
             const sortedDiffs = [...diffs].sort((a, b) => a - b);
             const avgDiff = (diffs.reduce((sum, val) => sum + val, 0) / diffs.length).toFixed(2);
-            const mediumAvg = sortedDiffs[Math.floor(sortedDiffs.length * 0.75)].toFixed(2);
-            const highAvg = sortedDiffs[Math.floor(sortedDiffs.length * 0.9)].toFixed(2);
+            const mediumAvg = sortedDiffs[Math.floor(sortedDiffs.length * mediumPercentile)].toFixed(2);
+            const highAvg = sortedDiffs[Math.floor(sortedDiffs.length * highPercentile)].toFixed(2);
 
             // Find highest and lowest
             const highest = data.reduce((max, curr) => 
@@ -187,7 +187,7 @@
     <canvas id="priceChart" width="800" height="400"></canvas>
     <script type="module">
         import { getCandles } from './binance.js';
-        import { time, symbol, limit } from './config.js';
+        import { time, symbol, limit, mediumPercentile, highPercentile } from './config.js';
 
         async function updateChart() {
             // Register the annotation plugin

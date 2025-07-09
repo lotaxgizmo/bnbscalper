@@ -1,6 +1,6 @@
 // index.js
 import { getCandles } from './binance.js';
-import { time, symbol, limit } from './config.js';
+import { time, symbol, limit, mediumPercentile, highPercentile } from './config.js';
 
 const main = async () => {
   const candles = await getCandles(symbol, time, limit);
@@ -30,8 +30,8 @@ const main = async () => {
   // Sort differences to calculate medians
   const sortedDiffs = candlesWithStats.map(c => parseFloat(c.percentDiff)).sort((a, b) => a - b);
   const normalAvg = avgDiff;
-  const mediumAvg = (sortedDiffs[Math.floor(sortedDiffs.length * 0.75)]).toFixed(2); // 75th percentile
-  const highAvg = (sortedDiffs[Math.floor(sortedDiffs.length * 0.9)]).toFixed(2);    // 90th percentile
+  const mediumAvg = (sortedDiffs[Math.floor(sortedDiffs.length * mediumPercentile)]).toFixed(2); // 75th percentile
+  const highAvg = (sortedDiffs[Math.floor(sortedDiffs.length * highPercentile)]).toFixed(2);    // 90th percentile
 
   candlesWithStats.forEach((c, index) => {
     const diff = parseFloat(c.percentDiff);
