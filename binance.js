@@ -32,11 +32,11 @@ export async function getCandles(symbol = 'BNBUSDT', interval = '1m', limit = 10
 
       const candles = response.data.map(c => ({
         time: c[0],
-        open: parseFloat(c[1]),
-        high: parseFloat(c[2]),
-        low: parseFloat(c[3]),
-        close: parseFloat(c[4]),
-        volume: parseFloat(c[5])
+        open: parseFloat(parseFloat(c[1]).toFixed(2)),
+        high: parseFloat(parseFloat(c[2]).toFixed(2)),
+        low: parseFloat(parseFloat(c[3]).toFixed(2)),
+        close: parseFloat(parseFloat(c[4]).toFixed(2)),
+        volume: parseFloat(parseFloat(c[5]).toFixed(2))
       }));
 
       allCandles.unshift(...candles);
