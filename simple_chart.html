@@ -26,6 +26,9 @@
 
             const times = data.map(d => d.time);
             const diffs = data.map(d => parseFloat(d.diff));
+            
+            // Calculate average difference for the horizontal line (with same precision as console)
+            const avgDiff = parseFloat((diffs.reduce((sum, diff) => sum + diff, 0) / diffs.length).toFixed(2));
 
             // Find highest and lowest
             const highest = data.reduce((max, curr) => 
@@ -42,6 +45,7 @@
             document.getElementById('highLow').innerHTML = 
                 `<span style="color: #ff4444"><strong>Highest:</strong> ${highest.diff}% at ${highest.time}</span> | ` +
                 `<span style="color: #4444ff"><strong>Lowest:</strong> ${lowest.diff}% at ${lowest.time}</span> | ` +
+                `<span style="color: #aaaaaa"><strong>Avg Diff:</strong> ${avgDiff}%</span> | ` +
                 `<span style="color: #00ff88"><strong>Total Avg Price:</strong> $${totalAvg}</span>`;
 
             const ctx = document.getElementById('priceChart').getContext('2d');
@@ -66,12 +70,30 @@
             data: {
                 labels: times,
                 datasets: [{
-                    label: 'High-Low % Difference',
+                    label: 'Price Difference %',
                     data: diffs,
                     borderColor: '#00ff88',
-                    pointBackgroundColor: '#00ff88',
-                    tension: 0.1
-                }]
+                    tension: 0.1,
+                    pointBackgroundColor: function(context) {
+                        const diff = context.raw;
+                        if (diff === parseFloat(highest.diff)) return '#ff4444';
+                        if (diff === parseFloat(lowest.diff)) return '#4444ff';
+                        return '#00ff88';
+                    },
+                    pointRadius: function(context) {
+                        const diff = context.raw;
+                        if (diff === parseFloat(highest.diff) || diff === parseFloat(lowest.diff)) return 6;
+                        return 3;
+                    }
+                }, {
+                    label: 'Average Difference',
+                    data: Array(times.length).fill(avgDiff),
+                    borderColor: '#aaaaaa',
+                    borderDash: [5, 5],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false
+                }],
             },
             options: {
                 responsive: true,

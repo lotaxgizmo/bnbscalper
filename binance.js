@@ -8,23 +8,47 @@ const BASE_URL = 'https://api.binance.com/api/v3';
  * Fetch historical OHLCV candle data from Binance.
  * @param {string} symbol - e.g. 'BNBUSDT'
  * @param {string} interval - e.g. '1s', '1m', '5m', '15m', '1h', '1d'
- * @param {number} limit - max 1000 candles
+ * @param {number} limit - max candles
  * @returns {Promise<Array>} - Array of candles (time, open, high, low, close, volume)
  */
 export async function getCandles(symbol = 'BNBUSDT', interval = '1m', limit = 100) {
   try {
-    const response = await axiosInstance.get(`${BASE_URL}/klines`, {
-      params: { symbol, interval, limit }
-    });
+    const allCandles = [];
+    let remainingLimit = limit;
+    let endTime = Date.now();
 
-    return response.data.map(c => ({
-      time: c[0],            // Unix timestamp in ms
-      open: parseFloat(c[1]),
-      high: parseFloat(c[2]),
-      low: parseFloat(c[3]),
-      close: parseFloat(c[4]),
-      volume: parseFloat(c[5])
-    }));
+    while (remainingLimit > 0) {
+      const batchLimit = Math.min(remainingLimit, 1000);
+      const response = await axiosInstance.get(`${BASE_URL}/klines`, {
+        params: {
+          symbol,
+          interval,
+          limit: batchLimit,
+          endTime
+        }
+      });
+
+      if (response.data.length === 0) break;
+
+      const candles = response.data.map(c => ({
+        time: c[0],
+        open: parseFloat(c[1]),
+        high: parseFloat(c[2]),
+        low: parseFloat(c[3]),
+        close: parseFloat(c[4]),
+        volume: parseFloat(c[5])
+      }));
+
+      allCandles.unshift(...candles);
+      remainingLimit -= candles.length;
+
+      if (candles.length < batchLimit) break;
+
+      // Set endTime to the oldest candle's time minus 1ms
+      endTime = candles[0].time - 1;
+    }
+
+    return allCandles;
   } catch (error) {
     console.error('Error fetching candles:', error.message);
     return [];
