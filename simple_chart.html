@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BNB Price Difference Chart</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <canvas id="priceChart" width="800" height="400"></canvas>
+    <script>
+        const times = ['2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM', 
+                      '9:00 PM', '10:00 PM', '11:00 PM', '12:00 AM', '1:00 AM', '2:00 AM', '3:00 AM'];
+        const diffs = [0.26, 0.53, 0.27, 0.34, 0.45, 0.18, 0.25, 0.33, 0.33, 0.21, 0.19, 0.23, 0.35, 0.25];
+
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: times,
+                datasets: [{
+                    label: 'High-Low % Difference',
+                    data: diffs,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'BNB Price High-Low Percentage Difference (1h)'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Percentage Difference (%)'
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
