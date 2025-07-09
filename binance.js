@@ -1,5 +1,6 @@
 // binance.js
-import axios from 'axios';
+// Use global axios in browser, import in Node.js
+const axiosInstance = (typeof window !== 'undefined') ? window.axios : (await import('axios')).default;
 
 const BASE_URL = 'https://api.binance.com/api/v3';
 
@@ -12,7 +13,7 @@ const BASE_URL = 'https://api.binance.com/api/v3';
  */
 export async function getCandles(symbol = 'BNBUSDT', interval = '1m', limit = 100) {
   try {
-    const response = await axios.get(`${BASE_URL}/klines`, {
+    const response = await axiosInstance.get(`${BASE_URL}/klines`, {
       params: { symbol, interval, limit }
     });
 

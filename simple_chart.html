@@ -3,45 +3,123 @@
 <head>
     <title>BNB Price Difference Chart</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 </head>
-<body>
+<body style="background-color: #1a1a1a; color: #ffffff;">
+    <div style="text-align: center; margin: 20px;">
+        <div id="highLow" style="font-family: Arial; margin-bottom: 20px; color: #ffffff;"></div>
+    </div>
     <canvas id="priceChart" width="800" height="400"></canvas>
-    <script>
-        const times = ['2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM', 
-                      '9:00 PM', '10:00 PM', '11:00 PM', '12:00 AM', '1:00 AM', '2:00 AM', '3:00 AM'];
-        const diffs = [0.26, 0.53, 0.27, 0.34, 0.45, 0.18, 0.25, 0.33, 0.33, 0.21, 0.19, 0.23, 0.35, 0.25];
+    <script type="module">
+        import { getCandles } from './binance.js';
+        import { time, symbol, limit } from './config.js';
 
-        const ctx = document.getElementById('priceChart').getContext('2d');
-        new Chart(ctx, {
+        async function updateChart() {
+            const candles = await getCandles(symbol, time, limit);
+            
+            const data = candles.map(c => ({
+                time: new Date(c.time).toLocaleTimeString(),
+                diff: ((c.high - c.low) / c.low * 100).toFixed(2),
+                high: parseFloat(c.high),
+                low: parseFloat(c.low)
+            }));
+
+            const times = data.map(d => d.time);
+            const diffs = data.map(d => parseFloat(d.diff));
+
+            // Find highest and lowest
+            const highest = data.reduce((max, curr) => 
+                parseFloat(curr.diff) > parseFloat(max.diff) ? curr : max
+            );
+            const lowest = data.reduce((min, curr) => 
+                parseFloat(min.diff) > parseFloat(curr.diff) ? curr : min
+            );
+
+            // Calculate total average price
+            const totalAvg = (data.reduce((sum, d) => sum + ((d.high + d.low) / 2), 0) / data.length).toFixed(2);
+
+            // Update the display
+            document.getElementById('highLow').innerHTML = 
+                `<span style="color: #ff4444"><strong>Highest:</strong> ${highest.diff}% at ${highest.time}</span> | ` +
+                `<span style="color: #4444ff"><strong>Lowest:</strong> ${lowest.diff}% at ${lowest.time}</span> | ` +
+                `<span style="color: #00ff88"><strong>Total Avg Price:</strong> $${totalAvg}</span>`;
+
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            new Chart(ctx, {
+                plugins: [{
+                    afterDraw: function(chart) {
+                        const ctx = chart.ctx;
+                        chart.data.datasets[0].data.forEach((value, index) => {
+                            if (value === Math.max(...diffs) || value === Math.min(...diffs)) {
+                                const point = chart.getDatasetMeta(0).data[index];
+                                ctx.save();
+                                ctx.beginPath();
+                                ctx.arc(point.x, point.y, 8, 0, 2 * Math.PI);
+                                ctx.fillStyle = value === Math.max(...diffs) ? '#ff4444' : '#4444ff';
+                                ctx.fill();
+                                ctx.restore();
+                            }
+                        });
+                    }
+                }],
             type: 'line',
             data: {
                 labels: times,
                 datasets: [{
                     label: 'High-Low % Difference',
                     data: diffs,
-                    borderColor: 'rgb(75, 192, 192)',
+                    borderColor: '#00ff88',
+                    pointBackgroundColor: '#00ff88',
                     tension: 0.1
                 }]
             },
             options: {
                 responsive: true,
                 plugins: {
+                    legend: {
+                        labels: {
+                            color: '#ffffff'
+                        }
+                    },
                     title: {
                         display: true,
-                        text: 'BNB Price High-Low Percentage Difference (1h)'
+                        text: 'BNB Price High-Low Percentage Difference (1h)',
+                        color: '#ffffff'
                     }
                 },
                 scales: {
+                    x: {
+                        grid: {
+                            color: '#333333'
+                        },
+                        ticks: {
+                            color: '#ffffff'
+                        }
+                    },
                     y: {
                         beginAtZero: true,
+                        grid: {
+                            color: '#333333'
+                        },
+                        ticks: {
+                            color: '#ffffff'
+                        },
                         title: {
                             display: true,
-                            text: 'Percentage Difference (%)'
+                            text: 'Percentage Difference (%)',
+                            color: '#ffffff'
                         }
                     }
                 }
             }
-        });
+            });
+        }
+
+        // Initial update
+        updateChart();
+
+        // Update every minute
+        setInterval(updateChart, 60000);
     </script>
 </body>
 </html>
