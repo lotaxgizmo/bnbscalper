@@ -108,7 +108,7 @@ const main = async () => {
   console.log(`Time period: ${durationStr}`);
   console.log(`Difference between high and normal average: ${(parseFloat(highAvg) - parseFloat(normalAvg)).toFixed(2)}%`);
   console.log(`Difference between high and low average: ${(parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2)}%`);  
-  console.log(`Successfully corrected: ${correctionCount}`);
+  console.log(`Successfully corrected to normal average: ${correctionCount}`);
   console.log(`Correction rate: ${correctionRate}%`);
 };
 
