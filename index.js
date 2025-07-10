@@ -1,6 +1,6 @@
 // index.js
 import { getCandles } from './binance.js';
-import { time, symbol, limit, mediumPercentile, highPercentile } from './config.js';
+import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile } from './config.js';
 
 const main = async () => {
   const candles = await getCandles(symbol, time, limit);
@@ -25,13 +25,45 @@ const main = async () => {
   const totalAvg = (candlesWithStats.reduce((sum, c) => sum + parseFloat(c.avgPrice), 0) / candlesWithStats.length).toFixed(2);
   const avgDiff = (candlesWithStats.reduce((sum, c) => sum + parseFloat(c.percentDiff), 0) / candlesWithStats.length).toFixed(2);
 
-  console.log('Recent BNB ' + time + ' candles:\n');
-  // Show in chronological order (oldest first)
   // Sort differences to calculate medians
   const sortedDiffs = candlesWithStats.map(c => parseFloat(c.percentDiff)).sort((a, b) => a - b);
   const normalAvg = avgDiff;
+  const lowAvg = (sortedDiffs[Math.floor(sortedDiffs.length * lowPercentile)]).toFixed(2);      // 5th percentile
   const mediumAvg = (sortedDiffs[Math.floor(sortedDiffs.length * mediumPercentile)]).toFixed(2); // 75th percentile
   const highAvg = (sortedDiffs[Math.floor(sortedDiffs.length * highPercentile)]).toFixed(2);    // 90th percentile
+
+  // Track corrections from high average
+  let highDiffCount = 0;
+  let correctionCount = 0;
+  let inHighDiff = false;
+  let lastHighDiffTime = null;
+  let correctionTimes = [];
+
+  candlesWithStats.forEach((candle, i) => {
+    const diff = parseFloat(candle.percentDiff);
+    
+    if (diff >= parseFloat(highAvg)) { // High average (93rd percentile) or higher
+      if (!inHighDiff) {
+        highDiffCount++;
+        inHighDiff = true;
+        lastHighDiffTime = candle.time;
+      }
+    } else if (diff <= parseFloat(normalAvg) && inHighDiff) { // Normal average or lower
+      correctionCount++;
+      correctionTimes.push({
+        start: lastHighDiffTime,
+        end: candle.time,
+        candles: i - candlesWithStats.findIndex(c => c.time === lastHighDiffTime)
+      });
+      inHighDiff = false;
+    }
+  });
+
+  const correctionRate = ((correctionCount / highDiffCount) * 100).toFixed(1);
+  const averageDiffSpread = (parseFloat(highAvg) - parseFloat(normalAvg)).toFixed(2);
+  const highLowSpread = (parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2);
+
+  console.log('Recent BNB ' + time + ' candles:\n');
 
   candlesWithStats.forEach((c, index) => {
     const diff = parseFloat(c.percentDiff);
@@ -65,14 +97,19 @@ const main = async () => {
   const durationStr = durationParts.join(', ');
 
   // Show summary at the bottom
-  console.log('\nSUMMARY:\n');
+  console.log('\n\nSUMMARY:\n');
   console.log(`Highest difference: ${highest.percentDiff}% at ${highest.time}`);
   console.log(`Lowest difference: ${lowest.percentDiff}% at ${lowest.time}`);
+  console.log(`Low average diff: ${lowAvg}% (${(lowPercentile * 100).toFixed(0)}th percentile)`);
   console.log(`Normal average diff: ${normalAvg}% (baseline)`);
-  console.log(`Medium average diff: ${mediumAvg}% (75th percentile)`);
-  console.log(`High average diff: ${highAvg}% (90th percentile)`);
+  console.log(`Medium average diff: ${mediumAvg}% (${(mediumPercentile * 100).toFixed(0)}th percentile)`);
+  console.log(`High average diff: ${highAvg}% (${(highPercentile * 100).toFixed(0)}rd percentile)`);
   console.log(`Total average price: $${totalAvg}`);
-  console.log(`Time period: ${durationParts.join(', ')}\n`);
+  console.log(`Time period: ${durationStr}`);
+  console.log(`Difference between high and normal average: ${(parseFloat(highAvg) - parseFloat(normalAvg)).toFixed(2)}%`);
+  console.log(`Difference between high and low average: ${(parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2)}%`);  
+  console.log(`Successfully corrected: ${correctionCount}`);
+  console.log(`Correction rate: ${correctionRate}%`);
 };
 
 main();

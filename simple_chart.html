@@ -14,7 +14,7 @@
 
     <script type="module">
         import { getCandles } from './binance.js';
-        import { time, symbol, limit, mediumPercentile, highPercentile } from './config.js';
+        import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile } from './config.js';
 
         async function updateChart() {
             const candles = await getCandles(symbol, time, limit);
@@ -32,6 +32,7 @@
             // Calculate averages
             const sortedDiffs = [...diffs].sort((a, b) => a - b);
             const avgDiff = (diffs.reduce((sum, val) => sum + val, 0) / diffs.length).toFixed(2);
+            const lowAvg = sortedDiffs[Math.floor(sortedDiffs.length * lowPercentile)].toFixed(2);
             const mediumAvg = sortedDiffs[Math.floor(sortedDiffs.length * mediumPercentile)].toFixed(2);
             const highAvg = sortedDiffs[Math.floor(sortedDiffs.length * highPercentile)].toFixed(2);
 
@@ -43,16 +44,19 @@
                 parseFloat(curr.diff) < parseFloat(min.diff) ? min : min
             );
 
-            // Calculate total average price
+            // Calculate total average price and spreads
             const totalAvg = (data.reduce((sum, d) => sum + (d.high + d.low) / 2, 0) / data.length).toFixed(2);
+            const highLowSpread = (parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2);
 
             // Update summary
             document.getElementById('summary').innerHTML = 
                 `<span style="color: #ff4444"><strong>Highest:</strong> ${highest.diff}% at ${highest.time}</span><br>` +
                 `<span style="color: #4444ff"><strong>Lowest:</strong> ${lowest.diff}% at ${lowest.time}</span><br>` +
+                `<span style="color: #4488ff"><strong>Low Avg:</strong> ${lowAvg}%</span><br>` +
                 `<span style="color: #00ff88"><strong>Average:</strong> ${avgDiff}%</span><br>` +
                 `<span style="color: #ffff00"><strong>Medium Avg:</strong> ${mediumAvg}%</span><br>` +
                 `<span style="color: #ff0000"><strong>High Avg:</strong> ${highAvg}%</span><br>` +
+                `<span style="color: #ff88ff"><strong>High-Low Spread:</strong> ${highLowSpread}%</span><br>` +
                 `<span style="color: #00ff88"><strong>Total Avg Price:</strong> $${totalAvg}</span>`;
 
             // Create new chart
@@ -89,6 +93,18 @@
                     plugins: {
                         annotation: {
                             annotations: {
+                                lowLine: {
+                                    type: 'line',
+                                    yMin: lowAvg,
+                                    yMax: lowAvg,
+                                    borderColor: 'rgba(68, 136, 255, 0.5)',
+                                    borderWidth: 2,
+                                    label: {
+                                        content: `Low ${lowAvg}%`,
+                                        enabled: true,
+                                        position: 'start'
+                                    }
+                                },
                                 normalLine: {
                                     type: 'line',
                                     yMin: avgDiff,
@@ -159,7 +175,7 @@
                             },
                             ticks: {
                                 color: '#ffffff',
-                                stepSize: 0.01
+                                stepSize: 0.001
                             }
                         }
                     }
@@ -187,7 +203,7 @@
     <canvas id="priceChart" width="800" height="400"></canvas>
     <script type="module">
         import { getCandles } from './binance.js';
-        import { time, symbol, limit, mediumPercentile, highPercentile } from './config.js';
+        import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile } from './config.js';
 
         async function updateChart() {
             // Register the annotation plugin
@@ -271,6 +287,18 @@
                     plugins: {
                         annotation: {
                             annotations: {
+                                lowLine: {
+                                    type: 'line',
+                                    yMin: lowAvg,
+                                    yMax: lowAvg,
+                                    borderColor: 'rgba(68, 136, 255, 0.5)',
+                                    borderWidth: 2,
+                                    label: {
+                                        content: `Low ${lowAvg}%`,
+                                        enabled: true,
+                                        position: 'start'
+                                    }
+                                },
                                 normalLine: {
                                     type: 'line',
                                     yMin: avgDiff,
