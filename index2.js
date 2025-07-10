@@ -1,14 +1,10 @@
-// index.js
-// Choose which API to use
+// index2.js - Alternative visualization of the same data
 import { getCandles as getBinanceCandles } from './binance.js';
 import { getCandles as getBybitCandles } from './bybit.js';
-import { api } from './config.js';
-import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile, showFullTimePeriod } from './config.js';
-
-// Import modular components
+import { api, time, symbol, limit, mediumPercentile, highPercentile, lowPercentile, showFullTimePeriod } from './config.js';
 import { processCandleData, calculatePercentiles, trackCorrections } from './utils/candleProcessor.js';
 import { formatDuration, getTimeInMinutes } from './utils/formatters.js';
-import { printCandleData, printSummary } from './utils/consoleOutput.js';
+import { printCandleData, printSummary } from './utils/consoleOutput2.js';
 
 // Set to 'binance' or 'bybit'
 const API = api;
