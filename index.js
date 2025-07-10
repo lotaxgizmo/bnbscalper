@@ -1,6 +1,12 @@
 // index.js
-import { getCandles } from './binance.js';
-import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile } from './config.js';
+// Choose which API to use
+import { getCandles as getBinanceCandles } from './binance.js';
+import { getCandles as getBybitCandles } from './bybit.js';
+
+// Set to 'binance' or 'bybit'
+const API = 'bybit';
+const getCandles = API === 'binance' ? getBinanceCandles : getBybitCandles;
+import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile, showFullTimePeriod } from './config.js';
 
 const main = async () => {
   const candles = await getCandles(symbol, time, limit);
@@ -96,22 +102,42 @@ const main = async () => {
     // console.log(`${time} | O: ${c.open} H: ${c.high} L: ${c.low} C: ${c.close}`);
   });
 
-  // Calculate duration
-  const firstTime = new Date(candles[0].time);
-  const lastTime = new Date(candles[candles.length - 1].time);
-  const durationMs = lastTime - firstTime;
-  const days = Math.floor(durationMs / (24 * 60 * 60 * 1000));
-  const hours = Math.floor((durationMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-  const minutes = Math.floor((durationMs % (60 * 60 * 1000)) / (60 * 1000));
-  const seconds = Math.floor((durationMs % (60 * 1000)) / 1000);
+  // Calculate and format duration
+  const getTimeInMinutes = (interval) => {
+    const value = parseInt(interval);
+    const unit = interval.slice(-1);
+    switch(unit) {
+      case 's': return value / 60; // seconds to minutes
+      case 'm': return value; // minutes
+      case 'h': return value * 60; // hours to minutes
+      case 'd': return value * 24 * 60; // days to minutes
+      case 'w': return value * 7 * 24 * 60; // weeks to minutes
+      default: return value; // assume minutes
+    }
+  };
 
-  // Format duration string
-  const durationParts = [];
-  if (days > 0) durationParts.push(`${days} day${days !== 1 ? 's' : ''}`);
-  if (hours > 0) durationParts.push(`${hours} hour${hours !== 1 ? 's' : ''}`);
-  if (minutes > 0) durationParts.push(`${minutes} minute${minutes !== 1 ? 's' : ''}`);
-  if (seconds > 0) durationParts.push(`${seconds} second${seconds !== 1 ? 's' : ''}`);
-  const durationStr = durationParts.join(', ');
+  const minutesPerCandle = getTimeInMinutes(time);
+  const totalMinutes = candles.length * minutesPerCandle;
+  const totalHours = Math.floor(totalMinutes / 60);
+  const months = Math.floor(totalHours / (30 * 24));
+  const days = Math.floor((totalHours % (30 * 24)) / 24);
+  const hours = Math.floor(totalHours % 24);
+  const minutes = Math.floor(totalMinutes % 60);
+  
+  const s = n => n === 1 ? '' : 's';  // Format duration string
+  let parts = [];
+  if (showFullTimePeriod) {
+    if (months > 0) parts.push(`${months} month${s(months)}`);
+    if (days > 0) parts.push(`${days} day${s(days)}`);
+    if (hours > 0) parts.push(`${hours} hour${s(hours)}`);
+    if (minutes > 0) parts.push(`${minutes} minute${s(minutes)}`);
+  } else {
+    // In simplified mode, convert everything to hours and always show minutes
+    const remainingMinutes = Math.floor(totalMinutes % 60);
+    parts.push(`${totalHours} hour${s(totalHours)}`);
+    parts.push(`${remainingMinutes} minute${s(remainingMinutes)}`);
+  }
+  const durationStr = parts.join(', ') || '0 minutes';
 
   // Show summary at the bottom
   console.log('\n\nSUMMARY:\n');
