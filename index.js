@@ -32,34 +32,51 @@ const main = async () => {
   const mediumAvg = (sortedDiffs[Math.floor(sortedDiffs.length * mediumPercentile)]).toFixed(2); // 75th percentile
   const highAvg = (sortedDiffs[Math.floor(sortedDiffs.length * highPercentile)]).toFixed(2);    // 90th percentile
 
-  // Track corrections from high average
+  // Track corrections from high to normal average
   let highDiffCount = 0;
-  let correctionCount = 0;
+  let correctionToNormalCount = 0;
   let inHighDiff = false;
   let lastHighDiffTime = null;
-  let correctionTimes = [];
+
+  // Track corrections from high to low average
+  let highDiffCountLow = 0;
+  let correctionToLowCount = 0;
+  let inHighDiffLow = false;
+  let lastHighDiffTimeLow = null;
 
   candlesWithStats.forEach((candle, i) => {
     const diff = parseFloat(candle.percentDiff);
     
-    if (diff >= parseFloat(highAvg)) { // High average (93rd percentile) or higher
+    // Check for high volatility start
+    if (diff >= parseFloat(highAvg)) {
+      // For normal average tracking
       if (!inHighDiff) {
         highDiffCount++;
         inHighDiff = true;
         lastHighDiffTime = candle.time;
       }
-    } else if (diff <= parseFloat(normalAvg) && inHighDiff) { // Normal average or lower
-      correctionCount++;
-      correctionTimes.push({
-        start: lastHighDiffTime,
-        end: candle.time,
-        candles: i - candlesWithStats.findIndex(c => c.time === lastHighDiffTime)
-      });
-      inHighDiff = false;
+      // For low average tracking
+      if (!inHighDiffLow) {
+        highDiffCountLow++;
+        inHighDiffLow = true;
+        lastHighDiffTimeLow = candle.time;
+      }
+    } else {
+      // Check correction to normal average
+      if (diff <= parseFloat(normalAvg) && inHighDiff) {
+        correctionToNormalCount++;
+        inHighDiff = false;
+      }
+      // Check correction to low average
+      if (diff <= parseFloat(lowAvg) && inHighDiffLow) {
+        correctionToLowCount++;
+        inHighDiffLow = false;
+      }
     }
   });
 
-  const correctionRate = ((correctionCount / highDiffCount) * 100).toFixed(1);
+  const correctionToNormalRate = ((correctionToNormalCount / highDiffCount) * 100).toFixed(1);
+  const correctionToLowRate = ((correctionToLowCount / highDiffCountLow) * 100).toFixed(1);
   const averageDiffSpread = (parseFloat(highAvg) - parseFloat(normalAvg)).toFixed(2);
   const highLowSpread = (parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2);
 
@@ -108,8 +125,10 @@ const main = async () => {
   console.log(`Time period: ${durationStr}`);
   console.log(`Difference between high and normal average: ${(parseFloat(highAvg) - parseFloat(normalAvg)).toFixed(2)}%`);
   console.log(`Difference between high and low average: ${(parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2)}%`);  
-  console.log(`Successfully corrected to normal average: ${correctionCount}`);
-  console.log(`Correction rate: ${correctionRate}%`);
+  console.log(`Successfully corrected to normal average: ${correctionToNormalCount}`);
+  console.log(`Correction rate to normal: ${correctionToNormalRate}%`);
+  console.log(`Successfully corrected to low average: ${correctionToLowCount}`);
+  console.log(`Correction rate to low: ${correctionToLowRate}%`);
 };
 
 main();
