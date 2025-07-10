@@ -46,8 +46,6 @@ function connect() {
           if (update.lastPrice) {
             console.log(`${symbol} Update:`, {
               price: update.lastPrice,
-              bid: update.bid1Price,
-              ask: update.ask1Price,
               timestamp: new Date(message.ts).toLocaleTimeString()
             });
           }

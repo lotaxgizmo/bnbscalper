@@ -144,8 +144,11 @@ const main = async () => {
   console.log('\n\nSUMMARY:\n');
   console.log(`Highest difference: ${highest.percentDiff}% at ${highest.time}`);
   console.log(`Lowest difference: ${lowest.percentDiff}% at ${lowest.time}`);
-  console.log(`Low average diff: ${lowAvg}% (${(lowPercentile * 100).toFixed(0)}th percentile)`);
+
+  console.log()
+
   console.log(`Normal average diff: ${normalAvg}% (baseline)`);
+  console.log(`Low average diff: ${lowAvg}% (${(lowPercentile * 100).toFixed(0)}th percentile)`);
   console.log(`Medium average diff: ${mediumAvg}% (${(mediumPercentile * 100).toFixed(0)}th percentile)`);
   console.log(`High average diff: ${highAvg}% (${(highPercentile * 100).toFixed(0)}rd percentile)`);
 
