@@ -121,14 +121,22 @@ const main = async () => {
   console.log(`Normal average diff: ${normalAvg}% (baseline)`);
   console.log(`Medium average diff: ${mediumAvg}% (${(mediumPercentile * 100).toFixed(0)}th percentile)`);
   console.log(`High average diff: ${highAvg}% (${(highPercentile * 100).toFixed(0)}rd percentile)`);
+
+  console.log()
+  
+  console.log(`Difference between high and normal average: ${(parseFloat(highAvg) - parseFloat(normalAvg)).toFixed(2)}%`); 
+  console.log(`Successfully corrected to normal average: ${correctionToNormalCount}`);
+  
+  console.log()
+  
+  console.log(`Difference between high and low average: ${(parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2)}%`);  
+  console.log(`Successfully corrected to low average: ${correctionToLowCount}`);
+ 
+  
+  console.log()
+
   console.log(`Total average price: $${totalAvg}`);
   console.log(`Time period: ${durationStr}`);
-  console.log(`Difference between high and normal average: ${(parseFloat(highAvg) - parseFloat(normalAvg)).toFixed(2)}%`);
-  console.log(`Difference between high and low average: ${(parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2)}%`);  
-  console.log(`Successfully corrected to normal average: ${correctionToNormalCount}`);
-  console.log(`Correction rate to normal: ${correctionToNormalRate}%`);
-  console.log(`Successfully corrected to low average: ${correctionToLowCount}`);
-  console.log(`Correction rate to low: ${correctionToLowRate}%`);
 };
 
 main();
