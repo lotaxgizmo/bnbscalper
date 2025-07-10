@@ -99,7 +99,7 @@ const main = async () => {
     } else if (diff <= parseFloat(normalAvg)) {
       diffColor = '\x1b[32m';   // green for normal or below
     }
-    console.log(`${(index + 1).toString().padStart(4, ' ')}. ${c.time} | H: ${c.high.toFixed(2)} L: ${c.low.toFixed(2)} | Avg: ${c.avgPrice} | Diff: ${diffColor}${c.percentDiff}%\x1b[0m | C: \x1b[36m${c.close.toFixed(3)}\x1b[0m`);
+    console.log(`${(index + 1).toString().padStart(4, ' ')}. ${c.time} | H: ${c.high.toFixed(4)} L: ${c.low.toFixed(4)} | Avg: ${c.avgPrice} | Diff: ${diffColor}${c.percentDiff}%\x1b[0m | C: \x1b[36m${c.close.toFixed(4)}\x1b[0m`);
     // console.log(`${time} | O: ${c.open} H: ${c.high} L: ${c.low} C: ${c.close}`);
   });
 
