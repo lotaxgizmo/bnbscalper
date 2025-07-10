@@ -1,8 +1,8 @@
-// index2.js - Alternative visualization of the same data
+// index2.js - Close-to-Close price movement analysis
 import { getCandles as getBinanceCandles } from './binance.js';
 import { getCandles as getBybitCandles } from './bybit.js';
-import { api, time, symbol, limit, mediumPercentile, highPercentile, lowPercentile, showFullTimePeriod } from './config.js';
-import { processCandleData, calculatePercentiles, trackCorrections } from './utils/candleProcessor.js';
+import { api, time, symbol, limit, mediumPercentile, highPercentile, lowPercentile, showFullTimePeriod, delay } from './config.js';
+import { processCandleData, calculatePercentiles, trackCorrections } from './utils/candleProcessor2.js';
 import { formatDuration, getTimeInMinutes } from './utils/formatters.js';
 import { printCandleData, printSummary } from './utils/consoleOutput2.js';
 
@@ -13,8 +13,11 @@ const getCandles = API === 'binance' ? getBinanceCandles : getBybitCandles;
 const main = async () => {
   const candles = await getCandles(symbol, time, limit);
 
+  // Apply delay by removing the most recent candles
+  const delayedCandles = delay > 0 ? candles.slice(0, -delay) : candles;
+
   // Process candle data
-  const { candlesWithStats, highest, lowest, totalAvg } = processCandleData(candles);
+  const { candlesWithStats, highest, lowest, totalAvg } = processCandleData(delayedCandles);
 
   // Calculate percentile-based averages
   const { normalAvg, lowAvg, mediumAvg, highAvg } = calculatePercentiles(
@@ -24,8 +27,21 @@ const main = async () => {
     highPercentile
   );
 
-  // Track corrections
-  const { correctionToNormalCount, correctionToLowCount } = trackCorrections(
+  // Track corrections and reversals
+  const { 
+    correctionToNormalCount, 
+    correctionToLowCount,
+    fullReversalsUp,
+    fullReversalsDown,
+    upMoves,
+    downMoves,
+    totalReversals,
+    totalExtremeMoves,
+    fullReversalRate,
+    avgUpProfit,
+    avgDownProfit,
+    bestReversal
+  } = trackCorrections(
     candlesWithStats,
     highAvg,
     normalAvg,
@@ -42,12 +58,23 @@ const main = async () => {
 
   // Print summary
   printSummary({
+    candlesWithStats,
     highest,
     lowest,
     normalAvg,
     lowAvg,
     mediumAvg,
     highAvg,
+    fullReversalsUp,
+    fullReversalsDown,
+    upMoves,
+    downMoves,
+    totalReversals,
+    totalExtremeMoves,
+    fullReversalRate,
+    avgUpProfit,
+    avgDownProfit,
+    bestReversal,
     lowPercentile,
     mediumPercentile,
     highPercentile,

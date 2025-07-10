@@ -1,7 +1,8 @@
 import { colors } from './formatters.js';
+import { symbol } from '../config.js';
 
 export const printCandleData = (candlesWithStats, highAvg, mediumAvg, normalAvg, time) => {
-  console.log(`\n=== BNB ${time} CANDLE DATA ===\n`);
+  console.log(`\n=== ${symbol} ${time} CANDLE DATA ===\n`);
 
   candlesWithStats.forEach((c, index) => {
     const diff = parseFloat(c.percentDiff);
