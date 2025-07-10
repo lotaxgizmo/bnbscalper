@@ -142,31 +142,32 @@ const main = async () => {
 
   // Show summary at the bottom
   console.log('\n\nSUMMARY:\n');
-  console.log(`Highest difference: ${highest.percentDiff}% at ${highest.time}`);
-  console.log(`Lowest difference: ${lowest.percentDiff}% at ${lowest.time}`);
+  console.log('\x1b[31m' + `Highest difference: ${highest.percentDiff}% at ${highest.time}` + '\x1b[0m');
+  console.log('\x1b[32m' + `Lowest difference: ${lowest.percentDiff}% at ${lowest.time}` + '\x1b[0m');
 
   console.log()
 
   console.log(`Normal average diff: ${normalAvg}% (baseline)`);
-  console.log(`Low average diff: ${lowAvg}% (${(lowPercentile * 100).toFixed(0)}th percentile)`);
-  console.log(`Medium average diff: ${mediumAvg}% (${(mediumPercentile * 100).toFixed(0)}th percentile)`);
-  console.log(`High average diff: ${highAvg}% (${(highPercentile * 100).toFixed(0)}rd percentile)`);
+  console.log('\x1b[31m' + `Low average diff: ${lowAvg}% (${(lowPercentile * 100).toFixed(0)}th percentile)` + '\x1b[0m');
+  console.log('\x1b[36m' + `Medium average diff: ${mediumAvg}% (${(mediumPercentile * 100).toFixed(0)}th percentile)` + '\x1b[0m');
+  console.log('\x1b[33m' + `High average diff: ${highAvg}% (${(highPercentile * 100).toFixed(0)}rd percentile)` + '\x1b[0m');
 
   console.log()
   
-  console.log(`Difference between high and normal average: ${(parseFloat(highAvg) - parseFloat(normalAvg)).toFixed(2)}%`); 
-  console.log(`Successfully corrected to normal average: ${correctionToNormalCount}`);
+  console.log('\x1b[35m' + `Difference between high and normal average: ${(parseFloat(highAvg) - parseFloat(normalAvg)).toFixed(2)}%` + '\x1b[0m'); 
+  console.log('\x1b[32m' + `Successfully corrected to normal average: ${correctionToNormalCount}` + '\x1b[0m');
   
   console.log()
   
-  console.log(`Difference between high and low average: ${(parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2)}%`);  
-  console.log(`Successfully corrected to low average: ${correctionToLowCount}`);
+  console.log('\x1b[35m' + `Difference between high and low average: ${(parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2)}%` + '\x1b[0m');  
+  console.log('\x1b[32m' + `Successfully corrected to low average: ${correctionToLowCount}` + '\x1b[0m');
  
   
   console.log()
 
-  console.log(`Total average price: $${totalAvg}`);
-  console.log(`Time period: ${durationStr}`);
+  console.log('\x1b[36m' + `Total average price: $${(candlesWithStats.reduce((sum, c) => sum + parseFloat(c.avgPrice), 0) / candlesWithStats.length).toFixed(2)}` + '\x1b[0m');
+  console.log('\x1b[33m' + `Time period: ${durationStr}` + '\x1b[0m');
+
 };
 
 main();
