@@ -2,9 +2,10 @@
 // Choose which API to use
 import { getCandles as getBinanceCandles } from './binance.js';
 import { getCandles as getBybitCandles } from './bybit.js';
+import { api } from './config.js';
 
 // Set to 'binance' or 'bybit'
-const API = 'bybit';
+const API = api;
 const getCandles = API === 'binance' ? getBinanceCandles : getBybitCandles;
 import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile, showFullTimePeriod } from './config.js';
 
@@ -98,7 +99,7 @@ const main = async () => {
     } else if (diff <= parseFloat(normalAvg)) {
       diffColor = '\x1b[32m';   // green for normal or below
     }
-    console.log(`${(index + 1).toString().padStart(4, ' ')}. ${c.time} | H: ${c.high.toFixed(2)} L: ${c.low.toFixed(2)} | Avg: ${c.avgPrice} | Diff: ${diffColor}${c.percentDiff}%\x1b[0m | C: \x1b[36m${c.close.toFixed(2)}\x1b[0m`);
+    console.log(`${(index + 1).toString().padStart(4, ' ')}. ${c.time} | H: ${c.high.toFixed(2)} L: ${c.low.toFixed(2)} | Avg: ${c.avgPrice} | Diff: ${diffColor}${c.percentDiff}%\x1b[0m | C: \x1b[36m${c.close.toFixed(3)}\x1b[0m`);
     // console.log(`${time} | O: ${c.open} H: ${c.high} L: ${c.low} C: ${c.close}`);
   });
 

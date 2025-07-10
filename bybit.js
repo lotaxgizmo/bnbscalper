@@ -40,7 +40,7 @@ export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100
       const batchLimit = Math.min(remainingLimit, 1000);
       const response = await axiosInstance.get(`${BASE_URL}/market/kline`, {
         params: {
-          category: 'spot',
+          category: 'linear',
           symbol,
           interval: bybitInterval,
           limit: batchLimit,
@@ -50,16 +50,17 @@ export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100
 
       if (!response.data?.result?.list || response.data.result.list.length === 0) break;
 
-      const candles = response.data.result.list.map(c => ({
+      // Bybit returns newest first, so we need to reverse the array
+      const candles = response.data.result.list.reverse().map(c => ({
         time: parseInt(c[0]),
-        open: parseFloat(parseFloat(c[1]).toFixed(2)),
-        high: parseFloat(parseFloat(c[2]).toFixed(2)),
-        low: parseFloat(parseFloat(c[3]).toFixed(2)),
-        close: parseFloat(parseFloat(c[4]).toFixed(2)),
-        volume: parseFloat(parseFloat(c[5]).toFixed(2))
+        open: parseFloat(parseFloat(c[1]).toFixed(4)),
+        high: parseFloat(parseFloat(c[2]).toFixed(4)),
+        low: parseFloat(parseFloat(c[3]).toFixed(4)),
+        close: parseFloat(parseFloat(c[4]).toFixed(4)),
+        volume: parseFloat(parseFloat(c[5]).toFixed(4))
       }));
 
-      allCandles.unshift(...candles);
+      allCandles.push(...candles);
       remainingLimit -= candles.length;
 
       if (candles.length < batchLimit) break;
