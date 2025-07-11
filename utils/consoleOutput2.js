@@ -120,8 +120,8 @@ export const printSummary = ({
   const firstCandle = candlesWithStats[0];
   const lastCandle = candlesWithStats[candlesWithStats.length - 1];
   
-  console.log('Debug - First candle time:', firstCandle.time, typeof firstCandle.time);
-  console.log('Debug - Last candle time:', lastCandle.time, typeof lastCandle.time);
+  // console.log('Debug - First candle time:', firstCandle.time, typeof firstCandle.time);
+  // console.log('Debug - Last candle time:', lastCandle.time, typeof lastCandle.time);
   
   const startDate = new Date(firstCandle.time).toLocaleString();
   const endDate = new Date(lastCandle.time).toLocaleString();
