@@ -8,7 +8,7 @@ export const symbol = 'BNBUSDT';
 // export const limit = 10080;
 export const limit = 180;
 
-export const delay = 170
+export const delay = 0
 
 
 

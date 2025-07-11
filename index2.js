@@ -11,10 +11,12 @@ const API = api;
 const getCandles = API === 'binance' ? getBinanceCandles : getBybitCandles;
 
 const main = async () => {
-  const candles = await getCandles(symbol, time, limit);
+  // Fetch enough candles to account for the delay
+  const adjustedLimit = limit + delay;
+  const candles = await getCandles(symbol, time, adjustedLimit);
 
   // Apply delay by removing the most recent candles
-  const delayedCandles = delay > 0 ? candles.slice(0, -delay) : candles;
+  const delayedCandles = delay > 0 ? candles.slice(0, limit) : candles;
 
   // Process candle data
   const { candlesWithStats, highest, lowest, totalAvg } = processCandleData(delayedCandles);
