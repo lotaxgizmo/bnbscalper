@@ -22,16 +22,15 @@
         import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile } from './config.js';
 
         async function updateChart() {
-            const candles = await getCandles(symbol, time, limit);
-            
-            // Apply delay by removing most recent candles
-            const delayedCandles = delay > 0 ? candles.slice(0, -delay) : candles;
+            // Calculate end time by subtracting delay minutes from current time
+            const endTime = Date.now() - (delay * 60 * 1000); // delay is in minutes
+            const candles = await getCandles(symbol, time, limit, endTime);
             
             // Sort candles by timestamp in ascending order
-            delayedCandles.sort((a, b) => new Date(a.time) - new Date(b.time));
+            candles.sort((a, b) => new Date(a.time) - new Date(b.time));
             
-            const data = delayedCandles.map((c, index) => {
-                const prevCandle = index > 0 ? delayedCandles[index - 1] : c;
+            const data = candles.map((c, index) => {
+                const prevCandle = index > 0 ? candles[index - 1] : c;
                 return {
                     time: new Date(c.time).toLocaleTimeString(),
                     diff: ((c.close - prevCandle.close) / prevCandle.close * 100).toFixed(2),

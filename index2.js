@@ -12,14 +12,12 @@ const getCandles = API === 'binance' ? getBinanceCandles : getBybitCandles;
 
 const main = async () => {
   // Fetch enough candles to account for the delay
-  const adjustedLimit = limit + delay;
-  const candles = await getCandles(symbol, time, adjustedLimit);
-
-  // Apply delay by removing the most recent candles
-  const delayedCandles = delay > 0 ? candles.slice(0, limit) : candles;
+  // Calculate end time by subtracting delay minutes from current time
+  const endTime = Date.now() - (delay * 60 * 1000); // delay is in minutes
+  const candles = await getCandles(symbol, time, limit, endTime);
 
   // Process candle data
-  const { candlesWithStats, highest, lowest, totalAvg } = processCandleData(delayedCandles);
+  const { candlesWithStats, highest, lowest, totalAvg } = processCandleData(candles);
 
   // Calculate percentile-based averages
   const { normalAvg, lowAvg, mediumAvg, highAvg } = calculatePercentiles(

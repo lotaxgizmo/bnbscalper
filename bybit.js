@@ -11,11 +11,11 @@ const BASE_URL = 'https://api.bybit.com/v5';
  * @param {number} limit - max candles (max 1000 per request)
  * @returns {Promise<Array>} - Array of candles (time, open, high, low, close, volume)
  */
-export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100) {
+export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100, customEndTime = null) {
   try {
     const allCandles = [];
     let remainingLimit = limit;
-    let endTime = Date.now();
+    let endTime = customEndTime || Date.now();
 
     // Convert interval to Bybit format
     const intervalMap = {

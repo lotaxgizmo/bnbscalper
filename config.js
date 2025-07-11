@@ -3,12 +3,12 @@
 // API settings
 export const api = 'bybit'; // 'binance' or 'bybit'
 // export const api = 'binance'; // 'binance' or 'bybit'
-export const time = '1m';
+export const time = '1h';
 export const symbol = 'BNBUSDT';
 // export const limit = 10080;
 export const limit = 180;
 
-export const delay = 0
+export const delay = 2880
 
 
 

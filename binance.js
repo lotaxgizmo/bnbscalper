@@ -11,11 +11,11 @@ const BASE_URL = 'https://api.binance.com/api/v3';
  * @param {number} limit - max candles
  * @returns {Promise<Array>} - Array of candles (time, open, high, low, close, volume)
  */
-export async function getCandles(symbol = 'BNBUSDT', interval = '1m', limit = 100) {
+export async function getCandles(symbol = 'BNBUSDT', interval = '1m', limit = 100, customEndTime = null) {
   try {
     const allCandles = [];
     let remainingLimit = limit;
-    let endTime = Date.now();
+    let endTime = customEndTime || Date.now();
 
     while (remainingLimit > 0) {
       const batchLimit = Math.min(remainingLimit, 1000);
