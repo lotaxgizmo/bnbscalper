@@ -15,7 +15,7 @@
     <script type="module">
         import { getCandles as getBinanceCandles } from './binance.js';
         import { getCandles as getBybitCandles } from './bybit.js';
-        import { api, delay } from './config.js';
+        import { api, delay, pricePercentile } from './config.js';
         
         // Select API based on config
         const getCandles = api === 'binance' ? getBinanceCandles : getBybitCandles;
@@ -153,6 +153,15 @@
                             if (Math.abs(diff) >= parseFloat(mediumAvg)) return 5;
                             return 3;
                         }
+                    },
+                    {
+                        label: 'Price',
+                        data: data.map(d => parseFloat(d.close)),
+                        borderColor: '#00ffff',
+                        borderWidth: 3,
+                        pointRadius: 3,
+                        tension: 0.1,
+                        yAxisID: 'price'
                     }]
                 },
                 options: {
@@ -161,6 +170,9 @@
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
+                                    if (context.dataset.label === 'Price') {
+                                        return `Price: $${context.raw.toFixed(4)}`;
+                                    }
                                     return [
                                         `Movement: ${context.raw}%`,
                                         `Close: $${data[context.dataIndex].close.toFixed(4)}`
@@ -249,10 +261,17 @@
                             grid: {
                                 color: '#333333'
                             },
+                            position: 'left',
+                            display: true,
                             ticks: {
                                 color: '#ffffff',
                                 stepSize: 0.001
                             }
+                        },
+                        price: {
+                            type: 'linear',
+                            display: false,
+                            position: 'right'
                         },
                         x: {
                             grid: {
