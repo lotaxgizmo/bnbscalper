@@ -6,7 +6,7 @@ export const api = 'bybit'; // 'binance' or 'bybit'
 export const time = '1m';
 export const symbol = 'BNBUSDT';
 // export const limit = 10080;
-export const limit = 240;
+export const limit = 1440;
 
 const hours = 0;
 const minutes = hours * 60;
@@ -25,7 +25,7 @@ export const mediumPercentile = 0.85; // 85th percentile
 export const highPercentile = 0.93;   // 93rd percentile 
 export const lowPercentile = 0.10;    // 10th percentile
 
-export const topPercentile = 0.99;
+export const topPercentile = 0.9955;
 // export const lowPercentile = 0.2;
 
 

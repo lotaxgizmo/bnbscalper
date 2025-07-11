@@ -19,7 +19,7 @@
         
         // Select API based on config
         const getCandles = api === 'binance' ? getBinanceCandles : getBybitCandles;
-        import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile } from './config.js';
+        import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile, topPercentile } from './config.js';
 
         async function updateChart() {
             // Calculate end time by subtracting delay minutes from current time
@@ -48,6 +48,7 @@
             const lowAvg = sortedDiffs[Math.floor(sortedDiffs.length * lowPercentile)].toFixed(2);
             const mediumAvg = sortedDiffs[Math.floor(sortedDiffs.length * mediumPercentile)].toFixed(2);
             const highAvg = sortedDiffs[Math.floor(sortedDiffs.length * highPercentile)].toFixed(2);
+            const topAvg = sortedDiffs[Math.floor(sortedDiffs.length * topPercentile)].toFixed(2);
 
             // Find highest and lowest
             const highest = data.reduce((max, curr) => 
@@ -114,6 +115,7 @@
                 `<span style="color: #4444ff"><strong>Lowest Move:</strong> ${lowest.diff}% at ${lowest.time}</span><br>` +
                 `<span style="color: #4488ff"><strong>Low Band:</strong> ${lowAvg}%</span><br>` +
                 `<span style="color: #00ff88"><strong>Average Move:</strong> ${avgDiff}%</span><br>` +
+                `<span style="color: #ff00ff"><strong>Top Band:</strong> ${topAvg}%</span><br>` +
                 `<span style="color: #ffff00"><strong>Medium Band:</strong> ${mediumAvg}%</span><br>` +
                 `<span style="color: #ff0000"><strong>High Band:</strong> ${highAvg}%</span><br>` +
                 `<span style="color: #ff88ff"><strong>Band Spread:</strong> ${highLowSpread}%</span><br>` +
@@ -139,12 +141,14 @@
                         tension: 0.1,
                         pointBackgroundColor: function(context) {
                             const diff = context.raw;
+                            if (Math.abs(diff) >= parseFloat(topAvg)) return '#ff00ff';
                             if (Math.abs(diff) >= parseFloat(highAvg)) return '#ff0000';
                             if (Math.abs(diff) >= parseFloat(mediumAvg)) return '#ffff00';
                             return '#00ff88';
                         },
                         pointRadius: function(context) {
                             const diff = context.raw;
+                            if (Math.abs(diff) >= parseFloat(topAvg)) return 7;
                             if (Math.abs(diff) >= parseFloat(highAvg)) return 6;
                             if (Math.abs(diff) >= parseFloat(mediumAvg)) return 5;
                             return 3;
@@ -166,6 +170,22 @@
                         },
                         annotation: {
                             annotations: {
+                                topLine: {
+                                    type: 'line',
+                                    yMin: topAvg,
+                                    yMax: topAvg,
+                                    borderColor: '#ff00ff',
+                                    borderWidth: 1,
+                                    borderDash: [5, 5]
+                                },
+                                topLineNeg: {
+                                    type: 'line',
+                                    yMin: -topAvg,
+                                    yMax: -topAvg,
+                                    borderColor: '#ff00ff',
+                                    borderWidth: 1,
+                                    borderDash: [5, 5]
+                                },
                                 highLine: {
                                     type: 'line',
                                     yMin: highAvg,

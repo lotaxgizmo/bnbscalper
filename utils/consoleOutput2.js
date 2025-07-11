@@ -39,9 +39,11 @@ export const printSummary = ({
   lowAvg,
   mediumAvg,
   highAvg,
+  topAvg,
   lowPercentile,
   mediumPercentile,
   highPercentile,
+  topPercentile,
   correctionToNormalCount,
   correctionToLowCount,
   totalAvg,
@@ -73,6 +75,7 @@ export const printSummary = ({
   console.log(`▼ Low Band (${(lowPercentile * 100).toFixed(0)}th): ${colors.green}${lowAvg}%${colors.reset}`);
   console.log(`► Mid Band (${(mediumPercentile * 100).toFixed(0)}th): ${colors.yellow}${mediumAvg}%${colors.reset}`);
   console.log(`▲ High Band (${(highPercentile * 100).toFixed(0)}th): ${colors.red}${highAvg}%${colors.reset}`);
+  console.log(`▲ Top Band (${(topPercentile * 100).toFixed(1)}th): ${colors.magenta}${topAvg}%${colors.reset}`);
   console.log('═'.repeat(50));
   
   // Correction analysis
@@ -108,6 +111,13 @@ export const printSummary = ({
   console.log(`Upper Price: ${colors.yellow}$${upperPrice.toFixed(4)}${colors.reset}  (Sell limit/Take profit)`);
   console.log(`Lower Price: ${colors.yellow}$${lowerPrice.toFixed(4)}${colors.reset}  (Buy limit/Take profit)`);
   console.log(`Current Price: ${colors.cyan}$${currentPrice.toFixed(4)}${colors.reset}`);
+
+  console.log(`
+Top Band Boundary (${(topPercentile * 100).toFixed(1)}th): ${colors.magenta}${topAvg}%${colors.reset}`);
+  const topUpperPrice = currentPrice * (1 + parseFloat(topAvg) / 100);
+  const topLowerPrice = currentPrice * (1 - parseFloat(topAvg) / 100);
+  console.log(`Upper Price: ${colors.magenta}$${topUpperPrice.toFixed(4)}${colors.reset}  (Extreme reversal level)`);
+  console.log(`Lower Price: ${colors.magenta}$${topLowerPrice.toFixed(4)}${colors.reset}  (Extreme reversal level)`);
 
 
   console.log('\n');

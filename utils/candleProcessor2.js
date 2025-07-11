@@ -34,13 +34,14 @@ export const processCandleData = (candles) => {
   };
 };
 
-export const calculatePercentiles = (candlesWithStats, lowPercentile, mediumPercentile, highPercentile) => {
+export const calculatePercentiles = (candlesWithStats, lowPercentile, mediumPercentile, highPercentile, topPercentile) => {
   const sortedDiffs = candlesWithStats.map(c => parseFloat(c.percentDiff)).sort((a, b) => a - b);
   return {
     normalAvg: (candlesWithStats.reduce((sum, c) => sum + parseFloat(c.percentDiff), 0) / candlesWithStats.length).toFixed(2),
     lowAvg: (sortedDiffs[Math.floor(sortedDiffs.length * lowPercentile)]).toFixed(2),
     mediumAvg: (sortedDiffs[Math.floor(sortedDiffs.length * mediumPercentile)]).toFixed(2),
-    highAvg: (sortedDiffs[Math.floor(sortedDiffs.length * highPercentile)]).toFixed(2)
+    highAvg: (sortedDiffs[Math.floor(sortedDiffs.length * highPercentile)]).toFixed(2),
+    topAvg: (sortedDiffs[Math.floor(sortedDiffs.length * topPercentile)]).toFixed(2)
   };
 };
 
