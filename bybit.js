@@ -52,7 +52,7 @@ export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100
 
       // Bybit returns newest first, so we need to reverse the array
       const candles = response.data.result.list.reverse().map(c => ({
-        time: parseInt(c[0]),
+        time: parseInt(c[0]), // Bybit API returns timestamps in milliseconds already
         open: parseFloat(parseFloat(c[1]).toFixed(4)),
         high: parseFloat(parseFloat(c[2]).toFixed(4)),
         low: parseFloat(parseFloat(c[3]).toFixed(4)),

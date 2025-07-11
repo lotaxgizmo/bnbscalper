@@ -22,7 +22,7 @@ export const printCandleData = (candlesWithStats, highAvg, mediumAvg, normalAvg,
     }
     
     console.log(
-      `${colors.cyan}${candleNum}${colors.reset} ${marker} ${c.time} ${colors.cyan}|${colors.reset} ` +
+      `${colors.cyan}${candleNum}${colors.reset} ${marker} ${c.displayTime} ${colors.cyan}|${colors.reset} ` +
       `${colors.magenta}H${colors.reset}: ${c.high.toFixed(4)} ${colors.magenta}L${colors.reset}: ${c.low.toFixed(4)} ${colors.cyan}|${colors.reset} ` +
       `${colors.yellow}Avg${colors.reset}: ${c.avgPrice} ${colors.cyan}|${colors.reset} ` +
       `${colors.cyan}Diff${colors.reset}: ${diffColor}${c.percentDiff}%${colors.reset} ${colors.cyan}|${colors.reset} ` +
@@ -63,8 +63,8 @@ export const printSummary = ({
   
   // Highest and lowest differences with timestamps
   console.log(`${colors.cyan}EXTREMES${colors.reset}`);
-  console.log(`▲ Peak: ${colors.red}${highest.percentDiff}%${colors.reset} at ${highest.time} | Price: ${colors.yellow}$${highest.close.toFixed(4)}${colors.reset}`);
-  console.log(`▼ Bottom: ${colors.green}${lowest.percentDiff}%${colors.reset} at ${lowest.time} | Price: ${colors.yellow}$${lowest.close.toFixed(4)}${colors.reset}`);
+  console.log(`▲ Peak: ${colors.red}${highest.percentDiff}%${colors.reset} at ${highest.displayTime} | Price: ${colors.yellow}$${highest.close.toFixed(4)}${colors.reset}`);
+  console.log(`▼ Bottom: ${colors.green}${lowest.percentDiff}%${colors.reset} at ${lowest.displayTime} | Price: ${colors.yellow}$${lowest.close.toFixed(4)}${colors.reset}`);
   console.log('═'.repeat(50));
   
   // Percentile analysis
@@ -94,14 +94,13 @@ export const printSummary = ({
   if (bestReversal.type) {
     console.log(`${colors.yellow}Best Reversal Opportunity:${colors.reset}`);
     console.log(`Type: ${bestReversal.type === 'up' ? '▲ Down→Up' : '▼ Up→Down'}`);
-    console.log(`Entry: $${bestReversal.entryPrice.toFixed(4)} at ${bestReversal.entryTime}`);
-    console.log(`Exit: $${bestReversal.exitPrice.toFixed(4)} at ${bestReversal.exitTime}`);
+    console.log(`Entry: $${bestReversal.entryPrice.toFixed(4)} at ${bestReversal.displayTime}`);
+    console.log(`Exit: $${bestReversal.exitPrice.toFixed(4)} at ${bestReversal.displayTime}`);
     console.log(`${colors.green}Profit: ${bestReversal.profit.toFixed(2)}%${colors.reset}`);
   }
   console.log('');
   // Get current price from the last candle
-  const lastCandle = candlesWithStats[candlesWithStats.length - 1];
-  const currentPrice = parseFloat(lastCandle.close);
+  const currentPrice = parseFloat(candlesWithStats[candlesWithStats.length - 1].close);
   
   console.log(`Reversal Boundary (${(highPercentile * 100).toFixed(0)}th): ${colors.red}${highAvg}%${colors.reset}`);
   const upperPrice = currentPrice * (1 + parseFloat(highAvg) / 100);
@@ -116,6 +115,19 @@ export const printSummary = ({
   // Market overview
   console.log(`${colors.cyan}MARKET OVERVIEW${colors.reset}`);
   console.log(`Average Price: ${colors.yellow}$${totalAvg}${colors.reset}`);
-  console.log(`Time Window: ${colors.magenta}${durationStr}${colors.reset}`);
+  
+  // Get start and end dates
+  const firstCandle = candlesWithStats[0];
+  const lastCandle = candlesWithStats[candlesWithStats.length - 1];
+  
+  console.log('Debug - First candle time:', firstCandle.time, typeof firstCandle.time);
+  console.log('Debug - Last candle time:', lastCandle.time, typeof lastCandle.time);
+  
+  const startDate = new Date(firstCandle.time).toLocaleString();
+  const endDate = new Date(lastCandle.time).toLocaleString();
+  
+  console.log(`Start: ${colors.magenta}${startDate}${colors.reset}`);
+  console.log(`End: ${colors.magenta}${endDate}${colors.reset}`);
+  console.log(`Duration: ${colors.magenta}${durationStr}${colors.reset}`);
   console.log('═'.repeat(50) + '\n');
 };

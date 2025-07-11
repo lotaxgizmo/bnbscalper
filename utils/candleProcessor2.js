@@ -6,7 +6,8 @@ export const processCandleData = (candles) => {
     const prevCandle = index > 0 ? candles[index - 1] : c;
     return {
       ...c,
-      time: new Date(c.time).toLocaleTimeString(),
+      displayTime: new Date(c.time).toLocaleTimeString(),
+      time: c.time, // preserve original timestamp
       percentDiff: ((c.close - prevCandle.close) / prevCandle.close * 100).toFixed(2),
       avgPrice: ((parseFloat(c.high) + parseFloat(c.low)) / 2).toFixed(2)
     };
