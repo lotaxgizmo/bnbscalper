@@ -6,12 +6,18 @@ export const api = 'bybit'; // 'binance' or 'bybit'
 export const time = '1h';
 export const symbol = 'BNBUSDT';
 // export const limit = 10080;
-export const limit = 100;
+export const limit = 300;
 
+// Limit being 49.1 months
+const month = 0;
+const day = 0;
+const hour =0;
+const minute = 0;
 
-const days = 6;
-const hours = days * 24;
-const minutes = hours * 60;
+const months = month;
+const days = month * 30 + day;
+const hours = days * 24 + hour;
+const minutes = hours * 60 + minute;
 export const delay = minutes;
 
 // Renko chart configuration

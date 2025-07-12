@@ -8,11 +8,30 @@
 </head>
 <body style="background-color: #1a1a1a; color: #ffffff;">
     <div style="width: 90%; margin: 20px auto;">
+        <div style="margin-bottom: 10px;">
+            <button id="timeFormatToggle" style="background: #333; color: #fff; border: 1px solid #666; padding: 5px 10px; cursor: pointer; border-radius: 4px;">Switch to 24h Format</button>
+        </div>
         <canvas id="priceChart"></canvas>
         <div id="summary" style="margin-top: 20px; font-family: monospace;"></div>
     </div>
 
     <script type="module">
+        // Initialize time format preference
+        let use24Hour = false;
+        const savedFormat = localStorage.getItem('timeFormat');
+        if (savedFormat) {
+            use24Hour = savedFormat === '24h';
+            document.getElementById('timeFormatToggle').textContent = use24Hour ? 'Switch to 12h Format' : 'Switch to 24h Format';
+        }
+
+        // Time format toggle handler
+        document.getElementById('timeFormatToggle').addEventListener('click', function() {
+            use24Hour = !use24Hour;
+            localStorage.setItem('timeFormat', use24Hour ? '24h' : '12h');
+            this.textContent = use24Hour ? 'Switch to 12h Format' : 'Switch to 24h Format';
+            updateChart();
+        });
+
         import { getCandles as getBinanceCandles } from './binance.js';
         import { getCandles as getBybitCandles } from './bybit.js';
         import { api, delay, pricePercentile } from './config.js';
@@ -32,7 +51,14 @@
             const data = candles.map((c, index) => {
                 const prevCandle = index > 0 ? candles[index - 1] : c;
                 return {
-                    time: new Date(c.time).toLocaleTimeString(),
+                    time: new Date(c.time).toLocaleString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: !use24Hour
+                }),
                     diff: ((c.close - prevCandle.close) / prevCandle.close * 100).toFixed(2),
                     close: parseFloat(c.close),
                     prevClose: parseFloat(prevCandle.close)
@@ -41,6 +67,15 @@
 
             const times = data.map(d => d.time);
             const diffs = data.map(d => parseFloat(d.diff));
+
+            // Calculate time span
+            const firstDate = new Date(candles[0].time);
+            const lastDate = new Date(candles[candles.length - 1].time);
+            const timeDiff = lastDate - firstDate;
+            const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+            const timeSpan = `${days}d ${hours}h ${minutes}m`;
 
             // Calculate averages
             const sortedDiffs = [...diffs].sort((a, b) => a - b);
@@ -111,6 +146,7 @@
 
             // Update summary
             document.getElementById('summary').innerHTML = 
+                `<span style="color: #44ff44"><strong>Time Span:</strong> ${timeSpan}</span><br>` +
                 `<span style="color: #ff4444"><strong>Highest Move:</strong> ${highest.diff}% at ${highest.time}</span><br>` +
                 `<span style="color: #4444ff"><strong>Lowest Move:</strong> ${lowest.diff}% at ${lowest.time}</span><br>` +
                 `<span style="color: #4488ff"><strong>Low Band:</strong> ${lowAvg}%</span><br>` +
@@ -278,9 +314,17 @@
                                 color: '#333333'
                             },
                             ticks: {
-                                color: '#ffffff',
+                                color: function(context) {
+                                    const label = context.tick.label;
+                                    if (label && label.startsWith('Sun')) {
+                                        return '#ff4444';
+                                    }
+                                    return '#ffffff';
+                                },
                                 maxRotation: 45,
-                                minRotation: 45
+                                minRotation: 45,
+                                autoSkip: true,
+                                maxTicksLimit: 1000
                             }
                         }
                     }

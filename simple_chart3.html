@@ -23,6 +23,27 @@
     </div>
 
     <script type="module">
+        // Create tooltip element
+        function getOrCreateTooltip(chart) {
+            let tooltipEl = document.getElementById('chartjs-tooltip');
+            if (!tooltipEl) {
+                tooltipEl = document.createElement('div');
+                tooltipEl.id = 'chartjs-tooltip';
+                tooltipEl.style.background = 'rgba(0, 0, 0, 0.8)';
+                tooltipEl.style.borderRadius = '3px';
+                tooltipEl.style.color = 'white';
+                tooltipEl.style.opacity = 0;
+                tooltipEl.style.pointerEvents = 'none';
+                tooltipEl.style.position = 'absolute';
+                tooltipEl.style.transform = 'translate(-50%, 0)';
+                tooltipEl.style.transition = 'all .1s ease';
+                tooltipEl.style.border = '1px solid #666';
+                
+                chart.canvas.parentNode.appendChild(tooltipEl);
+            }
+            return tooltipEl;
+        }
+
         import { getCandles as getBinanceCandles } from './binance.js';
         import { getCandles as getBybitCandles } from './bybit.js';
         import { api, delay } from './config.js';
@@ -37,11 +58,27 @@
             const blocks = [];
             let currentPrice = parseFloat(data[0].close);
             let lastDirection = null;
+            let highest = { diff: 0, time: null };
+            let timeSpan = null;
 
             for (let i = 0; i < data.length; i++) {
                 const price = parseFloat(data[i].close);
                 const priceDiff = price - currentPrice;
                 const direction = priceDiff >= 0 ? 1 : -1;
+
+                if (Math.abs(priceDiff) > highest.diff) {
+                    highest = { diff: Math.abs(priceDiff), time: data[i].time };
+                }
+
+                if (i === data.length - 1) {
+                    const firstDate = new Date(data[0].time);
+                    const lastDate = new Date(data[i].time);
+                    const timeDiff = lastDate - firstDate;
+                    const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+                    const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+                    timeSpan = `${days}d ${hours}h ${minutes}m`;
+                }
 
                 // Check if price movement is enough to create new block(s)
                 if (Math.abs(priceDiff) >= blockSizeUSDT) {
@@ -64,6 +101,10 @@
                     }
                 }
             }
+
+            document.getElementById('summary').innerHTML = 
+                `<span style="color: #44ff44"><strong>Time Span:</strong> ${timeSpan}</span><br>` +
+                `<span style="color: #ff4444"><strong>Highest Move:</strong> ${highest.diff}% at ${highest.time}</span><br>`;
 
             console.log('Created blocks:', blocks.length);
             return blocks;
@@ -103,9 +144,75 @@
             };
 
             // Create custom plugin for Renko blocks and latest price
+            let activeTooltip = null;
+
             const renkoPlugin = {
                 id: 'renkoBlocks',
                 beforeDraw: (chart, args, options) => {
+                    const canvas = chart.canvas;
+                    if (!canvas.onmousemove) {
+                        canvas.onmousemove = function(e) {
+                            const rect = canvas.getBoundingClientRect();
+                            const x = e.clientX - rect.left;
+                            const y = e.clientY - rect.top;
+                            const {ctx, chartArea, scales} = chart;
+
+                            // Calculate block dimensions
+                            const { blockWidth, spacing } = calculateBlockDimensions(chartArea, renkoBlocks.length);
+
+                            // Check if mouse is over a block
+                            let foundBlock = false;
+                            renkoBlocks.forEach((block, i) => {
+                                const blockX = chartArea.left + (i * (blockWidth + spacing));
+                                const blockY = scales.y.getPixelForValue(block.close);
+                                const blockHeight = Math.abs(scales.y.getPixelForValue(block.open) - blockY);
+                                const blockTop = Math.min(blockY, scales.y.getPixelForValue(block.open));
+
+                                if (x >= blockX && x <= blockX + blockWidth &&
+                                    y >= blockTop && y <= blockTop + blockHeight) {
+                                    // Show tooltip
+                                    const tooltipEl = getOrCreateTooltip(chart);
+                                    const time = new Date(block.time).toLocaleString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        hour12: true
+                                    });
+                                    const move = block.close - block.open;
+                                    const moveBlocks = Math.abs(move) / renkoBlockSize;
+
+                                    tooltipEl.style.opacity = 1;
+                                    tooltipEl.style.left = blockX + blockWidth + 5 + 'px';
+                                    tooltipEl.style.top = blockTop + 'px';
+                                    tooltipEl.innerHTML = `
+                                        <div style="padding: 8px; color: #fff;">
+                                            <div>Time: ${time}</div>
+                                            <div>Open: $${block.open.toFixed(4)}</div>
+                                            <div>Close: $${block.close.toFixed(4)}</div>
+                                            <div>Move: $${Math.abs(move).toFixed(2)} (${moveBlocks} blocks)</div>
+                                            <div>Direction: ${move > 0 ? '▲ Up' : '▼ Down'}</div>
+                                        </div>
+                                    `;
+                                    activeTooltip = tooltipEl;
+                                    foundBlock = true;
+                                }
+                            });
+
+                            if (!foundBlock && activeTooltip) {
+                                activeTooltip.style.opacity = 0;
+                                activeTooltip = null;
+                            }
+                        };
+
+                        canvas.onmouseleave = function() {
+                            if (activeTooltip) {
+                                activeTooltip.style.opacity = 0;
+                                activeTooltip = null;
+                            }
+                        };
+                    }
                     const {ctx, chartArea, scales} = chart;
                     const blocks = renkoBlocks;
                     const latestPrice = parseFloat(candles[candles.length - 1].close);
@@ -164,7 +271,11 @@
                 label: 'Renko',
                 data: renkoBlocks.map((block, i) => ({
                     x: i,
-                    y: block.close
+                    y: block.close,
+                    time: block.time,
+                    open: block.open,
+                    close: block.close,
+                    direction: block.direction
                 })),
                 borderColor: 'rgba(0,0,0,0)',
                 pointRadius: 0
@@ -179,7 +290,15 @@
             window.myChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    datasets: [dataset]
+                    datasets: [{
+                        label: 'Renko',
+                        data: renkoBlocks.map((block, i) => ({
+                            x: i,
+                            y: block.close
+                        })),
+                        borderColor: 'rgba(0,0,0,0)',
+                        pointRadius: 0
+                    }]
                 },
                 options: {
                     responsive: true,
@@ -225,16 +344,25 @@
                             display: false
                         },
                         tooltip: {
-                            enabled: true,
-                            mode: 'nearest',
-                            intersect: false,
+                            enabled: false,
                             callbacks: {
                                 label: function(context) {
-                                    const block = renkoBlocks[context.dataIndex];
+                                    const block = context.raw.block;
+                                    if (!block) return [];
+                                    
                                     const move = block.close - block.open;
                                     const moveBlocks = Math.abs(move) / renkoBlockSize;
+                                    const time = new Date(block.time).toLocaleString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        hour12: true
+                                    });
+                                    
                                     return [
-                                        `Time: ${new Date(block.time).toLocaleTimeString()}`,
+                                        `Time: ${time}`,
                                         `Open: $${block.open.toFixed(4)}`,
                                         `Close: $${block.close.toFixed(4)}`,
                                         `Move: $${Math.abs(move).toFixed(2)} (${moveBlocks} blocks)`,
