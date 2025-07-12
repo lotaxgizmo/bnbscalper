@@ -56,6 +56,7 @@
         function createRenkoBlocks(data, blockSizeUSDT) {
             console.log('Creating Renko blocks with data:', data[0], 'Block size:', blockSizeUSDT, 'USDT');
             const blocks = [];
+            let lastBlockStartTime = data[0].time;
             let currentPrice = parseFloat(data[0].close);
             let lastDirection = null;
             let highest = { diff: 0, time: null };
@@ -89,6 +90,8 @@
                         const blockClose = currentPrice + (direction * blockSizeUSDT);
                         
                         blocks.push({
+                            startTime: lastBlockStartTime,
+                            endTime: data[i].time,
                             time: data[i].time,
                             open: blockOpen,
                             close: blockClose,
@@ -98,6 +101,7 @@
                         
                         currentPrice = blockClose;
                         lastDirection = direction;
+                        lastBlockStartTime = data[i].time;
                     }
                 }
             }
@@ -186,9 +190,27 @@
                                     tooltipEl.style.opacity = 1;
                                     tooltipEl.style.left = blockX + blockWidth + 5 + 'px';
                                     tooltipEl.style.top = blockTop + 'px';
+                                    // Calculate duration
+                                    const startTime = typeof block.startTime === 'number' ? block.startTime : new Date(block.startTime).getTime();
+                                    const endTime = typeof block.endTime === 'number' ? block.endTime : new Date(block.endTime).getTime();
+                                    const durationMs = endTime - startTime;
+                                    const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                                    const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                                    const durationText = hours > 0 ? 
+                                        `${hours}h ${minutes}m` : 
+                                        minutes > 0 ? `${minutes}m` : '< 1m';
+                                    console.log('Block duration:', { 
+                                        startTime: new Date(startTime).toISOString(),
+                                        endTime: new Date(endTime).toISOString(),
+                                        durationMs, 
+                                        hours, 
+                                        minutes 
+                                    });
+
                                     tooltipEl.innerHTML = `
                                         <div style="padding: 8px; color: #fff;">
                                             <div>Time: ${time}</div>
+                                            <div>Duration: ${durationText}</div>
                                             <div>Open: $${block.open.toFixed(4)}</div>
                                             <div>Close: $${block.close.toFixed(4)}</div>
                                             <div>Move: $${Math.abs(move).toFixed(2)} (${moveBlocks} blocks)</div>
@@ -248,21 +270,30 @@
                     });
 
                     // Draw latest price line
-                    const y = scales.y.getPixelForValue(latestPrice);
-                    ctx.beginPath();
-                    ctx.strokeStyle = '#ffff00';
-                    ctx.lineWidth = 2;
-                    ctx.setLineDash([5, 5]);
-                    ctx.moveTo(chartArea.left, y);
-                    ctx.lineTo(chartArea.right, y);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
+                    if (candles && candles.length > 0) {
+                        const latestPrice = parseFloat(candles[candles.length - 1].close);
+                        const y = scales.y.getPixelForValue(latestPrice);
+                        
+                        // Only draw if price is within visible area
+                        if (y >= chartArea.top && y <= chartArea.bottom) {
+                            // Draw horizontal line across chart
+                            ctx.beginPath();
+                            ctx.moveTo(chartArea.left, y);
+                            ctx.lineTo(chartArea.right, y);
+                            ctx.strokeStyle = '#ffff00';
+                            ctx.lineWidth = 2;
+                            ctx.setLineDash([5, 3]);
+                            ctx.stroke();
+                            ctx.setLineDash([]);
 
-                    // Add latest price label
-                    ctx.fillStyle = '#ffff00';
-                    ctx.font = 'bold 12px Arial';
-                    ctx.textAlign = 'left';
-                    ctx.fillText(`Latest: $${latestPrice.toFixed(4)}`, chartArea.left + 10, y - 5);
+                            // Add price label
+                            ctx.fillStyle = '#ffff00';
+                            ctx.font = 'bold 12px Arial';
+                            const priceText = `$${latestPrice.toFixed(4)}`;
+                            ctx.textAlign = 'left';
+                            ctx.fillText(priceText, chartArea.left + 5, y - 5);
+                        }
+                    }
                 }
             };
 

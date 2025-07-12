@@ -5,9 +5,17 @@ export const api = 'bybit'; // 'binance' or 'bybit'
 // export const api = 'binance'; // 'binance' or 'bybit'
 export const time = '1h';
 export const symbol = 'BNBUSDT';
-// export const limit = 10080;
-export const limit = 300;
 
+// candle limit below
+
+const weeklimit = 1;
+const daylimit = weeklimit * 7;
+const hourlimit = daylimit * 24;
+
+// export const limit = hourlimit;
+export const limit = 24;
+
+// delay below
 // Limit being 49.1 months
 const month = 0;
 const day = 0;
@@ -21,7 +29,7 @@ const minutes = hours * 60 + minute;
 export const delay = minutes;
 
 // Renko chart configuration
-export const renkoBlockSize = 3; // Size of each Renko block in USDT
+export const renkoBlockSize = 4; // Size of each Renko block in USDT
 
 // Display settings
 export const showFullTimePeriod = true; // if false, only shows hours and minutes

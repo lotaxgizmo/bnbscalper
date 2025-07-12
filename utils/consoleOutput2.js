@@ -126,15 +126,40 @@ Top Band Boundary (${(topPercentile * 100).toFixed(1)}th): ${colors.magenta}${to
   console.log(`${colors.cyan}MARKET OVERVIEW${colors.reset}`);
   console.log(`Average Price: ${colors.yellow}$${totalAvg}${colors.reset}`);
   
-  // Get start and end dates
+  // Get start and end dates and prices
   const firstCandle = candlesWithStats[0];
   const lastCandle = candlesWithStats[candlesWithStats.length - 1];
+  
+  // Calculate total movements
+  const startPrice = firstCandle.close;
+  const endPrice = lastCandle.close;
+  const totalMovement = ((endPrice - startPrice) / startPrice * 100).toFixed(2);
+  const priceMovement = Math.abs(endPrice - startPrice).toFixed(4);
+  const movementColor = totalMovement >= 0 ? colors.green : colors.red;
+  console.log(`Total Movement: ${movementColor}${totalMovement}%${colors.reset}`); 
+  console.log(`Price Movement: ${movementColor} $${priceMovement}${colors.reset}`);
   
   // console.log('Debug - First candle time:', firstCandle.time, typeof firstCandle.time);
   // console.log('Debug - Last candle time:', lastCandle.time, typeof lastCandle.time);
   
-  const startDate = new Date(firstCandle.time).toLocaleString();
-  const endDate = new Date(lastCandle.time).toLocaleString();
+  const startDate = new Date(firstCandle.time).toLocaleString('en-US', {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: true
+  });
+  const endDate = new Date(lastCandle.time).toLocaleString('en-US', {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: true
+  });
   
   console.log(`Start: ${colors.magenta}${startDate}${colors.reset}`);
   console.log(`End: ${colors.magenta}${endDate}${colors.reset}`);
