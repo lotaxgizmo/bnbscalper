@@ -44,14 +44,63 @@
             return tooltipEl;
         }
 
+        import { symbol, limit, delay, renkoBlockSize, api } from './config.js';
+        
+        let wsPrice = null;
+        let chart = null;
+        const WS_URL = 'wss://stream.bybit.com/v5/public/linear';
+        
+        // Connect to WebSocket
+        function connectWebSocket() {
+            const ws = new WebSocket(WS_URL);
+            
+            ws.onopen = () => {
+                console.log('Connected to Bybit WebSocket');
+                ws.send(JSON.stringify({
+                    op: 'subscribe',
+                    args: [`tickers.${symbol}`]
+                }));
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.topic === `tickers.${symbol}` && message.data && message.data.lastPrice) {
+                        wsPrice = parseFloat(message.data.lastPrice);
+                        if (chart && chart.ctx) {
+                            requestAnimationFrame(() => {
+                                if (chart.ctx) {
+                                    chart.update('none');
+                                    console.log('Price updated:', wsPrice);
+                                }
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error processing message:', error);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected. Reconnecting...');
+                setTimeout(connectWebSocket, 5000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                ws.close();
+            };
+        }
+        
+        // Start WebSocket connection after a short delay to ensure chart is initialized
+        setTimeout(connectWebSocket, 1000);
+
         import { getCandles as getBinanceCandles } from './binance.js';
         import { getCandles as getBybitCandles } from './bybit.js';
-        import { api, delay } from './config.js';
         
         // Select API based on config
         const getCandles = api === 'binance' ? getBinanceCandles : getBybitCandles;
-        import { time, symbol, limit, renkoBlockSize } from './config.js';
-
+        
         // Function to create Renko blocks from price data with fixed USDT block size
         function createRenkoBlocks(data, blockSizeUSDT) {
             console.log('Creating Renko blocks with data:', data[0], 'Block size:', blockSizeUSDT, 'USDT');
@@ -116,7 +165,7 @@
 
         async function updateChart() {
             const endTime = Date.now() - (delay * 60 * 1000);
-            const candles = await getCandles(symbol, time, limit, endTime);
+            const candles = await getCandles(symbol, '1h', limit, endTime);
             
             // Sort candles by timestamp
             candles.sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -269,14 +318,23 @@
                         }
                     });
 
-                    // Draw latest price line
-                    if (candles && candles.length > 0) {
-                        const latestPrice = parseFloat(candles[candles.length - 1].close);
+                    // Draw latest price line using WebSocket price if available
+                    if (wsPrice || (candles && candles.length > 0)) {
+                        const latestPrice = wsPrice || parseFloat(candles[candles.length - 1].close);
+                        console.log('Drawing price line:', latestPrice);
                         const y = scales.y.getPixelForValue(latestPrice);
                         
                         // Only draw if price is within visible area
                         if (y >= chartArea.top && y <= chartArea.bottom) {
-                            // Draw horizontal line across chart
+                            // Draw background line for visibility
+                            ctx.beginPath();
+                            ctx.moveTo(chartArea.left, y);
+                            ctx.lineTo(chartArea.right, y);
+                            ctx.strokeStyle = '#000000';
+                            ctx.lineWidth = 4;
+                            ctx.stroke();
+
+                            // Draw yellow line
                             ctx.beginPath();
                             ctx.moveTo(chartArea.left, y);
                             ctx.lineTo(chartArea.right, y);
@@ -286,12 +344,25 @@
                             ctx.stroke();
                             ctx.setLineDash([]);
 
-                            // Add price label
-                            ctx.fillStyle = '#ffff00';
-                            ctx.font = 'bold 12px Arial';
+                            // Add price label with background
                             const priceText = `$${latestPrice.toFixed(4)}`;
+                            ctx.font = 'bold 12px Arial';
+                            const textWidth = ctx.measureText(priceText).width;
+                            const padding = 4;
+                            
+                            // Draw label background
+                            ctx.fillStyle = '#000000';
+                            ctx.fillRect(
+                                chartArea.left + 5,
+                                y - 16,
+                                textWidth + (padding * 2),
+                                20
+                            );
+
+                            // Draw text
+                            ctx.fillStyle = '#ffff00';
                             ctx.textAlign = 'left';
-                            ctx.fillText(priceText, chartArea.left + 5, y - 5);
+                            ctx.fillText(priceText, chartArea.left + 5 + padding, y - 2);
                         }
                     }
                 }
@@ -314,11 +385,16 @@
 
             // Create chart
             const ctx = document.getElementById('renkoChart').getContext('2d');
-            if (window.myChart) {
-                window.myChart.destroy();
+            
+            // Properly destroy existing chart
+            if (chart instanceof Chart) {
+                chart.destroy();
             }
-
-            window.myChart = new Chart(ctx, {
+            
+            // Clear any existing Chart instances from the canvas
+            Chart.getChart(ctx.canvas)?.destroy();
+            
+            chart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     datasets: [{
@@ -410,8 +486,23 @@
         }
 
         // Update every minute
-        updateChart();
-        setInterval(updateChart, 60000);
+        let updateInterval;
+        
+        async function startUpdates() {
+            // Clear any existing interval
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+            
+            // Initial update
+            await updateChart();
+            
+            // Set new interval
+            updateInterval = setInterval(updateChart, 60000);
+        }
+        
+        // Start updates
+        startUpdates();
     </script>
 </body>
 </html>
