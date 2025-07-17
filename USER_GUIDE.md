@@ -3,6 +3,14 @@
 ## Overview
 A comprehensive trading toolkit for BNB/USDT scalping, featuring real-time price tracking, Renko charting, and compound profit calculations. Optimized for 50x leverage trading with 0.08% target moves.
 
+## Configuration
+
+### Time Settings
+You can now configure the chart's timeframe in `config.js`:
+- Set `time` to your desired interval ('1m', '5m', '15m', '1h', etc.)
+- Example: `export const time = '1m'` for 1-minute candles
+- The Renko chart will automatically adjust to your chosen timeframe
+
 ## Components
 
 ### 1. Real-Time Price Tracking
@@ -16,6 +24,7 @@ A comprehensive trading toolkit for BNB/USDT scalping, featuring real-time price
 - Interactive tooltips with price information
 - Dark theme for extended trading sessions
 - Customizable block sizes
+- Adjustable price scale increments (default: $0.50)
 
 ### 3. Profit Calculator
 - Compound interest projections

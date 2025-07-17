@@ -1,5 +1,19 @@
 # BNB Scalper - Technical Documentation
 
+## Recent Updates
+
+### Chart Price Scale Configuration (2025-07-17)
+- Added configurable price scale increments in simple_chart3.html
+- Y-axis ticks now support custom stepSize for price intervals
+- Default stepSize set to 0.5 USDT
+- Price display maintains 4 decimal precision
+
+### Chart Time Configuration (2025-07-14)
+- Fixed time configuration in simple_chart3.html to use config.js settings
+- Chart now properly respects timeframe settings from config.js (1m, 5m, 15m, 1h, etc.)
+- Renko blocks accurately reflect the chosen time interval
+- Time configuration is now consistently applied across the application
+
 ## System Architecture
 
 ### Core Components
@@ -32,192 +46,643 @@
    - Timeframe management
    - Display preferences
 
-## Component Details
+## Code Organization and Dependencies
 
-### 1. Binance Integration (`binance.js`)
-```javascript
-// Core functionality
-- Historical OHLCV data retrieval
-- Batch processing for large datasets
-- Price precision handling
-- Timestamp management
-
-// API Endpoints
-BASE_URL = 'https://api.binance.com/api/v3'
-Endpoints: /klines
-
-// Data Processing
-- Automatic pagination
-- Data normalization
-- Error handling
+### Project Dependencies
+```json
+{
+  "dependencies": {
+    "axios": "^1.10.0",  // HTTP client for API requests
+    "ws": "^8.18.3"     // WebSocket client for real-time data
+  }
+}
 ```
 
-### 2. Bybit WebSocket (`bybit_ws.js`)
-```javascript
-// Connection Management
-WS_URL = 'wss://stream.bybit.com/v5/public/linear'
-- Auto-reconnection
-- Subscription handling
-- Error recovery
+### Module Dependencies and Imports
 
-// Data Handling
-- Snapshot processing
-- Delta updates
-- Real-time price tracking
-- Volume monitoring
+1. **Main Application Entry Points**
+```javascript
+// index.js - Basic price analysis
+import { getCandles as getBinanceCandles } from './binance.js'
+import { getCandles as getBybitCandles } from './bybit.js'
+import { api, time, symbol, limit, mediumPercentile, highPercentile, lowPercentile } from './config.js'
+import { processCandleData, calculatePercentiles, trackCorrections } from './utils/candleProcessor.js'
+import { formatDuration, getTimeInMinutes } from './utils/formatters.js'
+import { printCandleData, printSummary } from './utils/consoleOutput.js'
+
+// index2.js - Advanced movement analysis
+// Additional imports for enhanced analysis features
+import { processCandleData, calculatePercentiles, trackCorrections } from './utils/candleProcessor2.js'
+import { printCandleData, printSummary } from './utils/consoleOutput2.js'
 ```
 
-### 3. Compound Calculator (`compound.js`)
-```javascript
-// Features
-- Flexible rate calculation
-- Iterative compounding
-- Progress logging
-- Precision handling
+2. **Data Types and Structures**
+```typescript
+// Candle Data Structure
+type Candle = {
+  time: number;          // Unix timestamp in milliseconds
+  open: number;          // Opening price
+  high: number;          // Highest price
+  low: number;           // Lowest price
+  close: number;         // Closing price
+  volume: number;        // Trading volume
+  displayTime?: string;  // Formatted time string
+  percentDiff?: string;  // Price movement percentage
+  avgPrice?: string;    // Average price for the candle
+}
 
-// Configuration
-- Customizable capital
-- Adjustable rate
-- Variable time periods
+// WebSocket Message Format
+type WSMessage = {
+  topic: string;         // Channel identifier (e.g., 'tickers.BNBUSDT')
+  type: 'snapshot' | 'delta'; // Message type
+  data: {
+    lastPrice: string;   // Current price
+    volume24h: string;   // 24h volume
+    timestamp: number;   // Unix timestamp
+  }
+}
 ```
 
-### 4. Configuration System (`config.js`)
-```javascript
-// Core Settings
-- API selection
-- Timeframe configuration
-- Data limits
-- Display preferences
+## Core Processes and Implementation
 
-// Trading Parameters
-- Block size configuration
-- Time period settings
-- Display formatting
+### 1. Data Provider Implementation
+
+#### Binance Integration (`binance.js`)
+```javascript
+// Core Implementation
+const BASE_URL = 'https://api.binance.com/api/v3';
+
+// Candle Data Fetching Process
+async function getCandles(symbol, interval, limit, customEndTime) {
+  // 1. Initialize data structures
+  const allCandles = [];
+  let remainingLimit = limit;
+  let endTime = customEndTime || Date.now();
+
+  // 2. Batch processing with pagination
+  while (remainingLimit > 0) {
+    const batchLimit = Math.min(remainingLimit, 1000);
+    const response = await fetchBatch(symbol, interval, batchLimit, endTime);
+    
+    // 3. Data normalization
+    const candles = response.map(c => ({
+      time: parseInt(c[0]),
+      open: parseFloat(c[1]),
+      high: parseFloat(c[2]),
+      low: parseFloat(c[3]),
+      close: parseFloat(c[4]),
+      volume: parseFloat(c[5])
+    }));
+
+    // 4. Update collection and pagination
+    allCandles.unshift(...candles);
+    remainingLimit -= candles.length;
+    endTime = candles[0].time - 1;
+  }
+
+  return allCandles;
+}
 ```
 
-## Data Flow
+### 2. Real-time Data Processing
 
-### Price Data Pipeline
-1. Initial Load:
-   ```
-   REST API → Historical Data → Data Processing → Chart Initialization
-   ```
+#### WebSocket Implementation (`bybit_ws.js`)
+```javascript
+// 1. Connection Setup
+const WS_URL = 'wss://stream.bybit.com/v5/public/linear';
+let ws;
 
-2. Real-time Updates:
-   ```
-   WebSocket → Price Update → State Management → Visual Update
-   ```
+// 2. Connection Management
+function connect() {
+  ws = new WebSocket(WS_URL);
 
-### Trading Integration
-1. Signal Generation:
-   ```
-   Price Data → Pattern Recognition → Trading Signals
-   ```
+  // 3. Event Handlers
+  ws.on('open', () => {
+    // Subscribe to price updates
+    ws.send(JSON.stringify({
+      op: 'subscribe',
+      args: [`tickers.${symbol}`]
+    }));
+  });
 
-2. Risk Management:
-   ```
-   Position Size → Leverage Calculation → Risk Parameters
-   ```
+  // 4. Message Processing
+  ws.on('message', (data) => {
+    const message = JSON.parse(data);
+    if (message.topic === `tickers.${symbol}`) {
+      processUpdate(message);
+    }
+  });
 
-## Development Guidelines
+  // 5. Error Recovery
+  ws.on('close', () => setTimeout(connect, 5000));
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+    ws.close();
+  });
+}
+```
 
-### Adding New Features
-1. Configuration:
-   - Add parameters to `config.js`
-   - Document new settings
-   - Validate values
+### 3. Data Analysis Pipeline
 
-2. Data Integration:
-   - Implement error handling
-   - Add retry mechanisms
-   - Validate data format
+#### Price Movement Analysis
+```javascript
+// 1. Data Processing
+function processCandleData(candles) {
+  return candles.map((c, index) => {
+    const prevCandle = index > 0 ? candles[index - 1] : c;
+    return {
+      ...c,
+      percentDiff: calculatePriceDiff(c.close, prevCandle.close),
+      avgPrice: calculateAverage(c.high, c.low)
+    };
+  });
+}
 
-3. UI Components:
-   - Follow dark theme
-   - Implement responsive design
-   - Add error states
+// 2. Pattern Recognition
+function trackCorrections(candlesWithStats, highAvg, normalAvg, lowAvg) {
+  return candlesWithStats.reduce((acc, candle) => {
+    const diff = parseFloat(candle.percentDiff);
+    if (diff >= highAvg) {
+      acc.correctionToNormalCount++;
+    } else if (diff <= lowAvg) {
+      acc.correctionToLowCount++;
+    }
+    return acc;
+  }, { correctionToNormalCount: 0, correctionToLowCount: 0 });
+}
+```
+### 4. Visualization Implementation
 
-### Testing Requirements
-1. Data Providers:
-   - Connection stability
-   - Data accuracy
-   - Error handling
-   - Rate limit compliance
+#### Chart System (`simple_chart3.html`)
+```javascript
+// 1. Chart Configuration
+const chartConfig = {
+  type: 'line',
+  data: {
+    datasets: [{
+      label: 'Price',
+      borderColor: '#00ff00',
+      data: [],
+      pointRadius: 0,
+      borderWidth: 1,
+      fill: false
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      annotation: {
+        // Price level annotations
+        annotations: {
+          highLevel: {
+            type: 'line',
+            borderColor: 'red',
+            borderWidth: 1
+          },
+          lowLevel: {
+            type: 'line',
+            borderColor: 'blue',
+            borderWidth: 1
+          }
+        }
+      }
+    }
+  }
+};
 
-2. Trading Logic:
-   - Pattern recognition
-   - Signal generation
-   - Risk calculations
+// 2. Real-time Data Integration
+function connectWebSocket() {
+  const ws = new WebSocket(WS_URL);
+  
+  ws.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+    if (message.topic === `tickers.${symbol}`) {
+      updateChart(message.data.lastPrice);
+    }
+  };
+}
 
-3. UI/UX:
-   - Response times
-   - Memory usage
-   - Browser compatibility
+// 3. Renko Block Generation
+function createRenkoBlocks(price, blockSize) {
+  const direction = price > lastPrice ? 1 : -1;
+  const priceDiff = Math.abs(price - lastPrice);
+  const blocks = Math.floor(priceDiff / blockSize);
+  
+  return Array(blocks).fill().map((_, i) => ({
+    price: lastPrice + (direction * blockSize * (i + 1)),
+    direction
+  }));
+}
+```
 
-## Performance Considerations
+### 5. Configuration Management
 
-### WebSocket Optimization
-- Heartbeat monitoring
-- Reconnection backoff
-- Message queuing
-- Buffer management
+#### System Configuration (`config.js`)
+```javascript
+// 1. Trading Parameters
+export const config = {
+  // API Selection
+  api: 'bybit',              // 'binance' or 'bybit'
+  
+  // Market Parameters
+  symbol: 'BNBUSDT',         // Trading pair
+  time: '1m',                // Timeframe
+  limit: 100,                // Number of candles
+  
+  // Analysis Parameters
+  lowPercentile: 25,         // Lower band percentile
+  mediumPercentile: 50,      // Middle band percentile
+  highPercentile: 75,        // Upper band percentile
+  topPercentile: 90,         // Top band percentile
+  
+  // Display Settings
+  showFullTimePeriod: true,  // Show complete time window
+  delay: 0,                  // Data delay in minutes
+  
+  // Chart Settings
+  renkoBlockSize: 0.1        // Block size for Renko chart
+};
 
-### Chart Performance
-- RequestAnimationFrame usage
-- Canvas optimization
-- Data point limiting
-- Memory management
+// 2. Runtime Configuration
+export const runtimeConfig = {
+  // WebSocket connection state
+  wsConnected: false,
+  
+  // Price tracking
+  lastPrice: null,
+  lastUpdateTime: null,
+  
+  // Performance monitoring
+  messageCount: 0,
+  errorCount: 0
+};
 
-### Error Handling
-1. Network Issues:
-   - Automatic retry
-   - Data recovery
-   - State preservation
+// 3. Error Handling Configuration
+export const errorConfig = {
+  maxRetries: 3,
+  retryDelay: 5000,
+  errorThreshold: 10
+};
+```
 
-2. API Limits:
-   - Rate monitoring
-   - Request queuing
-   - Fallback mechanisms
+### 6. Trading Strategy Implementation
 
-## Security Considerations
+#### Pattern Recognition and Signal Generation
+```javascript
+// 1. Reversal Detection
+function detectReversal(candles, threshold) {
+  const lastCandles = candles.slice(-3);
+  const [prev2, prev1, current] = lastCandles;
+  
+  // Down→Up reversal
+  if (prev2.close > prev1.close && // Previous downtrend
+      current.close > prev1.close && // Current uptick
+      Math.abs(current.close - prev1.close) / prev1.close > threshold) {
+    return 'UP';
+  }
+  
+  // Up→Down reversal
+  if (prev2.close < prev1.close && // Previous uptrend
+      current.close < prev1.close && // Current downtick
+      Math.abs(current.close - prev1.close) / prev1.close > threshold) {
+    return 'DOWN';
+  }
+  
+  return null;
+}
 
-### API Integration
-- Secure connection handling
-- API key management
-- Request signing
-- Rate limit compliance
+// 2. Risk Management
+function calculatePosition(capital, price, leverage) {
+  const maxRiskPercent = 0.02; // 2% max risk
+  const stopDistance = 0.021; // 0.21% stop loss
+  
+  const maxLoss = capital * maxRiskPercent;
+  const positionSize = (maxLoss / stopDistance) * leverage;
+  
+  return Math.min(positionSize, capital * leverage);
+}
 
-### Data Management
-- Price data validation
-- Signal verification
-- Error bounds checking
-- State validation
+## System Flow and Error Handling
 
-## Deployment
+### 1. Data Flow Implementation
 
-### Prerequisites
-- Node.js environment
-- Web server
-- API access
-- WebSocket support
+#### Price Data Pipeline
+```javascript
+// Purpose: Initial data load and real-time updates
+// Key Components:
 
-### Configuration
-1. API Setup:
-   ```javascript
-   - Select provider (Binance/Bybit)
-   - Configure timeframes
-   - Set data limits
-   ```
+// 1. Initial Data Load
+async function initializeSystem() {
+  try {
+    // Fetch historical data
+    const candles = await getCandles(symbol, time, limit);
+    
+    // Process and analyze
+    const processedData = processCandleData(candles);
+    const analysis = calculatePercentiles(processedData);
+    
+    // Initialize visualization
+    initChart(processedData, analysis);
+    
+    // Start real-time updates
+    connectWebSocket();
+  } catch (error) {
+    handleSystemError('initialization', error);
+  }
+}
 
-2. Trading Parameters:
-   ```javascript
-   - Block size
-   - Time periods
-   - Risk limits
-   ```
+// 2. Real-time Update Pipeline
+function processUpdate(message) {
+  try {
+    // Validate data
+    if (!validatePriceUpdate(message)) {
+      throw new Error('Invalid price update');
+    }
+    
+    // Update state
+    updatePriceState(message);
+    
+    // Update visualization
+    updateChart(message);
+    
+    // Check for signals
+    checkTradingSignals(message);
+  } catch (error) {
+    handleUpdateError(error);
+  }
+}
+```
 
-### Monitoring
-- WebSocket connection status
-- Data flow integrity
-- Error rates
-- Performance metrics
+### 2. Error Handling System
+
+#### Comprehensive Error Management
+```javascript
+// 1. Error Types
+const ErrorTypes = {
+  NETWORK: 'NETWORK_ERROR',
+  API: 'API_ERROR',
+  WEBSOCKET: 'WEBSOCKET_ERROR',
+  VALIDATION: 'VALIDATION_ERROR',
+  PROCESSING: 'PROCESSING_ERROR'
+};
+
+// 2. Error Handler Implementation
+function handleError(type, error, context) {
+  // Log error with context
+  console.error(`[${type}] ${error.message}`, {
+    timestamp: new Date().toISOString(),
+    context,
+    stack: error.stack
+  });
+
+  // Implement recovery strategy
+  switch (type) {
+    case ErrorTypes.NETWORK:
+      handleNetworkError(error);
+      break;
+    case ErrorTypes.WEBSOCKET:
+      handleWebSocketError(error);
+      break;
+    case ErrorTypes.API:
+      handleApiError(error);
+      break;
+    default:
+      handleGenericError(error);
+  }
+}
+
+// 3. Specific Error Handlers
+function handleWebSocketError(error) {
+  if (error.code === 'ECONNRESET') {
+    reconnectWithBackoff();
+  } else if (error.code === 'ETIMEDOUT') {
+    resetConnection();
+  }
+}
+
+function handleApiError(error) {
+  if (error.response?.status === 429) {
+    handleRateLimitError(error);
+  } else if (error.response?.status === 500) {
+    retryWithExponentialBackoff(error);
+  }
+}
+```
+
+### 3. Performance Optimization
+
+#### Memory and CPU Management
+```javascript
+// 1. Data Structure Optimization
+class PriceBuffer {
+  constructor(maxSize = 1000) {
+    this.maxSize = maxSize;
+    this.buffer = new Float64Array(maxSize);
+    this.timestamps = new Float64Array(maxSize);
+    this.position = 0;
+  }
+
+  add(price, timestamp) {
+    this.buffer[this.position] = price;
+    this.timestamps[this.position] = timestamp;
+    this.position = (this.position + 1) % this.maxSize;
+  }
+}
+
+// 2. Chart Rendering Optimization
+function optimizeChartRendering() {
+  // Use requestAnimationFrame for smooth updates
+  let frameRequest;
+  let lastUpdate = 0;
+  
+  return (price) => {
+    const now = performance.now();
+    if (now - lastUpdate < 16.67) { // Max 60fps
+      return;
+    }
+    
+    cancelAnimationFrame(frameRequest);
+    frameRequest = requestAnimationFrame(() => {
+      updateChart(price);
+      lastUpdate = now;
+    });
+  };
+}
+
+// 3. WebSocket Message Handling
+const messageQueue = new Queue({
+  maxSize: 1000,
+  processInterval: 16 // Process every 16ms
+});
+
+ws.onmessage = (event) => {
+  messageQueue.add(event.data);
+};
+```
+
+## Deployment and Monitoring
+
+### 1. System Requirements
+```javascript
+// Minimum Requirements
+const requirements = {
+  node: '>=14.0.0',
+  memory: '512MB',
+  cpu: '1 core',
+  storage: '1GB'
+};
+
+// Dependencies
+const dependencies = {
+  axios: '^1.10.0',  // HTTP client
+  ws: '^8.18.3',    // WebSocket client
+  chartjs: '^4.0.0' // Visualization
+};
+```
+
+### 2. Runtime Monitoring
+```javascript
+// 1. Performance Metrics
+const metrics = {
+  // WebSocket metrics
+  wsMetrics: {
+    messageCount: 0,
+    errorCount: 0,
+    reconnections: 0,
+    lastLatency: 0
+  },
+  
+  // Processing metrics
+  processMetrics: {
+    updateCount: 0,
+    avgProcessingTime: 0,
+    peakMemoryUsage: 0
+  },
+  
+  // Trading metrics
+  tradingMetrics: {
+    signalsGenerated: 0,
+    successfulTrades: 0,
+    failedTrades: 0
+  }
+};
+
+// 2. Health Checks
+function performHealthCheck() {
+  return {
+    wsStatus: ws.readyState === 1,
+    apiStatus: checkApiConnection(),
+    memoryUsage: process.memoryUsage(),
+    uptime: process.uptime(),
+    lastUpdate: metrics.lastUpdateTime
+  };
+}
+```
+
+## Trading Strategy and Analysis
+
+### 1. Market Analysis Implementation
+```javascript
+// 1. Price Movement Analysis
+function analyzePriceMovements(candles) {
+  // Track directional movements
+  const movements = candles.reduce((acc, candle, i) => {
+    if (i === 0) return acc;
+    const prevClose = candles[i-1].close;
+    const diff = ((candle.close - prevClose) / prevClose) * 100;
+    
+    if (diff > 0) acc.upMoves.push(diff);
+    else if (diff < 0) acc.downMoves.push(Math.abs(diff));
+    
+    return acc;
+  }, { upMoves: [], downMoves: [] });
+
+  // Calculate success rates
+  return {
+    upMoveRate: movements.upMoves.length / candles.length,
+    downMoveRate: movements.downMoves.length / candles.length,
+    avgUpMove: average(movements.upMoves),
+    avgDownMove: average(movements.downMoves)
+  };
+}
+
+// 2. Volatility Analysis
+function analyzeVolatility(candles) {
+  const volatilityBands = candles.map(candle => {
+    const range = candle.high - candle.low;
+    const avgPrice = (candle.high + candle.low) / 2;
+    return (range / avgPrice) * 100;
+  });
+
+  return {
+    avgVolatility: average(volatilityBands),
+    maxVolatility: Math.max(...volatilityBands),
+    minVolatility: Math.min(...volatilityBands)
+  };
+}
+```
+
+### 2. Trading Strategy Implementation
+```javascript
+// 1. Down→Up Reversal Detection
+function detectDownUpReversal(candles, threshold = 0.08) {
+  const [prev2, prev1, current] = candles.slice(-3);
+  
+  // Confirm downtrend
+  const isDowntrend = prev2.close > prev1.close;
+  
+  // Check for reversal
+  const isReversal = current.close > prev1.close;
+  
+  // Validate movement size
+  const movement = ((current.close - prev1.close) / prev1.close) * 100;
+  const isSignificant = Math.abs(movement) >= threshold;
+  
+  return isDowntrend && isReversal && isSignificant;
+}
+
+// 2. Position Sizing with Leverage
+function calculateLeveragedPosition(capital, price) {
+  const leverage = 50;
+  const targetProfit = 0.08; // 0.08% raw profit
+  const stopLoss = 0.21;    // 0.21% max loss
+  
+  // Calculate position size based on risk
+  const maxRisk = capital * 0.02; // 2% max risk per trade
+  const positionSize = (maxRisk / stopLoss) * leverage;
+  
+  return {
+    size: Math.min(positionSize, capital * leverage),
+    leverage,
+    expectedProfit: targetProfit * leverage - 0.02 * leverage * 2, // Account for fees
+    maxLoss: stopLoss * leverage
+  };
+}
+```
+
+### 3. Risk Management System
+```javascript
+// 1. Position Risk Calculator
+function calculatePositionRisk(position, price) {
+  const liquidationPrice = price * (1 - (2 / position.leverage));
+  const stopLossPrice = price * (1 - (0.0021)); // 0.21% stop loss
+  
+  return {
+    liquidationDistance: ((price - liquidationPrice) / price) * 100,
+    stopLossDistance: ((price - stopLossPrice) / price) * 100,
+    maxDrawdown: position.maxLoss,
+    expectedReturn: position.expectedProfit
+  };
+}
+
+// 2. Risk Validation
+function validateTradeRisk(position, price) {
+  const risk = calculatePositionRisk(position, price);
+  
+  return {
+    isValid: risk.liquidationDistance > risk.stopLossDistance * 3, // 3x safety margin
+    riskReward: risk.expectedReturn / risk.maxDrawdown,
+    safetyMargin: risk.liquidationDistance / risk.stopLossDistance
+  };
+}
+```

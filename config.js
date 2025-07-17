@@ -14,7 +14,7 @@ const daylimit = weeklimit * 7;
 const hourlimit = daylimit * 24;
 
 // export const limit = hourlimit;
-export const limit = 120;
+export const limit = 200;
 
 // delay below
 // Limit being 49.1 months
@@ -30,7 +30,7 @@ const minutes = hours * 60 + minute;
 export const delay = minutes;
 
 // Renko chart configuration
-export const renkoBlockSize = 1.3; // Size of each Renko block in USDT
+export const renkoBlockSize = 1; // Size of each Renko block in USDT
 
 // Display settings
 export const showFullTimePeriod = true; // if false, only shows hours and minutes

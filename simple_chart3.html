@@ -44,7 +44,7 @@
             return tooltipEl;
         }
 
-        import { symbol, limit, delay, renkoBlockSize, api } from './config.js';
+        import { symbol, limit, delay, renkoBlockSize, api, time } from './config.js';
         
         let wsPrice = null;
         let chart = null;
@@ -165,7 +165,7 @@
 
         async function updateChart() {
             const endTime = Date.now() - (delay * 60 * 1000);
-            const candles = await getCandles(symbol, '1h', limit, endTime);
+            const candles = await getCandles(symbol, time, limit, endTime);
             
             // Sort candles by timestamp
             candles.sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -339,7 +339,7 @@
                             ctx.moveTo(chartArea.left, y);
                             ctx.lineTo(chartArea.right, y);
                             ctx.strokeStyle = '#ffff00';
-                            ctx.lineWidth = 2;
+                            ctx.lineWidth = 1;
                             ctx.setLineDash([5, 3]);
                             ctx.stroke();
                             ctx.setLineDash([]);
@@ -427,6 +427,7 @@
                             },
                             ticks: {
                                 color: '#ffffff',
+                                stepSize: 1, // You can adjust this value to change the price increment scale
                                 callback: function(value) {
                                     return value.toFixed(4);
                                 }
