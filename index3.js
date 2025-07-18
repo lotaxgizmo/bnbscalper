@@ -8,7 +8,10 @@ import {
   shortWindow,
   longWindow,
   confirmOnClose,
-  minLegBars
+  minLegBars,
+  delay,
+  averageSwingThresholdPct,
+  showThresholdTrades
 } from './config.js';
 
 import { getCandles as getBinanceCandles } from './binance.js';
@@ -64,6 +67,12 @@ async function fetchCandles(symbol, interval, limit) {
   const maxPerBatch = 500; // common API cap
   let all = [];
   let fetchSince = null;
+  
+  // Apply delay if configured
+  if (delay > 0) {
+    const intervalMs = parseIntervalMs(interval);
+    fetchSince = Date.now() - (delay * intervalMs);
+  }
 
   while (all.length < limit) {
     const batchLimit = Math.min(maxPerBatch, limit - all.length);
@@ -148,16 +157,50 @@ async function fetchCandles(symbol, interval, limit) {
     const barsArr    = pivots.map(p => p.bars);
     const highestBars= Math.max(...barsArr);
     const lowestBars = Math.min(...barsArr);
-    const countAtOrAbove = pivots.filter(p => p.movePct * 100 >= avgMovePct).length;
+    const thresholdPct = (avgMovePct * averageSwingThresholdPct) / 100;
+    const pivotsAboveThreshold = pivots.filter(p => p.movePct * 100 >= thresholdPct);
+    const countAtOrAbove = pivotsAboveThreshold.length;
+    
+    if (showThresholdTrades && pivotsAboveThreshold.length > 0) {
+      console.log('\n— Trades Above Threshold —');
+      for (let i = 0; i < pivotsAboveThreshold.length; i++) {
+        const p = pivotsAboveThreshold[i];
+        const startTime = i > 0 ? pivotsAboveThreshold[i-1].time : candles[0].time;
+        const startPrice = i > 0 ? pivotsAboveThreshold[i-1].price : candles[0].close;
+        const endTime = formatDateTime(new Date(p.time));
+        const startTimeStr = formatDateTime(new Date(startTime));
+        const movePct = (p.movePct * 100).toFixed(2);
+        const direction = p.type === 'high' ? 'UP' : 'DOWN';
+        
+        const durationMs = new Date(p.time) - new Date(startTime);
+        console.log((p.type === 'high' ? COLOR_GREEN : COLOR_RED) +
+          `[PIVOT ${p.number}] ${direction} MOVE` +
+          `\n  Start: ${startTimeStr} @ ${startPrice.toFixed(2)}` +
+          `\n  End:   ${endTime} @ ${p.price.toFixed(2)}` +
+          `\n  Swing: ${movePct}% over ${p.bars} bars` +
+          `\n  Duration: ${formatDuration(durationMs)}` +
+          COLOR_RESET
+        );
+      }
+      console.log();  // Empty line for spacing
+    }
     const highestPct     = Math.max(...pivots.map(p => p.movePct * 100));
+    const lowestPct      = Math.min(...pivots.map(p => p.movePct * 100));
 
     console.log(`Average Swing Size: ${avgMovePct.toFixed(2)}%`);
     console.log(`Average Bars per Swing: ${avgBars.toFixed(2)}`);
     console.log(`Average Time Between Swings: ${avgTime}`);
     console.log(`Highest Bars in a Swing: ${highestBars}`);
     console.log(`Lowest Bars in a Swing: ${lowestBars}`);
-    console.log(`Swings ≥ Average (${avgMovePct.toFixed(2)}%): ${countAtOrAbove}`);
+    
+console.log()
+    console.log(`Swings ≥ ${averageSwingThresholdPct}% of Average (${thresholdPct.toFixed(2)}%): ${countAtOrAbove}`);
+    const avgPctRate = (countAtOrAbove / pivots.length) * 100;
+    console.log(`% above threshold (${thresholdPct.toFixed(2)}%): ${avgPctRate.toFixed(2)}%`);
+    
+console.log()
     console.log(`Highest Swing Size: ${highestPct.toFixed(2)}%`);
+    console.log(`Lowest Swing Size: ${lowestPct.toFixed(2)}%`);
   }
 
   console.log('\n✅ Done.\n');

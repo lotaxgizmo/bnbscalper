@@ -35,10 +35,12 @@ You can now configure the chart's timeframe in `config.js`:
 
 1. **Configuration** (edit `config.js`):
    ```javascript
-   api: 'bybit'           // or 'binance'
-   time: '1m'             // timeframe
-   limit: 120             // number of candles
-   renkoBlockSize: 1.3    // in USDT
+   api: 'bybit'                    // or 'binance'
+   time: '1m'                      // timeframe
+   limit: 120                     // number of candles
+   renkoBlockSize: 1.3             // in USDT
+   averageSwingThresholdPct: 100   // % of average swing to use as threshold
+   showThresholdTrades: true       // show details of trades above threshold
    ```
 
 2. **Launch Components**:

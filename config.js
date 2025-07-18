@@ -54,3 +54,9 @@ export const confirmOnClose = true;  // only confirm pivots on candle-close
 
 // New setting: ignore any pivot that took fewer than this many candles
 export const minLegBars = 3;     // e.g. require at least 3 candles per swing
+
+// Percentage of average swing size to use as threshold (100 = use exact average)
+export const averageSwingThresholdPct = 100;   // e.g. 50 = half of average, 200 = double
+
+// Whether to show detailed information about trades that pass the threshold
+export const showThresholdTrades = false;    // set to false to hide threshold trade details

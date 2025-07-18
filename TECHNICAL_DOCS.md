@@ -2,6 +2,20 @@
 
 ## Recent Updates
 
+### Configurable Swing Threshold Added (2025-07-18)
+- Added `averageSwingThresholdPct` configuration in config.js
+- Allows setting threshold as a percentage of average swing size
+- Example: 50% shows swings ≥ half of average, 200% shows double
+- Default set to 100% (exact average)
+- Added `showThresholdTrades` boolean to display detailed trade information
+
+
+### Backtesting Delay Support Added (2025-07-18)
+- Added support for delay configuration in index3.js
+- Allows backtesting from specific historical points
+- Uses delay value from config.js (in interval units)
+- Applies delay relative to current time
+
 ### Pivot Numbering Added (2025-07-18)
 - Added sequential numbering to pivot points in index3.js
 - Each pivot is now displayed with a unique identifier [PIVOT N]
