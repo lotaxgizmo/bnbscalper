@@ -14,7 +14,7 @@ const daylimit = weeklimit * 7;
 const hourlimit = daylimit * 24;
 
 // export const limit = hourlimit;
-export const limit = 200;
+export const limit = 140;
 
 // delay below
 // Limit being 49.1 months
@@ -44,3 +44,13 @@ export const topPercentile = 0.9955;
 export const pricePercentile = 0;
 
 // export const lowPercentile = 0.2;
+
+
+
+export const minSwingPct    = 0.1;   // minimum % move to mark a pivot
+export const shortWindow    = 4;     // number of recent swings to average
+export const longWindow     = 50;    // number of swings for background volatility
+export const confirmOnClose = true;  // only confirm pivots on candle-close
+
+// New setting: ignore any pivot that took fewer than this many candles
+export const minLegBars = 4;     // e.g. require at least 3 candles per swing
