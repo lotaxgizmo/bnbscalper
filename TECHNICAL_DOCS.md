@@ -2,6 +2,13 @@
 
 ## Recent Updates
 
+### Limit Order Auto-Cancellation Added (2025-07-18)
+- Added automatic cancellation of limit orders when price moves too far in opposite direction
+- Uses `averageSwingThresholdPct` from trade configuration
+- Cancels buy orders when price rises above entry by threshold percentage
+- Cancels sell orders when price falls below entry by threshold percentage
+- Displays cancellation details with price levels and percentage moves
+
 ### Configurable Swing Threshold Added (2025-07-18)
 - Added `averageSwingThresholdPct` configuration in config.js
 - Allows setting threshold as a percentage of average swing size

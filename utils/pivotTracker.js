@@ -144,6 +144,11 @@ export default class PivotTracker {
   get avgDownShort(){ return avg(this.downSwingsShort); }
   get avgUpLong()   { return avg(this.upSwingsLong); }
   get avgDownLong() { return avg(this.downSwingsLong); }
+
+  // Get the current average swing size
+  getAverageSwing() {
+    return this.avgShort || 0;
+  }
 }
 
 // Helper for averages

@@ -47,13 +47,13 @@ export const pricePercentile = 0;
 
 
 
-export const minSwingPct    = 0.1;   // minimum % move to mark a pivot
-export const shortWindow    = 4;     // number of recent swings to average
+export const minSwingPct    = 0.3;   // minimum % move to mark a pivot
+export const shortWindow    = 6;     // number of recent swings to average
 export const longWindow     = 50;    // number of swings for background volatility
 export const confirmOnClose = true;  // only confirm pivots on candle-close
 
 // New setting: ignore any pivot that took fewer than this many candles
-export const minLegBars = 3;     // e.g. require at least 3 candles per swing
+export const minLegBars = 4;     // e.g. require at least 3 candles per swing
 
 // Percentage of average swing size to use as threshold (100 = use exact average)
 export const averageSwingThresholdPct = 100;   // e.g. 50 = half of average, 200 = double

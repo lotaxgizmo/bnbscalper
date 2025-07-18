@@ -31,6 +31,12 @@ You can now configure the chart's timeframe in `config.js`:
 - Trade frequency modeling
 - Capital growth visualization
 
+### 4. Smart Order Management
+- Automatic limit order cancellation
+- Dynamic thresholds based on market volatility
+- Protection against adverse price movements
+- Configurable cancellation sensitivity
+
 ## Quick Start
 
 1. **Configuration** (edit `config.js`):
