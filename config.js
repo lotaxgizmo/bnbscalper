@@ -14,7 +14,7 @@ const daylimit = weeklimit * 7;
 const hourlimit = daylimit * 24;
 
 // export const limit = hourlimit;
-export const limit = 140;
+export const limit = 1440;
 
 // delay below
 // Limit being 49.1 months
@@ -53,4 +53,4 @@ export const longWindow     = 50;    // number of swings for background volatili
 export const confirmOnClose = true;  // only confirm pivots on candle-close
 
 // New setting: ignore any pivot that took fewer than this many candles
-export const minLegBars = 4;     // e.g. require at least 3 candles per swing
+export const minLegBars = 3;     // e.g. require at least 3 candles per swing

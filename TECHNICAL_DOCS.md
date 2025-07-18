@@ -2,6 +2,12 @@
 
 ## Recent Updates
 
+### Pivot Numbering Added (2025-07-18)
+- Added sequential numbering to pivot points in index3.js
+- Each pivot is now displayed with a unique identifier [PIVOT N]
+- Pivot objects store their sequence number for reference
+- Enhances tracking and referencing of specific pivot points
+
 ### Chart Price Scale Configuration (2025-07-17)
 - Added configurable price scale increments in simple_chart3.html
 - Y-axis ticks now support custom stepSize for price intervals
