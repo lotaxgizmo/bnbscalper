@@ -10,58 +10,16 @@ import {
   confirmOnClose,
   minLegBars,
   delay
-} from './config.js';
+} from './config/config.js';
 
-import { tradeConfig } from './tradeconfig.js';
-import { getCandles as getBinanceCandles } from './binance.js';
-import { getCandles as getBybitCandles } from './bybit.js';
+import { tradeConfig } from './config/tradeconfig.js';
 import PivotTracker from './utils/pivotTracker.js';
+import { colors, formatDuration } from './utils/formatters.js';
+import { fetchCandles, formatDateTime, parseIntervalMs } from './utils/candleAnalytics.js';
+import { savePivotData, loadPivotData, clearPivotCache } from './utils/pivotCache.js';
 
-const rawGetCandles = api === 'binance'
-  ? getBinanceCandles
-  : getBybitCandles;
-
-// ANSI color codes
-const COLOR_RESET = '\x1b[0m';
-const COLOR_RED   = '\x1b[31m';
-const COLOR_GREEN = '\x1b[32m';
-const COLOR_YELLOW = '\x1b[33m';
-const COLOR_CYAN = '\x1b[36m';
-
-// Parse interval (e.g. "1m","1h","1d") to ms
-function parseIntervalMs(interval) {
-  const m = interval.match(/(\d+)([mhd])/);
-  if (!m) return 60_000;
-  const v = +m[1], u = m[2];
-  if (u === 'm') return v * 60_000;
-  if (u === 'h') return v * 3_600_000;
-  if (u === 'd') return v * 86_400_000;
-  return 60_000;
-}
-
-// Pretty‐print ms durations
-function formatDuration(ms) {
-  const s = Math.floor(ms/1000);
-  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600),
-        m = Math.floor((s%3600)/60), sec = s%60;
-  const parts = [];
-  if (d) parts.push(`${d}d`);
-  if (h) parts.push(`${h}h`);
-  if (m) parts.push(`${m}m`);
-  if (sec || !parts.length) parts.push(`${sec}s`);
-  return parts.join(' ');
-}
-
-// Format Date to "Day YYYY-MM-DD hh:mm:ss AM/PM"
-function formatDateTime(dt) {
-  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const pad = n=>n.toString().padStart(2,'0');
-  const dayName = days[dt.getDay()];
-  let h = dt.getHours(), ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return `${dayName} ${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ` +
-         `${pad(h)}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())} ${ampm}`;
-}
+// Use imported color constants
+const { reset: COLOR_RESET, red: COLOR_RED, green: COLOR_GREEN, yellow: COLOR_YELLOW, cyan: COLOR_CYAN } = colors;
 
 // Calculate P&L with leverage and fees
 function calculatePnL(entryPrice, exitPrice, isLong) {
@@ -75,41 +33,14 @@ function calculatePnL(entryPrice, exitPrice, isLong) {
   return pnlAfterFees * leverage;
 }
 
-// Paginated fetch to respect API limits and ensure we get exactly `limit` candles
-async function fetchCandles(symbol, interval, limit) {
-  const maxPerBatch = 500; // common API cap
-  let all = [];
-  let fetchSince = null;
-  
-  // Apply delay if configured
-  if (delay > 0) {
-    const intervalMs = parseIntervalMs(interval);
-    fetchSince = Date.now() - (delay * intervalMs);
-  }
-
-  while (all.length < limit) {
-    const batchLimit = Math.min(maxPerBatch, limit - all.length);
-    const batch = await rawGetCandles(symbol, interval, batchLimit, fetchSince);
-    if (!batch.length) break;
-
-    // ensure ascending
-    if (batch[0].time > batch[batch.length-1].time) batch.reverse();
-
-    if (!all.length) {
-      all = batch;
-    } else {
-      // avoid overlap at edges
-      const oldestTime = all[0].time;
-      const newCandles = batch.filter(c => c.time < oldestTime);
-      all = newCandles.concat(all);
-    }
-
-    fetchSince = all[0].time - 1; // get earlier candles next
-  }
-
-  // trim to exactly `limit`
-  return all.slice(-limit);
-}
+// Configuration for pivot detection
+const pivotConfig = {
+  minSwingPct,
+  shortWindow,
+  longWindow,
+  confirmOnClose,
+  minLegBars
+};
 
 (async () => {
   console.log(`\n▶ Backtesting ${tradeConfig.direction.toUpperCase()} Strategy on ${symbol} [${interval}] using ${api}\n`);
@@ -124,13 +55,38 @@ async function fetchCandles(symbol, interval, limit) {
   console.log(`- Initial Capital: $${tradeConfig.initialCapital}`);
   console.log(`- Risk Per Trade: ${tradeConfig.riskPerTrade}%`);
 
-  // 1. Fetch exactly `limit` candles
-  const candles = await fetchCandles(symbol, interval, limit);
-  console.log(`Fetched ${candles.length} candles (limit=${limit}).`);
+  // Try to load cached pivot data first
+  const cachedData = loadPivotData(symbol, interval, pivotConfig);
 
-  if (!candles.length) {
-    console.error('❌ No candles fetched. Exiting.');
-    process.exit(1);
+  let candles, pivots;
+
+  if (cachedData) {
+    console.log('Using cached pivot data...');
+    pivots = cachedData.pivots;
+    candles = cachedData.metadata.candles || [];
+  } else {
+    // If no cache, fetch and process data
+    console.log('No cache found, fetching fresh data...');
+    candles = await fetchCandles(symbol, interval, limit, api, delay);
+    console.log(`Using delay of ${delay} intervals for historical data`);
+    console.log(`Fetched ${candles.length} candles (limit=${limit}).`);
+
+    if (!candles.length) {
+      console.error('❌ No candles fetched. Exiting.');
+      process.exit(1);
+    }
+
+    // Process candles and collect pivots
+    const tracker = new PivotTracker(pivotConfig);
+
+    pivots = [];
+    for (const candle of candles) {
+      const pivot = tracker.update(candle);
+      if (pivot) pivots.push(pivot);
+    }
+
+    // Save the pivot data for future use
+    savePivotData(symbol, interval, pivots, pivotConfig, { candles });
   }
 
   // 2. Compute overall range & elapsed time
@@ -139,7 +95,7 @@ async function fetchCandles(symbol, interval, limit) {
   const elapsedMs = endTime - startTime;
 
   console.log(`Date Range: ${formatDateTime(startTime)} → ${formatDateTime(endTime)}`);
-  console.log(`Elapsed Time: ${formatDuration(elapsedMs)}\n`);
+  console.log(`Elapsed Time: ${formatDuration(elapsedMs / (1000 * 60))}`);
 
   // 3. Instantiate the pivot tracker
   const tracker = new PivotTracker({
@@ -150,8 +106,7 @@ async function fetchCandles(symbol, interval, limit) {
     minLegBars
   });
 
-  // 4. Process candles and collect pivots
-  const pivots = [];
+  // 4. Process trades using pivot data
   const trades = [];
   let activeOrder = null;
   let activeTrade = null;
@@ -279,31 +234,10 @@ async function fetchCandles(symbol, interval, limit) {
     pivotCounter++;
   }
 
-  // 5. Summary
-  console.log(`\n— Trade Summary —`);
-  console.log(`Total Trades: ${trades.length}`);
-  
-  // Calculate total trade duration
-  const totalDuration = trades.reduce((sum, t) => {
-    const duration = new Date(t.exitTime) - new Date(t.entryTime);
-    return sum + duration;
-  }, 0);
-  console.log(`Total Trade Duration: ${formatDuration(totalDuration)}`);
-  
+ 
+  console.log('\n— Trade Details —');
+
   if (trades.length) {
-    const wins = trades.filter(t => t.result === 'WIN').length;
-    const winRate = (wins / trades.length * 100).toFixed(2);
-    const totalPnL = trades.reduce((sum, t) => sum + t.pnl, 0).toFixed(2);
-    const avgPnL = (totalPnL / trades.length).toFixed(2);
-
-    console.log(`Win Rate: ${winRate}% (${wins}/${trades.length})`);
-    console.log(`Total P&L: ${totalPnL}%`);
-    console.log(`Average P&L per Trade: ${avgPnL}%`);
-    console.log(`Starting Capital: $${tradeConfig.initialCapital}`);
-    console.log(`Final Capital: $${currentCapital.toFixed(2)}`);
-    console.log(`Total Return: ${((currentCapital / tradeConfig.initialCapital - 1) * 100).toFixed(2)}%`);
-
-    console.log('\n— Trade Details —');
     trades.forEach((trade, i) => {
       const color = trade.result === 'WIN' ? COLOR_GREEN : COLOR_RED;
       console.log(color +
@@ -319,11 +253,45 @@ async function fetchCandles(symbol, interval, limit) {
         `  Order Time: ${formatDateTime(new Date(trade.orderTime))}` +
         `\n  Entry Time: ${formatDateTime(new Date(trade.entryTime))}` +
         `\n  Exit Time:  ${formatDateTime(new Date(trade.exitTime))}` +
-        `\n  Duration:   ${formatDuration(trade.exitTime - trade.entryTime)}` +
+        `\n  Duration:   ${formatDuration((trade.exitTime - trade.entryTime) / (1000 * 60))}` +
         COLOR_RESET
       );
     });
+    
+    // 5. Summary 
+
+    console.log('\n— Final Summary —');
+
+
+  // Calculate total pivot duration if we have pivots
+  if (pivots.length >= 2) {
+    const firstPivotTime = new Date(pivots[0].time);
+    const lastPivotTime = new Date(pivots[pivots.length - 1].time);
+    const totalPivotDuration = lastPivotTime - firstPivotTime;
+    console.log(`Total Analysis Duration: ${formatDuration(totalPivotDuration / (1000 * 60))}`);
+  }
+  console.log(`Total Trades: ${trades.length}`);
+  
+    
+    // Calculate total trade duration
+    const totalDuration = trades.reduce((sum, t) => {
+      const duration = new Date(t.exitTime) - new Date(t.entryTime);
+      return sum + duration;
+    }, 0);
+    console.log(`Total Trade Duration: ${formatDuration(totalDuration / (1000 * 60))}`);
+
+    const wins = trades.filter(t => t.result === 'WIN').length;
+    const winRate = (wins / trades.length * 100).toFixed(2);
+    const totalPnL = trades.reduce((sum, t) => sum + t.pnl, 0).toFixed(2);
+    const avgPnL = (totalPnL / trades.length).toFixed(2);
+
+    console.log(`Win Rate: ${winRate}% (${wins}/${trades.length})`);
+    console.log(`Total P&L: ${totalPnL}%`);
+    console.log(`Average P&L per Trade: ${avgPnL}%`);
+    console.log(`Starting Capital: $${tradeConfig.initialCapital}`);
+    console.log(`Final Capital: $${currentCapital.toFixed(2)}`);
+    console.log(`Total Return: ${((currentCapital / tradeConfig.initialCapital - 1) * 100).toFixed(2)}%`);
   }
 
-  console.log('\n✅ Done.\n');
+  console.log('\n✅ Done.');
 })();

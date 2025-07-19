@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BNB Price Difference Chart</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body style="background-color: #1a1a1a; color: #ffffff;">
+    <div style="width: 90%; margin: 20px auto;">
+        <canvas id="priceChart"></canvas>
+        <div id="summary" style="margin-top: 20px; font-family: monospace;"></div>
+    </div>
+
+    <script type="module">
+        import { getCandles as getBinanceCandles } from '../apis/binance.js';
+        import { getCandles as getBybitCandles } from '../apis/bybit.js';
+        import { api, time, symbol, limit, mediumPercentile, highPercentile, lowPercentile } from '../config/config.js';
+        
+        // Select API based on config
+        const getCandles = api === 'binance' ? getBinanceCandles : getBybitCandles;
+
+        async function updateChart() {
+            const candles = await getCandles(symbol, time, limit);
+            
+            const data = candles.map(c => ({
+                time: new Date(c.time).toLocaleTimeString(),
+                diff: ((c.high - c.low) / c.low * 100).toFixed(2),
+                high: parseFloat(c.high),
+                low: parseFloat(c.low)
+            }));
+
+            const times = data.map(d => d.time);
+            const diffs = data.map(d => parseFloat(d.diff));
+
+            // Calculate averages
+            const sortedDiffs = [...diffs].sort((a, b) => a - b);
+            const avgDiff = (diffs.reduce((sum, val) => sum + val, 0) / diffs.length).toFixed(2);
+            const lowAvg = sortedDiffs[Math.floor(sortedDiffs.length * lowPercentile)].toFixed(2);
+            const mediumAvg = sortedDiffs[Math.floor(sortedDiffs.length * mediumPercentile)].toFixed(2);
+            const highAvg = sortedDiffs[Math.floor(sortedDiffs.length * highPercentile)].toFixed(2);
+
+            // Find highest and lowest
+            const highest = data.reduce((max, curr) => 
+                parseFloat(curr.diff) > parseFloat(max.diff) ? curr : max
+            );
+            const lowest = data.reduce((min, curr) => 
+                parseFloat(curr.diff) < parseFloat(min.diff) ? min : min
+            );
+
+            // Calculate total average price and spreads
+            const totalAvg = (data.reduce((sum, d) => sum + (d.high + d.low) / 2, 0) / data.length).toFixed(2);
+            const highLowSpread = (parseFloat(highAvg) - parseFloat(lowAvg)).toFixed(2);
+
+            // Update summary
+            document.getElementById('summary').innerHTML = 
+                `<span style="color: #ff4444"><strong>Highest:</strong> ${highest.diff}% at ${highest.time}</span><br>` +
+                `<span style="color: #4444ff"><strong>Lowest:</strong> ${lowest.diff}% at ${lowest.time}</span><br>` +
+                `<span style="color: #4488ff"><strong>Low Avg:</strong> ${lowAvg}%</span><br>` +
+                `<span style="color: #00ff88"><strong>Average:</strong> ${avgDiff}%</span><br>` +
+                `<span style="color: #ffff00"><strong>Medium Avg:</strong> ${mediumAvg}%</span><br>` +
+                `<span style="color: #ff0000"><strong>High Avg:</strong> ${highAvg}%</span><br>` +
+                `<span style="color: #ff88ff"><strong>High-Low Spread:</strong> ${highLowSpread}%</span><br>` +
+                `<span style="color: #00ff88"><strong>Total Avg Price:</strong> $${totalAvg}</span>`;
+
+            // Create new chart
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            if (window.myChart) {
+                window.myChart.destroy();
+            }
+
+            window.myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: times,
+                    datasets: [{
+                        label: 'Price Difference %',
+                        data: diffs,
+                        borderColor: '#00ff88',
+                        tension: 0.1,
+                        pointBackgroundColor: function(context) {
+                            const diff = context.raw;
+                            if (diff >= parseFloat(highAvg)) return '#ff0000';
+                            if (diff >= parseFloat(mediumAvg)) return '#ffff00';
+                            return '#00ff88';
+                        },
+                        pointRadius: function(context) {
+                            const diff = context.raw;
+                            if (diff >= parseFloat(highAvg)) return 6;
+                            if (diff >= parseFloat(mediumAvg)) return 5;
+                            return 3;
+                        }
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        annotation: {
+                            annotations: {
+                                lowLine: {
+                                    type: 'line',
+                                    yMin: lowAvg,
+                                    yMax: lowAvg,
+                                    borderColor: 'rgba(68, 136, 255, 0.5)',
+                                    borderWidth: 2,
+                                    label: {
+                                        content: `Low ${lowAvg}%`,
+                                        enabled: true,
+                                        position: 'start'
+                                    }
+                                },
+                                normalLine: {
+                                    type: 'line',
+                                    yMin: avgDiff,
+                                    yMax: avgDiff,
+                                    borderColor: 'rgba(0, 255, 0, 0.5)',
+                                    borderWidth: 2,
+                                    label: {
+                                        content: `Normal ${avgDiff}%`,
+                                        enabled: true,
+                                        position: 'start',
+                                        backgroundColor: 'rgba(0, 255, 0, 0.5)',
+                                        color: '#ffffff'
+                                    }
+                                },
+                                mediumLine: {
+                                    type: 'line',
+                                    yMin: mediumAvg,
+                                    yMax: mediumAvg,
+                                    borderColor: 'rgba(255, 255, 0, 0.5)',
+                                    borderWidth: 2,
+                                    label: {
+                                        content: `Medium ${mediumAvg}%`,
+                                        enabled: true,
+                                        position: 'start',
+                                        backgroundColor: 'rgba(255, 255, 0, 0.5)',
+                                        color: '#ffffff'
+                                    }
+                                },
+                                highLine: {
+                                    type: 'line',
+                                    yMin: highAvg,
+                                    yMax: highAvg,
+                                    borderColor: 'rgba(255, 0, 0, 0.5)',
+                                    borderWidth: 2,
+                                    label: {
+                                        content: `High ${highAvg}%`,
+                                        enabled: true,
+                                        position: 'start',
+                                        backgroundColor: 'rgba(255, 0, 0, 0.5)',
+                                        color: '#ffffff'
+                                    }
+                                }
+                            }
+                        },
+                        legend: {
+                            labels: {
+                                color: '#ffffff'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'BNB Price High-Low Percentage Difference',
+                            color: '#ffffff'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: '#333333'
+                            },
+                            ticks: {
+                                color: '#ffffff'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: '#333333'
+                            },
+                            ticks: {
+                                color: '#ffffff',
+                                stepSize: 0.001
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update every minute
+        updateChart();
+        setInterval(updateChart, 60000);
+    </script>
+</body>
+</html>
+ 

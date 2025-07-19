@@ -1,7 +1,7 @@
 // index2.js - Close-to-Close price movement analysis
-import { getCandles as getBinanceCandles } from './binance.js';
-import { getCandles as getBybitCandles } from './bybit.js';
-import { api, time, symbol, limit, mediumPercentile, highPercentile, lowPercentile, topPercentile, showFullTimePeriod, delay } from './config.js';
+import { getCandles as getBinanceCandles } from './apis/binance.js';
+import { getCandles as getBybitCandles } from './apis/bybit.js';
+import { api, time, symbol, limit, mediumPercentile, highPercentile, lowPercentile, topPercentile, showFullTimePeriod, delay } from './config/config.js';
 import { processCandleData, calculatePercentiles, trackCorrections } from './utils/candleProcessor2.js';
 import { formatDuration, getTimeInMinutes } from './utils/formatters.js';
 import { printCandleData, printSummary } from './utils/consoleOutput2.js';

@@ -1,9 +1,8 @@
 // index.js
 // Choose which API to use
-import { getCandles as getBinanceCandles } from './binance.js';
-import { getCandles as getBybitCandles } from './bybit.js';
-import { api } from './config.js';
-import { time, symbol, limit, mediumPercentile, highPercentile, lowPercentile, showFullTimePeriod } from './config.js';
+import { getCandles as getBinanceCandles } from './apis/binance.js';
+import { getCandles as getBybitCandles } from './apis/bybit.js';
+import { api, symbol, time as interval, limit, mediumPercentile, highPercentile, lowPercentile, showFullTimePeriod } from './config/config.js';
 
 // Import modular components
 import { processCandleData, calculatePercentiles, trackCorrections } from './utils/candleProcessor.js';
@@ -15,7 +14,7 @@ const API = api;
 const getCandles = API === 'binance' ? getBinanceCandles : getBybitCandles;
 
 const main = async () => {
-  const candles = await getCandles(symbol, time, limit);
+  const candles = await getCandles(symbol, interval, limit);
 
   // Process candle data
   const { candlesWithStats, highest, lowest, totalAvg } = processCandleData(candles);
@@ -37,12 +36,12 @@ const main = async () => {
   );
 
   // Calculate duration
-  const minutesPerCandle = getTimeInMinutes(time);
+  const minutesPerCandle = getTimeInMinutes(interval);
   const totalMinutes = candles.length * minutesPerCandle;
   const durationStr = formatDuration(totalMinutes, showFullTimePeriod);
 
   // Print candle data
-  printCandleData(candlesWithStats, highAvg, mediumAvg, normalAvg, time);
+  printCandleData(candlesWithStats, highAvg, mediumAvg, normalAvg, interval);
 
   // Print summary
   printSummary({

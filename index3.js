@@ -12,97 +12,27 @@ import {
   delay,
   averageSwingThresholdPct,
   showThresholdTrades
-} from './config.js';
+} from './config/config.js';
 
-import { getCandles as getBinanceCandles } from './binance.js';
-import { getCandles as getBybitCandles } from './bybit.js';
 import PivotTracker from './utils/pivotTracker.js';
+import { colors, formatDuration } from './utils/formatters.js';
+import { fetchCandles, formatDateTime, parseIntervalMs } from './utils/candleAnalytics.js';
 
-const rawGetCandles = api === 'binance'
-  ? getBinanceCandles
-  : getBybitCandles;
 
-// ANSI color codes
-const COLOR_RESET = '\x1b[0m';
-const COLOR_RED   = '\x1b[31m';
-const COLOR_GREEN = '\x1b[32m';
 
-// Parse interval (e.g. "1m","1h","1d") to ms
-function parseIntervalMs(interval) {
-  const m = interval.match(/(\d+)([mhd])/);
-  if (!m) return 60_000;
-  const v = +m[1], u = m[2];
-  if (u === 'm') return v * 60_000;
-  if (u === 'h') return v * 3_600_000;
-  if (u === 'd') return v * 86_400_000;
-  return 60_000;
-}
+// Use imported color constants
+const { reset: COLOR_RESET, red: COLOR_RED, green: COLOR_GREEN } = colors;
 
-// Pretty‐print ms durations
-function formatDuration(ms) {
-  const s = Math.floor(ms/1000);
-  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600),
-        m = Math.floor((s%3600)/60), sec = s%60;
-  const parts = [];
-  if (d) parts.push(`${d}d`);
-  if (h) parts.push(`${h}h`);
-  if (m) parts.push(`${m}m`);
-  if (sec || !parts.length) parts.push(`${sec}s`);
-  return parts.join(' ');
-}
 
-// Format Date to "Day YYYY-MM-DD hh:mm:ss AM/PM"
-function formatDateTime(dt) {
-  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const pad = n=>n.toString().padStart(2,'0');
-  const dayName = days[dt.getDay()];
-  let h = dt.getHours(), ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return `${dayName} ${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ` +
-         `${pad(h)}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())} ${ampm}`;
-}
 
-// Paginated fetch to respect API limits and ensure we get exactly `limit` candles
-async function fetchCandles(symbol, interval, limit) {
-  const maxPerBatch = 500; // common API cap
-  let all = [];
-  let fetchSince = null;
-  
-  // Apply delay if configured
-  if (delay > 0) {
-    const intervalMs = parseIntervalMs(interval);
-    fetchSince = Date.now() - (delay * intervalMs);
-  }
 
-  while (all.length < limit) {
-    const batchLimit = Math.min(maxPerBatch, limit - all.length);
-    const batch = await rawGetCandles(symbol, interval, batchLimit, fetchSince);
-    if (!batch.length) break;
-
-    // ensure ascending
-    if (batch[0].time > batch[batch.length-1].time) batch.reverse();
-
-    if (!all.length) {
-      all = batch;
-    } else {
-      // avoid overlap at edges
-      const oldestTime = all[0].time;
-      const newCandles = batch.filter(c => c.time < oldestTime);
-      all = newCandles.concat(all);
-    }
-
-    fetchSince = all[0].time - 1; // get earlier candles next
-  }
-
-  // trim to exactly `limit`
-  return all.slice(-limit);
-}
 
 (async () => {
   console.log(`\n▶ Backtesting Pivot Detection on ${symbol} [${interval}] using ${api}\n`);
 
   // 1. Fetch exactly `limit` candles, back to the correct earliest time
-  const candles = await fetchCandles(symbol, interval, limit);
+  const candles = await fetchCandles(symbol, interval, limit, api, delay);
+  console.log(`Using delay of ${delay} intervals for historical data`);
   console.log(`Fetched ${candles.length} candles (limit=${limit}).`);
 
   if (!candles.length) {
@@ -116,7 +46,7 @@ async function fetchCandles(symbol, interval, limit) {
   const elapsedMs = endTime - startTime;
 
   console.log(`Date Range: ${formatDateTime(startTime)} → ${formatDateTime(endTime)}`);
-  console.log(`Elapsed Time: ${formatDuration(elapsedMs)}\n`);
+  console.log(`Elapsed Time: ${formatDuration(elapsedMs / (1000 * 60))}\n`);
 
   // 3. Instantiate the pivot tracker
   const tracker = new PivotTracker({
@@ -147,13 +77,28 @@ async function fetchCandles(symbol, interval, limit) {
   // 5. Summary
   console.log(`\n— Summary —`);
   console.log(`Date Range: ${formatDateTime(startTime)} → ${formatDateTime(endTime)}`);
-  console.log(`Total Duration: ${formatDuration(elapsedMs)}`);
+  console.log(`Total Duration: ${formatDuration(elapsedMs / (1000 * 60))}`);
   console.log(`Total Pivots: ${pivots.length}`);
+
+  // Calculate total pivot duration if we have pivots
+  // if (pivots.length >= 2) {
+  //   const firstPivotTime = new Date(pivots[0].time);
+  //   const lastPivotTime = new Date(pivots[pivots.length - 1].time);
+  //   const totalPivotDuration = lastPivotTime - firstPivotTime;
+  //   console.log(`Total Analysis Duration: ${formatDuration(totalPivotDuration / (1000 * 60))}`);
+  // }
 
   if (pivots.length) {
     const avgMovePct = pivots.reduce((sum, p) => sum + p.movePct * 100, 0) / pivots.length;
     const avgBars    = pivots.reduce((sum, p) => sum + p.bars, 0) / pivots.length;
-    const avgTime    = formatDuration(avgBars * parseIntervalMs(interval));
+    const avgTime    = formatDuration((avgBars * parseIntervalMs(interval)) / (1000 * 60));
+    
+    // Calculate longest time between swings
+    let longestSwingTime = 0;
+    for (let i = 1; i < pivots.length; i++) {
+      const timeBetween = new Date(pivots[i].time) - new Date(pivots[i-1].time);
+      longestSwingTime = Math.max(longestSwingTime, timeBetween);
+    }
     const barsArr    = pivots.map(p => p.bars);
     const highestBars= Math.max(...barsArr);
     const lowestBars = Math.min(...barsArr);
@@ -190,6 +135,8 @@ async function fetchCandles(symbol, interval, limit) {
     console.log(`Average Swing Size: ${avgMovePct.toFixed(2)}%`);
     console.log(`Average Bars per Swing: ${avgBars.toFixed(2)}`);
     console.log(`Average Time Between Swings: ${avgTime}`);
+    console.log(`Longest Time Between Swings: ${formatDuration(longestSwingTime / (1000 * 60))}`);
+
     console.log(`Highest Bars in a Swing: ${highestBars}`);
     console.log(`Lowest Bars in a Swing: ${lowestBars}`);
     

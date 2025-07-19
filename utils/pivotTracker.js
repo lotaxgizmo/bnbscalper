@@ -100,40 +100,107 @@ export default class PivotTracker {
   }
 
   _confirmPivot(type) {
+    // Create pivot point
     const pivot = {
       type,
       price: this.extremePrice,
       time: this.extremeTime,
-      movePct: Math.abs((this.extremePrice - this.pivotPrice) / this.pivotPrice),
-      bars: this.legBars
+      previousPrice: this.pivotPrice,
+      previousTime: this.pivotTime
     };
 
-    this._recordSwing(pivot.movePct, type);
+    // Add to history
     this.pivots.push(pivot);
 
-    // reset for next leg
-    this.direction    = type === 'high' ? 'down' : 'up';
-    this.pivotPrice   = pivot.price;
-    this.pivotTime    = pivot.time;
-    this.extremePrice = pivot.price;
-    this.extremeTime  = pivot.time;
-    this.legBars      = 0;
+    // Calculate swing percentage
+    const swing = type === 'high'
+      ? (this.extremePrice - this.pivotPrice) / this.pivotPrice
+      : (this.pivotPrice - this.extremePrice) / this.pivotPrice;
+
+    // Update swing history
+    this.recentSwingsShort.push(swing);
+    this.recentSwingsLong.push(swing);
+
+    // Track by direction
+    if (type === 'high') {
+      this.upSwingsShort.push(swing);
+      this.upSwingsLong.push(swing);
+    } else {
+      this.downSwingsShort.push(swing);
+      this.downSwingsLong.push(swing);
+    }
+
+    // Maintain window sizes
+    this._maintainWindows();
+
+    // Reset state for next swing
+    this.pivotPrice = this.extremePrice;
+    this.pivotTime = this.extremeTime;
+    this.direction = type === 'high' ? 'down' : 'up';
+    this.legBars = 0;
 
     return pivot;
   }
 
-  _recordSwing(pct, type) {
-    const pushTrim = (arr, v, max) => { arr.push(v); if (arr.length > max) arr.shift(); };
+  _maintainWindows() {
+    // Maintain short window sizes
+    while (this.recentSwingsShort.length > this.shortWindow) {
+      this.recentSwingsShort.shift();
+    }
+    while (this.upSwingsShort.length > this.shortWindow) {
+      this.upSwingsShort.shift();
+    }
+    while (this.downSwingsShort.length > this.shortWindow) {
+      this.downSwingsShort.shift();
+    }
 
-    pushTrim(this.recentSwingsShort, pct, this.shortWindow);
-    pushTrim(this.recentSwingsLong,  pct, this.longWindow);
+    // Maintain long window sizes
+    while (this.recentSwingsLong.length > this.longWindow) {
+      this.recentSwingsLong.shift();
+    }
+    while (this.upSwingsLong.length > this.longWindow) {
+      this.upSwingsLong.shift();
+    }
+    while (this.downSwingsLong.length > this.longWindow) {
+      this.downSwingsLong.shift();
+    }
+  }
 
-    if (type === 'high') {
-      pushTrim(this.upSwingsShort, pct, this.shortWindow);
-      pushTrim(this.upSwingsLong,  pct, this.longWindow);
+  /**
+   * Add an existing pivot to the tracker's history.
+   * Used when loading historical pivot data.
+   * @param {Object} pivot - The pivot point to add
+   */
+  addExistingPivot(pivot) {
+    // Add to pivots array
+    this.pivots.push(pivot);
+    
+    // Calculate and update swing statistics
+    if (pivot.type === 'high') {
+      const swing = (pivot.price - pivot.previousPrice) / pivot.previousPrice;
+      this.upSwingsShort.push(swing);
+      this.upSwingsLong.push(swing);
+      this.recentSwingsShort.push(swing);
+      this.recentSwingsLong.push(swing);
     } else {
-      pushTrim(this.downSwingsShort, pct, this.shortWindow);
-      pushTrim(this.downSwingsLong,  pct, this.longWindow);
+      const swing = (pivot.previousPrice - pivot.price) / pivot.previousPrice;
+      this.downSwingsShort.push(swing);
+      this.downSwingsLong.push(swing);
+      this.recentSwingsShort.push(swing);
+      this.recentSwingsLong.push(swing);
+    }
+    
+    // Maintain window sizes
+    this._maintainWindows();
+    
+    // Update current state if this is the first pivot
+    if (this.pivots.length === 1) {
+      this.pivotPrice = pivot.price;
+      this.pivotTime = pivot.time;
+      this.direction = pivot.type === 'high' ? 'down' : 'up';
+      this.extremePrice = pivot.price;
+      this.extremeTime = pivot.time;
+      this.legBars = 0;
     }
   }
 

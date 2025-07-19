@@ -1,5 +1,5 @@
 import { colors } from './formatters.js';
-import { symbol } from '../config.js';
+import { symbol } from '../config/config.js';
 
 export const printCandleData = (candlesWithStats, highAvg, mediumAvg, normalAvg, time) => {
   console.log(`\n=== ${symbol} ${time} CANDLE DATA ===\n`);

@@ -10,8 +10,7 @@ export const colors = {
 
 export const formatDuration = (totalMinutes, showFullTimePeriod = true) => {
   const totalHours = Math.floor(totalMinutes / 60);
-  const months = Math.floor(totalHours / (30 * 24));
-  const days = Math.floor((totalHours % (30 * 24)) / 24);
+  const days = Math.floor(totalHours / 24);
   const hours = Math.floor(totalHours % 24);
   const minutes = Math.floor(totalMinutes % 60);
   
@@ -19,7 +18,6 @@ export const formatDuration = (totalMinutes, showFullTimePeriod = true) => {
   let parts = [];
   
   if (showFullTimePeriod) {
-    if (months > 0) parts.push(`${months} month${s(months)}`);
     if (days > 0) parts.push(`${days} day${s(days)}`);
     if (hours > 0) parts.push(`${hours} hour${s(hours)}`);
     if (minutes > 0) parts.push(`${minutes} minute${s(minutes)}`);
