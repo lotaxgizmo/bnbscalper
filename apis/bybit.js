@@ -23,7 +23,7 @@ const BASE_URL = 'https://api.bybit.com/v5';
  * @returns {Promise<Array>} - Array of candles (time, open, high, low, close, volume)
  */
 // Read candles from local CSV file
-function readLocalCandles(symbol, interval, limit = 100, customEndTime = null) {
+async function readLocalCandles(symbol, interval, limit = 100, customEndTime = null) {
   if (!isNode) {
     console.warn('Local data reading is not supported in browser environment');
     return [];
@@ -37,56 +37,90 @@ function readLocalCandles(symbol, interval, limit = 100, customEndTime = null) {
       return [];
     }
 
-    const fileContent = fs.readFileSync(filePath, 'utf8');
-    const lines = fileContent.split('\n').filter(line => line.trim());
-    
-    // Remove header
-    lines.shift();
-
-    // Convert CSV lines to candle objects
-    let candles = lines.map(line => {
-      const [time, open, high, low, close, volume] = line.split(',');
-      return {
-        time: parseInt(time),
-        open: parseFloat(open),
-        high: parseFloat(high),
-        low: parseFloat(low),
-        close: parseFloat(close),
-        volume: parseFloat(volume)
-      };
+    // Create read stream and line interface
+    const fileStream = fs.createReadStream(filePath);
+    const rl = (await import('readline')).createInterface({
+      input: fileStream,
+      crlfDelay: Infinity
     });
 
-    // Filter by customEndTime if provided
-    if (customEndTime) {
-      candles = candles.filter(c => c.time <= customEndTime);
+    let allLines = [];
+    let isHeader = true;
+
+    try {
+      // First, collect all lines
+      for await (const line of rl) {
+        if (isHeader) {
+          isHeader = false;
+          continue;
+        }
+        if (line.trim()) {
+          allLines.push(line);
+        }
+      }
+
+      // Sort lines by timestamp to ensure chronological order
+      allLines.sort((a, b) => {
+        const timeA = parseInt(a.split(',')[0]);
+        const timeB = parseInt(b.split(',')[0]);
+        return timeA - timeB;
+      });
+
+      // Take the required number of lines from the end
+      const linesToProcess = allLines.slice(-limit);
+      console.log(`Processing ${linesToProcess.length} candles from ${allLines.length} total`);
+
+      // Parse the selected lines into candles
+      let result = linesToProcess.map(line => {
+        const [time, open, high, low, close, volume] = line.split(',');
+        return {
+          time: parseInt(time),
+          open: parseFloat(open),
+          high: parseFloat(high),
+          low: parseFloat(low),
+          close: parseFloat(close),
+          volume: parseFloat(volume)
+        };
+      });
+
+      // Sort by time ascending (in case file wasn't already sorted)
+      result.sort((a, b) => a.time - b.time);
+
+      // Apply custom end time filter if provided
+      if (customEndTime) {
+        result = result.filter(c => c.time <= customEndTime);
+      }
+
+      return result;
+
+    } finally {
+      // Always close the stream
+      rl.close();
+      fileStream.close();
     }
 
-    // Return only the requested number of candles
-    return candles.slice(-limit);
-
   } catch (error) {
-    console.error(`Error reading local data for ${symbol} - ${interval}:`, error.message);
+    console.error('Error reading local candles:', error);
     return [];
   }
 }
 
 // Helper to check if we're using local data
 export function isUsingLocalData() {
-  return useLocalData && isNode;
+  return useLocalData === true && isNode === true;
 }
+
+// Attach isUsingLocalData to getCandles for candleAnalytics.js to use
+getCandles.isUsingLocalData = isUsingLocalData;
 
 export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100, customEndTime = null) {
   // Convert interval to format used in CSV files (e.g., '1' to '1m')
   const csvInterval = interval.endsWith('m') ? interval : `${interval}m`;
 
-  // If using local data, try to read from CSV first
+  // If using local data, only use local CSV
   if (isUsingLocalData()) {
-    const localCandles = readLocalCandles(symbol, csvInterval, limit, customEndTime);
-    if (localCandles.length > 0) {
-      // Sort by time ascending for consistency
-      localCandles.sort((a, b) => a.time - b.time);
-      return localCandles;
-    }
+    console.log(`Reading ${limit} candles from local CSV...`);
+    return await readLocalCandles(symbol, csvInterval, limit, customEndTime);
   }
 
   // Fallback to API if local data is not available or not used

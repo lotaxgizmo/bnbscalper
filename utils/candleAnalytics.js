@@ -12,11 +12,16 @@ export const getCandles = (api) => {
 export async function fetchCandles(symbol, interval, limit, api, delay = 0) {
   const rawGetCandles = getCandles(api);
   
-  // When using local data, fetch all at once
-  if (rawGetCandles.isUsingLocalData?.()) {
-    const batch = await rawGetCandles(symbol, interval, limit);
-    return batch.slice(-limit); // trim to exact limit
+  // When using local data, fetch all at once with no batch limit
+  if (typeof rawGetCandles.isUsingLocalData === 'function' && rawGetCandles.isUsingLocalData()) {
+    console.log(`Fetching ${limit} candles from local data...`);
+    const result = await rawGetCandles(symbol, interval, limit);
+    console.log(`Successfully read ${result.length} candles from local data`);
+    return result;
   }
+
+  // For API calls, use batching
+  console.log('Using API with batching...');
   const maxPerBatch = 500; // common API cap
   let all = [];
   let fetchSince = null;

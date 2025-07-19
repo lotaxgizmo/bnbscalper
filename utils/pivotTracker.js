@@ -100,69 +100,49 @@ export default class PivotTracker {
   }
 
   _confirmPivot(type) {
-    // Create pivot point
+    // Calculate swing percentage
+    const movePct = Math.abs((this.extremePrice - this.pivotPrice) / this.pivotPrice);
+
+    // Create pivot point with all necessary properties
     const pivot = {
       type,
       price: this.extremePrice,
       time: this.extremeTime,
       previousPrice: this.pivotPrice,
-      previousTime: this.pivotTime
+      previousTime: this.pivotTime,
+      movePct,
+      bars: this.legBars
     };
 
-    // Add to history
+    // Record swing data
+    this._recordSwing(movePct, type);
+    
+    // Add to pivot history
     this.pivots.push(pivot);
 
-    // Calculate swing percentage
-    const swing = type === 'high'
-      ? (this.extremePrice - this.pivotPrice) / this.pivotPrice
-      : (this.pivotPrice - this.extremePrice) / this.pivotPrice;
-
-    // Update swing history
-    this.recentSwingsShort.push(swing);
-    this.recentSwingsLong.push(swing);
-
-    // Track by direction
-    if (type === 'high') {
-      this.upSwingsShort.push(swing);
-      this.upSwingsLong.push(swing);
-    } else {
-      this.downSwingsShort.push(swing);
-      this.downSwingsLong.push(swing);
-    }
-
-    // Maintain window sizes
-    this._maintainWindows();
-
     // Reset state for next swing
-    this.pivotPrice = this.extremePrice;
-    this.pivotTime = this.extremeTime;
     this.direction = type === 'high' ? 'down' : 'up';
+    this.pivotPrice = pivot.price;
+    this.pivotTime = pivot.time;
+    this.extremePrice = pivot.price;
+    this.extremeTime = pivot.time;
     this.legBars = 0;
 
     return pivot;
   }
 
-  _maintainWindows() {
-    // Maintain short window sizes
-    while (this.recentSwingsShort.length > this.shortWindow) {
-      this.recentSwingsShort.shift();
-    }
-    while (this.upSwingsShort.length > this.shortWindow) {
-      this.upSwingsShort.shift();
-    }
-    while (this.downSwingsShort.length > this.shortWindow) {
-      this.downSwingsShort.shift();
-    }
+  _recordSwing(pct, type) {
+    const pushTrim = (arr, v, max) => { arr.push(v); if (arr.length > max) arr.shift(); };
 
-    // Maintain long window sizes
-    while (this.recentSwingsLong.length > this.longWindow) {
-      this.recentSwingsLong.shift();
-    }
-    while (this.upSwingsLong.length > this.longWindow) {
-      this.upSwingsLong.shift();
-    }
-    while (this.downSwingsLong.length > this.longWindow) {
-      this.downSwingsLong.shift();
+    pushTrim(this.recentSwingsShort, pct, this.shortWindow);
+    pushTrim(this.recentSwingsLong, pct, this.longWindow);
+
+    if (type === 'high') {
+      pushTrim(this.upSwingsShort, pct, this.shortWindow);
+      pushTrim(this.upSwingsLong, pct, this.longWindow);
+    } else {
+      pushTrim(this.downSwingsShort, pct, this.shortWindow);
+      pushTrim(this.downSwingsLong, pct, this.longWindow);
     }
   }
 
@@ -215,6 +195,29 @@ export default class PivotTracker {
   // Get the current average swing size
   getAverageSwing() {
     return this.avgShort || 0;
+  }
+
+  /**
+   * Add an existing pivot to the tracker's history.
+   * Used when loading historical pivot data.
+   * @param {Object} pivot - The pivot point to add
+   */
+  addExistingPivot(pivot) {
+    // Add to pivots array
+    this.pivots.push(pivot);
+    
+    // Record swing data using existing _recordSwing method
+    this._recordSwing(pivot.movePct, pivot.type);
+    
+    // Update current state if this is the most recent pivot
+    if (this.pivots.length === 1 || pivot.time > this.pivotTime) {
+      this.pivotPrice = pivot.price;
+      this.pivotTime = pivot.time;
+      this.direction = pivot.type === 'high' ? 'down' : 'up';
+      this.extremePrice = pivot.price;
+      this.extremeTime = pivot.time;
+      this.legBars = 0;
+    }
   }
 }
 

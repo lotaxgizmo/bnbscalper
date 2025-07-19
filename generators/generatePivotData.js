@@ -48,10 +48,18 @@ async function generatePivotData() {
     if (existingData?.metadata?.candles?.length > 0) {
         const lastCandle = existingData.metadata.candles[existingData.metadata.candles.length - 1];
         lastKnownTime = lastCandle.time;
-        // Only fetch new candles since last update
-        fetchLimit = Math.min(limit, Math.ceil((Date.now() - lastKnownTime) / parseFloat(interval) / 60000));
-        console.log(`Last known candle time: ${new Date(lastKnownTime).toISOString()}`);
-        console.log(`Fetching ${fetchLimit} new candles...`);
+        // Use full limit if it's larger than what we have
+        const existingCount = existingData.metadata.candles.length;
+        if (limit > existingCount) {
+            fetchLimit = limit;
+            console.log(`Requested ${limit} candles which is more than existing ${existingCount} candles`);
+            console.log(`Fetching full ${limit} candles...`);
+        } else {
+            // Only fetch new candles since last update
+            fetchLimit = Math.ceil((Date.now() - lastKnownTime) / parseFloat(interval) / 60000);
+            console.log(`Last known candle time: ${new Date(lastKnownTime).toISOString()}`);
+            console.log(`Fetching ${fetchLimit} new candles...`);
+        }
     } else {
         console.log(`Fetching full history (${limit} candles)...`);
     }
@@ -75,25 +83,82 @@ async function generatePivotData() {
         console.log('Updating existing data...');
         
         // Initialize tracker with existing pivots
-        for (const pivot of existingData.pivots) {
-            tracker.addExistingPivot(pivot);
+        console.log(`Loading ${existingData.pivots.length} existing pivots...`);
+        const batchSize = 1000;
+        for (let i = 0; i < existingData.pivots.length; i += batchSize) {
+            const batch = existingData.pivots.slice(i, i + batchSize);
+            for (const pivot of batch) {
+                tracker.addExistingPivot(pivot);
+            }
+            if ((i + batchSize) % 10000 === 0) {
+                console.log(`Loaded ${i + batchSize} pivots...`);
+            }
         }
         
-        // Only process new candles that aren't in existing data
-        const existingCandles = new Set(existingData.metadata.candles.map(c => c.time));
-        const newCandles = candles.filter(c => !existingCandles.has(c.time));
+        // Find the time range of existing data
+        let oldestExisting = Infinity;
+        let newestExisting = -Infinity;
         
+        // Process existing candles in batches
+        console.log(`Processing ${existingData.metadata.candles.length} existing candles...`);
+        for (let i = 0; i < existingData.metadata.candles.length; i += batchSize) {
+            const batch = existingData.metadata.candles.slice(i, i + batchSize);
+            for (const candle of batch) {
+                if (candle.time < oldestExisting) oldestExisting = candle.time;
+                if (candle.time > newestExisting) newestExisting = candle.time;
+            }
+            if ((i + batchSize) % 10000 === 0) {
+                console.log(`Processed ${i + batchSize} candles...`);
+            }
+        }
+        
+        // Filter and sort new candles in batches
+        const newCandles = [];
+        console.log(`Filtering ${candles.length} new candles...`);
+        for (let i = 0; i < candles.length; i += batchSize) {
+            const batch = candles.slice(i, i + batchSize);
+            for (const candle of batch) {
+                if (candle.time < oldestExisting || candle.time > newestExisting) {
+                    newCandles.push(candle);
+                }
+            }
+            if ((i + batchSize) % 10000 === 0) {
+                console.log(`Filtered ${i + batchSize} candles...`);
+            }
+        }
+        
+        console.log(`Existing data range: ${new Date(oldestExisting).toISOString()} to ${new Date(newestExisting).toISOString()}`);
         console.log(`Found ${newCandles.length} new candles to process`);
         
-        for (const candle of newCandles) {
-            const pivot = tracker.update(candle);
-            if (pivot) pivots.push(pivot);
+        // Sort to ensure chronological processing
+        console.log('Sorting new candles...');
+        newCandles.sort((a, b) => a.time - b.time);
+        
+        // Process new candles in batches
+        console.log('Processing new candles...');
+        for (let i = 0; i < newCandles.length; i += batchSize) {
+            const batch = newCandles.slice(i, i + batchSize);
+            for (const candle of batch) {
+                const pivot = tracker.update(candle);
+                if (pivot) pivots.push(pivot);
+            }
+            if ((i + batchSize) % 10000 === 0) {
+                console.log(`Processed ${i + batchSize} new candles...`);
+            }
         }
     } else {
-        // Process all candles for new data
-        for (const candle of candles) {
-            const pivot = tracker.update(candle);
-            if (pivot) pivots.push(pivot);
+        // Process all candles for new data in batches
+        console.log(`Processing ${candles.length} candles for new data...`);
+        const batchSize = 1000;
+        for (let i = 0; i < candles.length; i += batchSize) {
+            const batch = candles.slice(i, i + batchSize);
+            for (const candle of batch) {
+                const pivot = tracker.update(candle);
+                if (pivot) pivots.push(pivot);
+            }
+            if ((i + batchSize) % 10000 === 0) {
+                console.log(`Processed ${i + batchSize} candles...`);
+            }
         }
     }
 
