@@ -55,6 +55,8 @@ const pivotConfig = {
   console.log(`- Initial Capital: $${tradeConfig.initialCapital}`);
   console.log(`- Risk Per Trade: ${tradeConfig.riskPerTrade}%`);
 
+  console.log('');
+
   // Try to load cached pivot data first
   const cachedData = loadPivotData(symbol, interval, pivotConfig);
 
@@ -94,9 +96,7 @@ const pivotConfig = {
   const endTime   = new Date(candles[candles.length - 1].time);
   const elapsedMs = endTime - startTime;
 
-  console.log(`Date Range: ${formatDateTime(startTime)} → ${formatDateTime(endTime)}`);
-  console.log(`Elapsed Time: ${formatDuration(elapsedMs / (1000 * 60))}`);
-
+  
   // 3. Instantiate the pivot tracker
   const tracker = new PivotTracker({
     minSwingPct,
@@ -161,14 +161,18 @@ const pivotConfig = {
       if (activeOrder.isLong) {
         // For buy orders, cancel if price moves up too much
         if (candle.close > activeOrder.price * (1 + cancelThreshold/100)) {
-          console.log(`[ORDER] CANCEL BUY LIMIT @ ${activeOrder.price.toFixed(2)} | Current: ${candle.close.toFixed(2)} | Move: ${((candle.close/activeOrder.price - 1)*100).toFixed(2)}%`);
+          if (tradeConfig.showLimits) {
+            console.log(`[ORDER] CANCEL BUY LIMIT @ ${activeOrder.price.toFixed(2)} | Current: ${candle.close.toFixed(2)} | Move: ${((candle.close/activeOrder.price - 1)*100).toFixed(2)}%`);
+          }
           activeOrder = null;
           continue;
         }
       } else {
         // For sell orders, cancel if price moves down too much
         if (candle.close < activeOrder.price * (1 - cancelThreshold/100)) {
-          console.log(`[ORDER] CANCEL SELL LIMIT @ ${activeOrder.price.toFixed(2)} | Current: ${candle.close.toFixed(2)} | Move: ${((1 - candle.close/activeOrder.price)*100).toFixed(2)}%`);
+          if (tradeConfig.showLimits) {
+            console.log(`[ORDER] CANCEL SELL LIMIT @ ${activeOrder.price.toFixed(2)} | Current: ${candle.close.toFixed(2)} | Move: ${((1 - candle.close/activeOrder.price)*100).toFixed(2)}%`);
+          }
           activeOrder = null;
           continue;
         }
@@ -192,11 +196,18 @@ const pivotConfig = {
 
     if (!pivot) continue;
 
-    const movePct = (pivot.movePct * 100).toFixed(2);
-    const timeStr = formatDateTime(new Date(pivot.time));
-    const line    = `[PIVOT ${pivotCounter}] ${pivot.type.toUpperCase()} @ ${timeStr} | Price: ${pivot.price.toFixed(2)} | ` +
-                    `Swing: ${movePct}% | Bars: ${pivot.bars}`;
-    console.log((pivot.type === 'high' ? COLOR_GREEN : COLOR_RED) + line + COLOR_RESET);
+    // Only show pivot info if showPivot is true
+    if (tradeConfig.showPivot) {
+      const movePct = (pivot.movePct * 100).toFixed(2);
+      const timeStr = formatDateTime(new Date(pivot.time));
+      const line    = `[PIVOT ${pivotCounter}] ${pivot.type.toUpperCase()} @ ${timeStr} | Price: ${pivot.price.toFixed(2)} | ` +
+                      `Swing: ${movePct}% | Bars: ${pivot.bars}`;
+      console.log((pivot.type === 'high' ? COLOR_GREEN : COLOR_RED) + line + COLOR_RESET);
+      
+      // Only add to pivots array if we're showing pivots
+      pivots.push({...pivot, number: pivotCounter});
+      pivotCounter++;
+    }
 
     // Place new limit order if conditions met
     if (!activeOrder && !activeTrade) {
@@ -221,17 +232,16 @@ const pivotConfig = {
             pivotPrice: pivot.price
           };
 
-          console.log(COLOR_YELLOW + 
-            `[ORDER] ${isLong ? 'BUY' : 'SELL'} LIMIT @ ${limitPrice.toFixed(2)} | ` +
-            `Reference: ${pivot.price.toFixed(2)} | Move: ${(avgMove * 100).toFixed(2)}%` +
-            COLOR_RESET
-          );
+          if (tradeConfig.showLimits) {
+            console.log(COLOR_YELLOW + 
+              `[ORDER] ${isLong ? 'BUY' : 'SELL'} LIMIT @ ${limitPrice.toFixed(2)} | ` +
+              `Reference: ${pivot.price.toFixed(2)} | Move: ${(avgMove * 100).toFixed(2)}%` +
+              COLOR_RESET
+            );
+          }
         }
       }
     }
-
-    pivots.push({...pivot, number: pivotCounter});
-    pivotCounter++;
   }
 
  
@@ -261,6 +271,11 @@ const pivotConfig = {
     // 5. Summary 
 
     console.log('\n— Final Summary —');
+    
+    console.log(`Date Range: ${formatDateTime(startTime)} → ${formatDateTime(endTime)}`);
+    console.log(`Elapsed Time: ${formatDuration(elapsedMs / (1000 * 60))}`);
+    
+    console.log('');
 
 
   // Calculate total pivot duration if we have pivots
@@ -285,9 +300,15 @@ const pivotConfig = {
     const totalPnL = trades.reduce((sum, t) => sum + t.pnl, 0).toFixed(2);
     const avgPnL = (totalPnL / trades.length).toFixed(2);
 
+    console.log('');
+
     console.log(`Win Rate: ${winRate}% (${wins}/${trades.length})`);
+    console.log(`Failed Trades: ${trades.length - wins}`)
     console.log(`Total P&L: ${totalPnL}%`);
     console.log(`Average P&L per Trade: ${avgPnL}%`);
+
+    console.log('');
+
     console.log(`Starting Capital: $${tradeConfig.initialCapital}`);
     console.log(`Final Capital: $${currentCapital.toFixed(2)}`);
     console.log(`Total Return: ${((currentCapital / tradeConfig.initialCapital - 1) * 100).toFixed(2)}%`);
