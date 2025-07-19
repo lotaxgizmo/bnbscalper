@@ -12,7 +12,7 @@ export function savePivotData(symbol, interval, pivots, config, metadata = {}) {
         fs.mkdirSync(cacheDir, { recursive: true });
     }
 
-    const filename = `${symbol}_${interval}_${config.minSwingPct}_${config.shortWindow}_${config.longWindow}.json`;
+    const filename = `${symbol}_${interval}_${config.minSwingPct}_${config.shortWindow}_${config.longWindow}_${config.minLegBars}.json`;
     const filepath = path.join(cacheDir, filename);
     
     const data = {
@@ -29,7 +29,7 @@ export function savePivotData(symbol, interval, pivots, config, metadata = {}) {
 }
 
 export function loadPivotData(symbol, interval, config) {
-    const filename = `${symbol}_${interval}_${config.minSwingPct}_${config.shortWindow}_${config.longWindow}.json`;
+    const filename = `${symbol}_${interval}_${config.minSwingPct}_${config.shortWindow}_${config.longWindow}_${config.minLegBars}.json`;
     const filepath = path.join(CACHE_DIR, filename);
 
     if (!fs.existsSync(filepath)) {
