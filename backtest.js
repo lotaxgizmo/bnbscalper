@@ -303,10 +303,12 @@ const pivotConfig = {
         COLOR_RESET
       );
     });
-    
+
     // 5. Summary 
 
-    console.log('\n— Final Summary —');
+    console.log('\n')
+
+    console.log( '\n— Final Summary —' );
     
     console.log(`Date Range: ${formatDateTime(startTime)} → ${formatDateTime(endTime)}`);
     console.log(`Elapsed Time: ${formatDuration(elapsedMs / (1000 * 60))}`);
@@ -319,18 +321,18 @@ const pivotConfig = {
     const firstPivotTime = new Date(pivots[0].time);
     const lastPivotTime = new Date(pivots[pivots.length - 1].time);
     const totalPivotDuration = lastPivotTime - firstPivotTime;
-    console.log(`Total Analysis Duration: ${formatDuration(totalPivotDuration / (1000 * 60))}`);
+    console.log(   `Total Analysis Duration: ${formatDuration(totalPivotDuration / (1000 * 60))}` );
   }
-  console.log(`Total Trades: ${trades.length}`);
   
-    
-    // Calculate total trade duration
-    const totalDuration = trades.reduce((sum, t) => {
-      const duration = new Date(t.exitTime) - new Date(t.entryTime);
-      return sum + duration;
-    }, 0);
-    console.log(`Total Trade Duration: ${formatDuration(totalDuration / (1000 * 60))}`);
-
+  
+  // Calculate total trade duration
+  const totalDuration = trades.reduce((sum, t) => {
+    const duration = new Date(t.exitTime) - new Date(t.entryTime);
+    return sum + duration;
+  }, 0);
+  console.log(`Total Trade Duration: ${formatDuration(totalDuration / (1000 * 60))}`);
+  
+  console.log(COLOR_CYAN + `Total Trades: ${trades.length}` + COLOR_RESET);
     const wins = trades.filter(t => t.result === 'WIN').length;
     const winRate = (wins / trades.length * 100).toFixed(2);
     const totalPnL = trades.reduce((sum, t) => sum + t.pnl, 0).toFixed(2);
@@ -338,10 +340,10 @@ const pivotConfig = {
 
     console.log('');
 
-    console.log(`Win Rate: ${winRate}% (${wins}/${trades.length})`);
-    console.log(`Failed Trades: ${trades.length - wins}`);
-    console.log(`Total P&L: ${totalPnL}%`);
-    console.log(`Average P&L per Trade: ${avgPnL}%`);
+    console.log(COLOR_GREEN + `Win Rate: ${winRate}% (${wins}/${trades.length})` + COLOR_RESET);
+    console.log(COLOR_RED + `Failed Trades: ${trades.length - wins}` + COLOR_RESET);
+    console.log(`Total P&L: ${totalPnL}%` );
+    console.log(`Average P&L per Trade: ${avgPnL}%` );
 
     // Calculate favorable and adverse excursion statistics
     const avgFavorable = trades.reduce((sum, t) => sum + t.maxFavorableExcursion, 0) / trades.length;
@@ -351,21 +353,22 @@ const pivotConfig = {
     const highestAdverse = Math.max(...trades.map(t => t.maxAdverseExcursion));
     const lowestAdverse = Math.min(...trades.map(t => t.maxAdverseExcursion));
 
-    console.log('\nFavorable Excursion Analysis (Price Movement in Our Favor):');
-    console.log(`  Average Movement: +${avgFavorable.toFixed(2)}%`);
-    console.log(`  Highest Movement: +${highestFavorable.toFixed(2)}%`);
-    console.log(`  Lowest Movement: +${lowestFavorable.toFixed(2)}%`);
+    console.log(COLOR_GREEN + '\nFavorable Excursion Analysis (Price Movement in Our Favor):' + COLOR_RESET);
+    console.log( `  Average Movement: +${avgFavorable.toFixed(2)}%` );
+    console.log( `  Highest Movement: +${highestFavorable.toFixed(2)}%` );
+    console.log( `  Lowest Movement: +${lowestFavorable.toFixed(2)}%` );
 
-    console.log('\nAdverse Excursion Analysis (Price Movement Against Us):');
-    console.log(`  Average Movement: -${avgAdverse.toFixed(2)}%`);
-    console.log(`  Highest Movement: -${highestAdverse.toFixed(2)}%`);
-    console.log(`  Lowest Movement: -${lowestAdverse.toFixed(2)}%`);
+    console.log(COLOR_RED + '\nAdverse Excursion Analysis (Price Movement Against Us):' + COLOR_RESET);
+    console.log( `  Average Movement: -${avgAdverse.toFixed(2)}%` );
+    console.log( `  Highest Movement: -${highestAdverse.toFixed(2)}%` );
+    console.log( `  Lowest Movement: -${lowestAdverse.toFixed(2)}%` );
 
     console.log('');
 
-    console.log(`Starting Capital: $${tradeConfig.initialCapital}`);
-    console.log(`Final Capital: $${currentCapital.toFixed(2)}`);
-    console.log(`Total Return: ${((currentCapital/tradeConfig.initialCapital - 1)*100).toFixed(2)}%`);
+    const capitalReturn = ((currentCapital/tradeConfig.initialCapital - 1)*100).toFixed(2);
+    console.log(COLOR_CYAN + `Starting Capital: $${tradeConfig.initialCapital}` + COLOR_RESET);
+    console.log(COLOR_CYAN + `Final Capital: $${currentCapital.toFixed(2)}` + COLOR_RESET);
+    console.log((capitalReturn >= 0 ? COLOR_GREEN : COLOR_RED) + `Total Return: ${capitalReturn}%` + COLOR_RESET);
 
     // Calculate additional statistics
     const winningTrades = trades.filter(t => t.result === 'WIN');
@@ -424,156 +427,12 @@ const pivotConfig = {
         }
     };
 
-    // Write chart data to file
+    // Write chart data to JSON file
     const chartDir = path.join(__dirname, 'charts');
-    const chartPath = path.join(chartDir, 'backtest_chart.html');
+    const dataPath = path.join(chartDir, 'backtest_data.json');
 
-    const chartHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Backtest Results Chart</title>
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
-    </head>
-    <body style="background-color: #1a1a1a; color: #ffffff;">
-        <div style="width: 90%; margin: 20px auto; background-color: #2d2d2d; padding: 20px; border-radius: 10px;">
-            <canvas id="priceChart"></canvas>
-        </div>
-        <div style="width: 90%; margin: 20px auto; background-color: #2d2d2d; padding: 20px; border-radius: 10px;">
-            <canvas id="capitalChart"></canvas>
-        </div>
-        <div style="display: flex; flex-wrap: wrap; gap: 20px; margin: 20px auto; width: 90%;">
-            <div style="background-color: #2d2d2d; padding: 15px; border-radius: 5px; flex: 1; min-width: 200px;">
-                <h3>Trade Statistics</h3>
-                <div id="tradeStats"></div>
-            </div>
-            <div style="background-color: #2d2d2d; padding: 15px; border-radius: 5px; flex: 1; min-width: 200px;">
-                <h3>Performance Metrics</h3>
-                <div id="performanceStats"></div>
-            </div>
-        </div>
-
-        <script>
-            const trades = ${JSON.stringify(chartData.trades)};
-            const candles = ${JSON.stringify(chartData.candles)};
-            const capital = ${JSON.stringify(chartData.capital)};
-            const stats = ${JSON.stringify(chartData.stats)};
-
-            // Price chart with trades
-            const priceCtx = document.getElementById('priceChart').getContext('2d');
-            new Chart(priceCtx, {
-                type: 'line',
-                data: {
-                    labels: candles.map(c => new Date(c.time).toLocaleString()),
-                    datasets: [{
-                        label: 'Price',
-                        data: candles.map(c => c.close),
-                        borderColor: '#4CAF50',
-                        borderWidth: 1,
-                        fill: false
-                    }, {
-                        label: 'Entry Points',
-                        data: trades.map(t => ({
-                            x: new Date(t.entryTime).toLocaleString(),
-                            y: t.entry
-                        })),
-                        backgroundColor: trades.map(t => t.isLong ? '#4CAF50' : '#f44336'),
-                        pointRadius: 5,
-                        type: 'scatter'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Price Action & Trade Entries',
-                            color: '#ffffff'
-                        },
-                        legend: {
-                            labels: {
-                                color: '#ffffff'
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            ticks: { color: '#ffffff' },
-                            grid: { color: '#404040' }
-                        },
-                        y: {
-                            ticks: { color: '#ffffff' },
-                            grid: { color: '#404040' }
-                        }
-                    }
-                }
-            });
-
-            // Capital chart
-            const capitalCtx = document.getElementById('capitalChart').getContext('2d');
-            new Chart(capitalCtx, {
-                type: 'line',
-                data: {
-                    labels: capital.map(c => new Date(c.time).toLocaleString()),
-                    datasets: [{
-                        label: 'Account Balance',
-                        data: capital.map(c => c.value),
-                        borderColor: '#2196F3',
-                        borderWidth: 2,
-                        fill: false
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Capital Growth',
-                            color: '#ffffff'
-                        },
-                        legend: {
-                            labels: {
-                                color: '#ffffff'
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            ticks: { color: '#ffffff' },
-                            grid: { color: '#404040' }
-                        },
-                        y: {
-                            ticks: { color: '#ffffff' },
-                            grid: { color: '#404040' }
-                        }
-                    }
-                }
-            });
-
-            // Update statistics
-            const tradeStats = document.getElementById('tradeStats');
-            const performanceStats = document.getElementById('performanceStats');
-            
-            tradeStats.innerHTML = 
-                '<p>Total Trades: ' + stats.totalTrades + '</p>' +
-                '<p>Win Rate: <span style="color: #4CAF50">' + stats.winRate + '%</span></p>' +
-                '<p>Average Trade Duration: ' + stats.avgDuration + '</p>' +
-                '<p>Best Trade: <span style="color: #4CAF50">+' + stats.bestTrade + '%</span></p>' +
-                '<p>Worst Trade: <span style="color: #f44336">' + stats.worstTrade + '%</span></p>';
-
-            performanceStats.innerHTML = 
-                '<p>Starting Capital: $' + stats.startingCapital + '</p>' +
-                '<p>Final Capital: $' + stats.finalCapital + '</p>' +
-                '<p>Total Return: ' + stats.totalReturn + '%</p>' +
-                '<p>Max Drawdown: ' + stats.maxDrawdown + '%</p>' +
-                '<p>Sharpe Ratio: ' + stats.sharpeRatio + '</p>';
-        </script>
-    </body>
-    </html>`;
-
-    fs.writeFileSync(chartPath, chartHtml);
-    console.log('\nChart generated at: charts/backtest_chart.html');
+    fs.writeFileSync(dataPath, JSON.stringify(chartData, null, 2));
+    console.log('\nBacktest data saved to: charts/backtest_data.json');
 
     console.log('');
     console.log('✅ Done.');

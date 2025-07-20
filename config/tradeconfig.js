@@ -1,14 +1,14 @@
 // Trade configuration for backtesting
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell')
-    direction: 'buy',
+    direction: 'sell',
 
     // Profit and loss settings (in %)
     takeProfit: 0.1,    // Take profit at 0.2%
-    stopLoss: 20,      // Stop loss at 0.1%
+    stopLoss: 15,      // Stop loss at 0.1%
 
     // Leverage multiplier
-    leverage: 1,        // 1x leverage (spot trading)
+    leverage: 7,        // 1x leverage (spot trading)
 
     // Trading fees
     totalMakerFee: 0.04, // 0.04% maker fee
@@ -21,8 +21,8 @@ export const tradeConfig = {
     orderDistancePct: 50,     // Percentage of average move to use for order placement (50 = half the distance)
     cancelThresholdPct: 100,   // Percentage of average swing to use for order cancellation (100 = same as average)
 
-    showPivot: true,
-    showLimits: true,
+    // showPivot: true,
+    // showLimits: true,
 
     enterAll: false,
 };
