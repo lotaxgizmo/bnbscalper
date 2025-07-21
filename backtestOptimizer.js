@@ -118,7 +118,7 @@ const getTotalIterations = () => {
 
 
   // Calculate iterations for each worker
-  const numWorkers = 4; // Use 4 worker threads
+  const numWorkers = 6; // Use 4 worker threads
   const iterationsPerWorker = Math.ceil(totalIterations / numWorkers);
   let completedWorkers = 0;
   const allResults = [];

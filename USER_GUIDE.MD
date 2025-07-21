@@ -17,6 +17,20 @@ When `showTradeDetails` is enabled in config:
 - Maximum favorable/adverse excursions
 - Trade timing and duration
 
+### Pivot Points
+When `showPivot` is enabled in config:
+- Real-time pivot detection display
+- Pivot price and type (high/low)
+- Swing percentage and duration
+- Timestamp of pivot formation
+
+### Limit Orders
+When `showLimits` is enabled in config:
+- Limit order placement details
+- Order cancellation events
+- Price movement analysis
+- Cancellation reasons
+
 ### Final Summary
 - Date range and elapsed time
 - Total trade count and win rate

@@ -18,6 +18,8 @@ The console logging system has been modularized into a dedicated ConsoleLogger c
   * logFinalSummary: Display comprehensive backtest results
   * logExportStatus: Confirm data export completion
   * logError: Format and display error messages
+  * logPivot: Display pivot point detection and details
+  * logLimitOrder: Show limit order events and cancellations
 
 ### Integration
 - Used by backtest.js for all console output

@@ -7,6 +7,8 @@ const { reset: COLOR_RESET, red: COLOR_RED, green: COLOR_GREEN, yellow: COLOR_YE
 export class ConsoleLogger {
   constructor(config = {}) {
     this.performanceMode = config.performanceMode || false;
+    this.showPivot = config.showPivot || false;
+    this.showLimits = config.showLimits || false;
   }
 
   logInitialConfig(symbol, interval, api, tradeConfig) {
@@ -71,6 +73,51 @@ export class ConsoleLogger {
       );
       console.log('-'.repeat(80));
     }
+  }
+
+  logPivot(pivot, candle) {
+    if (this.performanceMode || !this.showPivot) return;
+    
+    const line = `[PIVOT] ${pivot.type.toUpperCase()} @ ${pivot.price.toFixed(2)} | ` +
+      `Time: ${formatDateTime(candle.time)} | ` +
+      `Move: ${pivot.movePct.toFixed(2)}% | ` +
+      `Bars: ${pivot.bars || 'N/A'}`;
+
+    console.log((pivot.type === 'high' ? COLOR_GREEN : COLOR_RED) + line + COLOR_RESET);
+  }
+
+  logLimitOrder(order, candle, cancelReason) {
+    if (this.performanceMode || !this.showLimits) return;
+
+    const priceMove = order.type === 'buy' 
+      ? ((candle.close/order.price - 1)*100)
+      : ((1 - candle.close/order.price)*100);
+
+    console.log(`[ORDER] CANCEL ${order.type.toUpperCase()} LIMIT @ ${order.price.toFixed(2)} | ` +
+      `Current: ${candle.close.toFixed(2)} | ` +
+      `Move: ${priceMove.toFixed(2)}% | ` +
+      `Reason: ${cancelReason}`);
+  }
+
+  logLimitOrderCreation(order, pivot, avgMove) {
+    if (this.performanceMode || !this.showLimits) return;
+
+    console.log(COLOR_YELLOW + 
+      `[ORDER] ${order.isLong ? 'BUY' : 'SELL'} LIMIT @ ${order.price.toFixed(2)} | ` +
+      `Reference: ${pivot.price.toFixed(2)} | Move: ${(avgMove * 100).toFixed(2)}%` +
+      COLOR_RESET
+    );
+  }
+
+  logLimitOrderFill(order, candle) {
+    if (this.performanceMode || !this.showLimits) return;
+
+    console.log(COLOR_GREEN + 
+      `[ORDER] ${order.type.toUpperCase()} LIMIT FILLED @ ${order.price.toFixed(2)} | ` +
+      `Current: ${candle.close.toFixed(2)} | ` +
+      `Time: ${formatDateTime(candle.time)}` +
+      COLOR_RESET
+    );
   }
 
   logFinalSummary(trades, statistics) {

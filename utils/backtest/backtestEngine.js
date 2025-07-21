@@ -3,12 +3,13 @@ import PivotTracker from '../pivotTracker.js';
 import { colors } from '../formatters.js';
 
 export class BacktestEngine {
-  constructor(config, tradeConfig) {
+  constructor(config, tradeConfig, logger) {
     this.config = config;
     this.tradeConfig = tradeConfig;
     this.trades = [];
     this.currentCapital = tradeConfig.initialCapital;
     this.pivotTracker = new PivotTracker(config);
+    this.logger = logger;
     
     // Custom strategy handlers
     this.entryRules = [];
@@ -128,10 +129,12 @@ export class BacktestEngine {
     // Check cancellation conditions
     if (order.isLong) {
       if (candle.close > order.price * (1 + cancelThreshold/100)) {
+        this.logger?.logLimitOrder(order, candle, 'Price moved too far up');
         return { cancelled: true, filled: false };
       }
     } else {
       if (candle.close < order.price * (1 - cancelThreshold/100)) {
+        this.logger?.logLimitOrder(order, candle, 'Price moved too far down');
         return { cancelled: true, filled: false };
       }
     }
@@ -143,6 +146,9 @@ export class BacktestEngine {
       : candle.high >= price;
 
     if (filled) {
+      // Log the fill
+      this.logger?.logLimitOrderFill(order, candle);
+
       const trade = {
         entry: price,
         entryTime: candle.time, // Already in seconds
@@ -174,11 +180,15 @@ export class BacktestEngine {
         }
             
         const order = {
+          type: isLong ? 'buy' : 'sell',
           price: limitPrice,
           time: pivot.time, // Already in milliseconds from PivotTracker
           isLong,
           pivotPrice: pivot.price
         };
+
+        // Log limit order creation
+        this.logger?.logLimitOrderCreation(order, pivot, avgMove);
 
         return order;
       }
@@ -193,6 +203,11 @@ export class BacktestEngine {
 
     for (const candle of candles) {
       const pivot = this.pivotTracker.update(candle);
+      
+      // Log pivot if detected
+      if (pivot) {
+        this.logger?.logPivot(pivot, candle);
+      }
       
       // Handle active trade
       if (activeTrade) {

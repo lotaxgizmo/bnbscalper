@@ -197,6 +197,20 @@ export default class PivotTracker {
     return this.avgShort || 0;
   }
 
+  // Get current market state for prediction
+  getCurrentState() {
+    return {
+      trend: this.direction,
+      pivotPrice: this.pivotPrice,
+      legBars: this.legBars,
+      shortTermVolatility: this.avgShort || 0,
+      longTermVolatility: this.avgLong || 0,
+      averagePivotSize: this.getAverageSwing(),
+      trendSlope: this.direction === 'up' ? 1 : -1,
+      expectedDirection: this.direction === 'up' ? 'down' : 'up'
+    };
+  }
+
   /**
    * Add an existing pivot to the tracker's history.
    * Used when loading historical pivot data.

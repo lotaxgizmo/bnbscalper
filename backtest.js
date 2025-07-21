@@ -44,22 +44,13 @@ const pivotConfig = {
     logger.logCacheStatus(true);
     candles = cachedData.metadata.candles || [];
   } else {
-    // If no cache, fetch and process data
-    logger.logCacheStatus(false);
-    candles = await fetchCandles(symbol, interval, limit, api, delay);
-    logger.logFetchDetails(candles, limit, delay);
-
-    if (!candles.length) {
-      logger.logError('No candles fetched. Exiting.');
-      process.exit(1);
-    }
-
-    // Save the candle data for future use
-    savePivotData(symbol, interval, [], pivotConfig, { candles });
+    // If no cache, log error and exit
+    logger.logError('No cached pivot data found. Please run generatePivotData.js first.');
+    process.exit(1);
   }
 
   // Initialize components
-  const engine = new BacktestEngine(pivotConfig, tradeConfig);
+  const engine = new BacktestEngine(pivotConfig, tradeConfig, logger);
   const exporter = new BacktestExporter({
     saveJson: tradeConfig.saveToFile,
     saveCsv: tradeConfig.saveToFile,
