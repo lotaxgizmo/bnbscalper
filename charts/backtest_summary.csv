@@ -1,0 +1,2 @@
+take_profit,stop_loss,total_trades,win_rate,failed_trades,total_pnl,avg_pnl,avg_favorable_excursion,avg_adverse_excursion,final_capital,total_return
+0.1,15,65,98.46,1,-78.40,-1.21,0.16,0.93,-6.90,-106.90

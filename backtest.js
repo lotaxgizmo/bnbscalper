@@ -50,19 +50,20 @@ const pivotConfig = {
 };
 
 (async () => {
-  console.log(`\n▶ Backtesting ${tradeConfig.direction.toUpperCase()} Strategy on ${symbol} [${interval}] using ${api}\n`);
   let currentCapital = tradeConfig.initialCapital;
 
-  console.log('Trade Settings:');
-  console.log(`- Direction: ${tradeConfig.direction}`);
-  console.log(`- Take Profit: ${tradeConfig.takeProfit}%`);
-  console.log(`- Stop Loss: ${tradeConfig.stopLoss}%`);
-  console.log(`- Leverage: ${tradeConfig.leverage}x`);
-  console.log(`- Maker Fee: ${tradeConfig.totalMakerFee}%`);
-  console.log(`- Initial Capital: $${tradeConfig.initialCapital}`);
-  console.log(`- Risk Per Trade: ${tradeConfig.riskPerTrade}%`);
-
-  console.log('');
+  if (!tradeConfig.performanceMode) {
+    console.log(`\n▶ Backtesting ${tradeConfig.direction.toUpperCase()} Strategy on ${symbol} [${interval}] using ${api}\n`);
+    console.log('Trade Settings:');
+    console.log(`- Direction: ${tradeConfig.direction}`);
+    console.log(`- Take Profit: ${tradeConfig.takeProfit}%`);
+    console.log(`- Stop Loss: ${tradeConfig.stopLoss}%`);
+    console.log(`- Leverage: ${tradeConfig.leverage}x`);
+    console.log(`- Maker Fee: ${tradeConfig.totalMakerFee}%`);
+    console.log(`- Initial Capital: $${tradeConfig.initialCapital}`);
+    console.log(`- Risk Per Trade: ${tradeConfig.riskPerTrade}%`);
+    console.log('');
+  }
 
   // Try to load cached pivot data first
   const cachedData = loadPivotData(symbol, interval, pivotConfig);
@@ -70,15 +71,17 @@ const pivotConfig = {
   let candles, pivots;
 
   if (cachedData) {
-    console.log('Using cached pivot data...');
+    if (!tradeConfig.performanceMode) console.log('Using cached pivot data...');
     pivots = cachedData.pivots;
     candles = cachedData.metadata.candles || [];
   } else {
     // If no cache, fetch and process data
-    console.log('No cache found, fetching fresh data...');
+    if (!tradeConfig.performanceMode) console.log('No cache found, fetching fresh data...');
     candles = await fetchCandles(symbol, interval, limit, api, delay);
-    console.log(`Using delay of ${delay} intervals for historical data`);
-    console.log(`Fetched ${candles.length} candles (limit=${limit}).`);
+    if (!tradeConfig.performanceMode) {
+      console.log(`Using delay of ${delay} intervals for historical data`);
+      console.log(`Fetched ${candles.length} candles (limit=${limit}).`);
+    }
 
     if (!candles.length) {
       console.error('❌ No candles fetched. Exiting.');
@@ -166,6 +169,8 @@ const pivotConfig = {
           pnl,
           capitalBefore: currentCapital - capitalChange,
           capitalAfter: currentCapital,
+          maxFavorableExcursion: activeTrade.maxFavorableExcursion || 0,
+          maxAdverseExcursion: activeTrade.maxAdverseExcursion || 0,
           result: hitTakeProfit ? 'WIN' : 'LOSS'
         });
 
@@ -270,105 +275,107 @@ const pivotConfig = {
   }
 
  
-  console.log('\n— Trade Details —');
-
   if (trades.length) {
-    trades.forEach((trade, i) => {
-      const color = trade.result === 'WIN' ? COLOR_GREEN : COLOR_RED;
-      // Calculate raw price movement percentage
-      const rawPriceMove = trade.isLong
-        ? ((trade.exit - trade.entry) / trade.entry * 100)
-        : ((trade.entry - trade.exit) / trade.entry * 100);
+    // Show individual trade details if enabled
+    if (tradeConfig.showTradeDetails) {
+        console.log('\n— Trade Details —');
 
-      console.log(color +
-        `[TRADE ${i+1}] ${trade.isLong ? 'LONG' : 'SHORT'} | ` +
-        `Entry: ${trade.entry.toFixed(2)} | ` +
-        `Exit: ${trade.exit.toFixed(2)} | ` +
-        `Move: ${rawPriceMove.toFixed(2)}% | ` +
-        `P&L: ${trade.pnl.toFixed(2)}% | ` +
-        `Capital: $${trade.capitalBefore.toFixed(2)} → $${trade.capitalAfter.toFixed(2)} | ` +
-        `${trade.result}` +
-        COLOR_RESET
-      );
-      console.log(COLOR_YELLOW +
-        `  Max Favorable Excursion: +${trade.maxFavorableExcursion.toFixed(2)}%` +
-        `\n  Max Adverse Excursion: -${trade.maxAdverseExcursion.toFixed(2)}%` +
-        COLOR_RESET
-      );
-      console.log(COLOR_CYAN +
-        `  Order Time: ${formatDateTime(new Date(trade.orderTime))}` +
-        `\n  Entry Time: ${formatDateTime(new Date(trade.entryTime))}` +
-        `\n  Exit Time:  ${formatDateTime(new Date(trade.exitTime))}` +
-        `\n  Duration:   ${formatDuration((trade.exitTime - trade.entryTime) / (1000 * 60))}` +
-        COLOR_RESET
-      );
-    });
+        trades.forEach((trade, i) => {
+          const color = trade.result === 'WIN' ? COLOR_GREEN : COLOR_RED;
+          // Calculate raw price movement percentage
+          const rawPriceMove = trade.isLong
+            ? ((trade.exit - trade.entry) / trade.entry * 100)
+            : ((trade.entry - trade.exit) / trade.entry * 100);
 
-    // 5. Summary 
+          console.log(color +
+            `[TRADE ${i+1}] ${trade.isLong ? 'LONG' : 'SHORT'} | ` +
+            `Entry: ${trade.entry.toFixed(2)} | ` +
+            `Exit: ${trade.exit.toFixed(2)} | ` +
+            `Move: ${rawPriceMove.toFixed(2)}% | ` +
+            `P&L: ${trade.pnl.toFixed(2)}% | ` +
+            `Capital: $${trade.capitalBefore.toFixed(2)} → $${trade.capitalAfter.toFixed(2)} | ` +
+            `${trade.result}` +
+            COLOR_RESET
+          );
+          console.log(COLOR_YELLOW +
+            `  Max Favorable Excursion: +${trade.maxFavorableExcursion.toFixed(2)}%` +
+            `\n  Max Adverse Excursion: -${trade.maxAdverseExcursion.toFixed(2)}%` +
+            COLOR_RESET
+          );
+          console.log(COLOR_CYAN +
+            `  Order Time: ${formatDateTime(new Date(trade.orderTime))}` +
+            `\n  Entry Time: ${formatDateTime(new Date(trade.entryTime))}` +
+            `\n  Exit Time:  ${formatDateTime(new Date(trade.exitTime))}` +
+            `\n  Duration:   ${formatDuration((trade.exitTime - trade.entryTime) / (1000 * 60))}` +
+            COLOR_RESET
+          );
+        });
 
-    console.log('\n')
+        console.log('\n');
+    }
 
-    console.log( '\n— Final Summary —' );
-    
-    console.log(`Date Range: ${formatDateTime(startTime)} → ${formatDateTime(endTime)}`);
-    console.log(`Elapsed Time: ${formatDuration(elapsedMs / (1000 * 60))}`);
-    
-    console.log('');
-
-
-  // Calculate total pivot duration if we have pivots
-  if (pivots.length >= 2) {
-    const firstPivotTime = new Date(pivots[0].time);
-    const lastPivotTime = new Date(pivots[pivots.length - 1].time);
-    const totalPivotDuration = lastPivotTime - firstPivotTime;
-    console.log(   `Total Analysis Duration: ${formatDuration(totalPivotDuration / (1000 * 60))}` );
-  }
-  
-  
-  // Calculate total trade duration
-  const totalDuration = trades.reduce((sum, t) => {
-    const duration = new Date(t.exitTime) - new Date(t.entryTime);
-    return sum + duration;
-  }, 0);
-  console.log(`Total Trade Duration: ${formatDuration(totalDuration / (1000 * 60))}`);
-  
-  console.log(COLOR_CYAN + `Total Trades: ${trades.length}` + COLOR_RESET);
+    // Calculate all statistics regardless of display mode
     const wins = trades.filter(t => t.result === 'WIN').length;
     const winRate = (wins / trades.length * 100).toFixed(2);
     const totalPnL = trades.reduce((sum, t) => sum + t.pnl, 0).toFixed(2);
     const avgPnL = (totalPnL / trades.length).toFixed(2);
-
-    console.log('');
-
-    console.log(COLOR_GREEN + `Win Rate: ${winRate}% (${wins}/${trades.length})` + COLOR_RESET);
-    console.log(COLOR_RED + `Failed Trades: ${trades.length - wins}` + COLOR_RESET);
-    console.log(`Total P&L: ${totalPnL}%` );
-    console.log(`Average P&L per Trade: ${avgPnL}%` );
-
-    // Calculate favorable and adverse excursion statistics
-    const avgFavorable = trades.reduce((sum, t) => sum + t.maxFavorableExcursion, 0) / trades.length;
-    const avgAdverse = trades.reduce((sum, t) => sum + t.maxAdverseExcursion, 0) / trades.length;
-    const highestFavorable = Math.max(...trades.map(t => t.maxFavorableExcursion));
-    const lowestFavorable = Math.min(...trades.map(t => t.maxFavorableExcursion));
-    const highestAdverse = Math.max(...trades.map(t => t.maxAdverseExcursion));
-    const lowestAdverse = Math.min(...trades.map(t => t.maxAdverseExcursion));
-
-    console.log(COLOR_GREEN + '\nFavorable Excursion Analysis (Price Movement in Our Favor):' + COLOR_RESET);
-    console.log( `  Average Movement: +${avgFavorable.toFixed(2)}%` );
-    console.log( `  Highest Movement: +${highestFavorable.toFixed(2)}%` );
-    console.log( `  Lowest Movement: +${lowestFavorable.toFixed(2)}%` );
-
-    console.log(COLOR_RED + '\nAdverse Excursion Analysis (Price Movement Against Us):' + COLOR_RESET);
-    console.log( `  Average Movement: -${avgAdverse.toFixed(2)}%` );
-    console.log( `  Highest Movement: -${highestAdverse.toFixed(2)}%` );
-    console.log( `  Lowest Movement: -${lowestAdverse.toFixed(2)}%` );
-
-    console.log('');
-
     const capitalReturn = ((currentCapital/tradeConfig.initialCapital - 1)*100).toFixed(2);
-    console.log(COLOR_CYAN + `Starting Capital: $${tradeConfig.initialCapital}` + COLOR_RESET);
-    console.log(COLOR_CYAN + `Final Capital: $${currentCapital.toFixed(2)}` + COLOR_RESET);
-    console.log((capitalReturn >= 0 ? COLOR_GREEN : COLOR_RED) + `Total Return: ${capitalReturn}%` + COLOR_RESET);
+
+    if (!tradeConfig.performanceMode) {
+      console.log(COLOR_YELLOW + '\n— Final Summary —' + COLOR_RESET);
+      
+      console.log(`Date Range: ${formatDateTime(startTime)} → ${formatDateTime(endTime)}`);
+      console.log(`Elapsed Time: ${formatDuration(elapsedMs / (1000 * 60))}`);
+      
+      console.log('');
+
+      // Calculate total pivot duration if we have pivots
+      if (pivots.length >= 2) {
+        const firstPivotTime = new Date(pivots[0].time);
+        const lastPivotTime = new Date(pivots[pivots.length - 1].time);
+        const totalPivotDuration = lastPivotTime - firstPivotTime;
+        console.log(`Total Analysis Duration: ${formatDuration(totalPivotDuration / (1000 * 60))}`);
+      }
+      
+      // Calculate total trade duration
+      const totalDuration = trades.reduce((sum, t) => {
+        const duration = new Date(t.exitTime) - new Date(t.entryTime);
+        return sum + duration;
+      }, 0);
+      console.log(`Total Trade Duration: ${formatDuration(totalDuration / (1000 * 60))}`);
+      
+      console.log(COLOR_CYAN + `Total Trades: ${trades.length}` + COLOR_RESET);
+      console.log('');
+
+      console.log(COLOR_GREEN + `Win Rate: ${winRate}% (${wins}/${trades.length})` + COLOR_RESET);
+      console.log(COLOR_RED + `Failed Trades: ${trades.length - wins}` + COLOR_RESET);
+      console.log(`Total P&L: ${totalPnL}%`);
+      console.log(`Average P&L per Trade: ${avgPnL}%`);
+
+      // Calculate favorable and adverse excursion statistics
+      const avgFavorable = trades.reduce((sum, t) => sum + t.maxFavorableExcursion, 0) / trades.length;
+      const avgAdverse = trades.reduce((sum, t) => sum + t.maxAdverseExcursion, 0) / trades.length;
+      const highestFavorable = Math.max(...trades.map(t => t.maxFavorableExcursion));
+      const lowestFavorable = Math.min(...trades.map(t => t.maxFavorableExcursion));
+      const highestAdverse = Math.max(...trades.map(t => t.maxAdverseExcursion));
+      const lowestAdverse = Math.min(...trades.map(t => t.maxAdverseExcursion));
+
+      console.log(COLOR_GREEN + '\nFavorable Excursion Analysis (Price Movement in Our Favor):' + COLOR_RESET);
+      console.log(`  Average Movement: +${avgFavorable.toFixed(2)}%`);
+      console.log(`  Highest Movement: +${highestFavorable.toFixed(2)}%`);
+      console.log(`  Lowest Movement: +${lowestFavorable.toFixed(2)}%`);
+
+      console.log(COLOR_RED + '\nAdverse Excursion Analysis (Price Movement Against Us):' + COLOR_RESET);
+      console.log(`  Average Movement: -${avgAdverse.toFixed(2)}%`);
+      console.log(`  Highest Movement: -${highestAdverse.toFixed(2)}%`);
+      console.log(`  Lowest Movement: -${lowestAdverse.toFixed(2)}%`);
+
+      console.log('');
+
+      console.log(COLOR_CYAN + `Starting Capital: $${tradeConfig.initialCapital}` + COLOR_RESET);
+      console.log(COLOR_CYAN + `Final Capital: $${currentCapital.toFixed(2)}` + COLOR_RESET);
+      console.log((capitalReturn >= 0 ? COLOR_GREEN : COLOR_RED) + `Total Return: ${capitalReturn}%` + COLOR_RESET);
+    }
 
     // Calculate additional statistics
     const winningTrades = trades.filter(t => t.result === 'WIN');
@@ -414,6 +421,8 @@ const pivotConfig = {
             value: t.capitalAfter
         })),
         stats: {
+            takeProfit: tradeConfig.takeProfit,
+            stopLoss: tradeConfig.stopLoss,
             totalTrades: trades.length,
             winRate: (winningTrades.length / trades.length * 100).toFixed(2),
             avgDuration: `${avgDuration} minutes`,
@@ -427,14 +436,42 @@ const pivotConfig = {
         }
     };
 
-    // Write chart data to JSON file
-    const chartDir = path.join(__dirname, 'charts');
-    const dataPath = path.join(chartDir, 'backtest_data.json');
+    // Only save files if enabled in config
+    if (tradeConfig.saveToFile) {
+        // Create charts directory if it doesn't exist
+        const dataDir = path.join(__dirname, 'data');
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
 
-    fs.writeFileSync(dataPath, JSON.stringify(chartData, null, 2));
-    console.log('\nBacktest data saved to: charts/backtest_data.json');
+        // Calculate excursion statistics
+        const avgFavorable = trades.reduce((sum, t) => sum + t.maxFavorableExcursion, 0) / trades.length;
+        const highestFavorable = Math.max(...trades.map(t => t.maxFavorableExcursion));
+        const lowestFavorable = Math.min(...trades.map(t => t.maxFavorableExcursion));
+        
+        const avgAdverse = trades.reduce((sum, t) => sum + t.maxAdverseExcursion, 0) / trades.length;
+        const highestAdverse = Math.max(...trades.map(t => t.maxAdverseExcursion));
+        const lowestAdverse = Math.min(...trades.map(t => t.maxAdverseExcursion));
+
+        // Write chart data to JSON file
+        const jsonPath = path.join(dataDir, 'backtest_data.json');
+        fs.writeFileSync(jsonPath, JSON.stringify(chartData, null, 2));
+        console.log('\nBacktest data saved to: data/backtest_data.json');
+
+        // Write summary to CSV
+        const csvPath = path.join(dataDir, 'backtest_summary.csv');
+        const csvHeader = 'take_profit,stop_loss,total_trades,win_rate,failed_trades,total_pnl,avg_pnl,avg_favorable_excursion,highest_favorable,lowest_favorable,avg_adverse_excursion,highest_adverse,lowest_adverse,final_capital,total_return\n';
+        const csvData = `${tradeConfig.takeProfit},${tradeConfig.stopLoss},${trades.length},${winRate},${trades.length - wins},${totalPnL},${avgPnL},${avgFavorable.toFixed(2)},${highestFavorable.toFixed(2)},${lowestFavorable.toFixed(2)},${avgAdverse.toFixed(2)},${highestAdverse.toFixed(2)},${lowestAdverse.toFixed(2)},${currentCapital.toFixed(2)},${capitalReturn}\n`;
+        
+        fs.writeFileSync(csvPath, csvHeader + csvData);
+        console.log('Summary data saved to: data/backtest_summary.csv');
+    }
 
     console.log('');
-    console.log('✅ Done.');
+    if (tradeConfig.performanceMode) {
+      console.log('Done');
+    } else {
+      console.log('✅ Done.');
+    }
   }
 })();

@@ -21,8 +21,18 @@ export const tradeConfig = {
     orderDistancePct: 50,     // Percentage of average move to use for order placement (50 = half the distance)
     cancelThresholdPct: 100,   // Percentage of average swing to use for order cancellation (100 = same as average)
 
-    // showPivot: true,
-    // showLimits: true,
+    // Display settings
+    showPivot: false,
+    showLimits: false,
+    showTradeDetails: true,
+    
+    // Export settings
+    saveToFile: true,  // Set to false to disable JSON and CSV exports
+    
 
+
+
+    performanceMode: false,  // Set to true to disable all console output except completion status
+    // Trade settings
     enterAll: false,
 };
