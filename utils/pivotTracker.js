@@ -42,9 +42,9 @@ export default class PivotTracker {
     // First-ever initialization
     if (this.pivotPrice === null) {
       this.pivotPrice   = price;
-      this.pivotTime    = time;
+      this.pivotTime    = time; // Already in seconds
       this.extremePrice = price;
-      this.extremeTime  = time;
+      this.extremeTime  = time; // Already in seconds
       return null;
     }
 
@@ -58,11 +58,11 @@ export default class PivotTracker {
       if (upMove >= this.swingThreshold) {
         this.direction    = 'up';
         this.extremePrice = high;
-        this.extremeTime  = time;
+        this.extremeTime  = time; // Already in seconds
       } else if (downMove >= this.swingThreshold) {
         this.direction    = 'down';
         this.extremePrice = low;
-        this.extremeTime  = time;
+        this.extremeTime  = time; // Already in seconds
       }
       return null;
     }
@@ -71,7 +71,7 @@ export default class PivotTracker {
     if (this.direction === 'up') {
       if (high > this.extremePrice) {
         this.extremePrice = high;
-        this.extremeTime  = time;
+        this.extremeTime  = time; // Already in seconds
       }
       // measure pullback
       const reference = this.confirmOnClose ? price : low;
@@ -85,7 +85,7 @@ export default class PivotTracker {
       // direction === 'down'
       if (low < this.extremePrice) {
         this.extremePrice = low;
-        this.extremeTime  = time;
+        this.extremeTime  = time; // Already in seconds
       }
       // measure bounce
       const reference = this.confirmOnClose ? price : high;

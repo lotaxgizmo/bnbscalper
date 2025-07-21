@@ -69,6 +69,20 @@ export function parseIntervalMs(interval) {
 
 // Format Date to "Day YYYY-MM-DD hh:mm:ss AM/PM"
 export function formatDateTime(dt) {
+  // Handle timestamps that are already in milliseconds
+  if (typeof dt === 'number') {
+    dt = new Date(dt); // Already in milliseconds
+  } else if (typeof dt === 'string') {
+    dt = new Date(parseInt(dt)); // Already in milliseconds
+  } else if (!(dt instanceof Date)) {
+    return 'Invalid Date';
+  }
+  
+  // Ensure we have a valid date
+  if (isNaN(dt.getTime())) {
+    return 'Invalid Date';
+  }
+  
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const pad = n=>n.toString().padStart(2,'0');
   const dayName = days[dt.getDay()];
