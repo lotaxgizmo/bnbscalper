@@ -9,6 +9,8 @@ export class ConsoleLogger {
     this.performanceMode = config.performanceMode || false;
     this.showPivot = config.showPivot || false;
     this.showLimits = config.showLimits || false;
+    this.pivotPairCount = 0;
+    this.lastPivotType = null;
   }
 
   logInitialConfig(symbol, interval, api, tradeConfig) {
@@ -78,7 +80,18 @@ export class ConsoleLogger {
   logPivot(pivot, candle) {
     if (this.performanceMode || !this.showPivot) return;
     
-    const line = `[PIVOT] ${pivot.type.toUpperCase()} @ ${pivot.price.toFixed(2)} | ` +
+    // Increment pair count when we see a new high after a low or vice versa
+    if (this.lastPivotType !== pivot.type) {
+      if (pivot.type === 'high') this.pivotPairCount++;
+      this.lastPivotType = pivot.type;
+    }
+    
+    // Only show number for lows (start of pair)
+    const paddedNumber = pivot.type === 'low' ? String(Math.ceil(this.pivotPairCount)).padStart(3, ' ') : '   ';
+    const prefix = pivot.type === 'low' ? `${paddedNumber}.` : '    ';
+    // Pad LOW to match HIGH length
+    const pivotType = pivot.type.toUpperCase().padEnd(4, ' ');
+    const line = `${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
       `Time: ${formatDateTime(candle.time)} | ` +
       `Move: ${pivot.movePct.toFixed(2)}% | ` +
       `Bars: ${pivot.bars || 'N/A'}`;

@@ -22,9 +22,9 @@ export const tradeConfig = {
     cancelThresholdPct: 100,   // Percentage of average swing to use for order cancellation (100 = same as average)
 
     // Display settings
-    showPivot: false,
+    showPivot: true,
     showLimits: false,
-    showTradeDetails: true,
+    showTradeDetails: false,
     
     // Export settings
     saveToFile: true,  // Set to false to disable JSON and CSV exports

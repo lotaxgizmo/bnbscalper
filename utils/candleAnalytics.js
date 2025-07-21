@@ -85,7 +85,8 @@ export function formatDateTime(dt) {
   
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const pad = n=>n.toString().padStart(2,'0');
-  const dayName = days[dt.getDay()];
+  // Pad day name to match longest day (Wednesday - 9 chars)
+  const dayName = days[dt.getDay()].padEnd(9, ' ');
   let h = dt.getHours(), ampm = h >= 12 ? 'PM' : 'AM';
   h = h % 12 || 12;
   return `${dayName} ${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ` +

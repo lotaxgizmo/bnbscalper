@@ -1,5 +1,26 @@
 # Issues and Solutions Log
 
+## 8. Inefficient File Duplication Method
+**Issue**: When duplicating backtest.js to create backtestWithEdges.js, attempted to recreate the file piece by piece instead of doing a simple file copy, leading to errors and wasted time.
+
+**Fix**:
+Use direct file copy when duplicating files instead of manual recreation:
+```javascript
+// Bad approach:
+write_to_file('backtestWithEdges.js')  // Trying to recreate manually
+
+// Good approach:
+fs.copyFileSync('backtest.js', 'backtestWithEdges.js')  // Direct copy
+```
+
+**Benefits**:
+- Eliminates potential syntax errors
+- Saves time and effort
+- Maintains exact file structure
+- More efficient and reliable
+
+
+
 ## 7. Missing Limit Order Fill Logs
 **Issue**: While limit order creation and cancellation were logged, successful fills were not visible in the output.
 
