@@ -12,9 +12,11 @@ export class BacktestExporter {
     this.options = {
       saveJson: true,
       saveCsv: true,
-      outputDir: path.join(dirname(__dirname), 'data'),
+      outputDir: path.join(dirname(dirname(__dirname)), 'data'),
+      config: null,
       ...options
     };
+    this.config = this.options.config;
   }
 
   async saveBacktestData(results, stats) {

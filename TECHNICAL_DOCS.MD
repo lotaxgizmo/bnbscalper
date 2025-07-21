@@ -47,6 +47,23 @@ The console logging system has been modularized into a dedicated ConsoleLogger c
 - Shares pivot cache with main application
 - Maintains consistent styling and theming
 
+## Backtesting System
+
+## Parallel Processing
+The backtesting optimizer uses Node.js worker threads to parallelize optimization runs:
+
+1. Main Process (backtestOptimizer.js):
+   - Divides total iterations among 4 worker threads
+   - Distributes workload evenly
+   - Collects and combines results
+
+2. Worker Process (backtestWorker.js):
+   - Handles subset of optimization iterations
+   - Runs backtests independently
+   - Returns results to main process
+
+This parallel approach provides approximately 4x speedup over sequential processing.
+
 ## Performance Metrics
 
 The system tracks various performance metrics including:

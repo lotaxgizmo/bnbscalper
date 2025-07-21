@@ -115,12 +115,12 @@ export class ConsoleLogger {
     
     // Excursion Analysis
     console.log(COLOR_GREEN + 'Favorable Excursion Analysis (Price Movement in Our Favor):' + COLOR_RESET);
-    console.log(`  Average Movement: +${statistics.excursions.avgMFE.toFixed(2)}%`);
-    console.log(`  Highest Movement: +${statistics.excursions.maxMFE.toFixed(2)}%`);
+    console.log(`  Average Movement: +${statistics.excursions.avgFavorable.toFixed(2)}%`);
+    console.log(`  Highest Movement: +${statistics.excursions.highestFavorable.toFixed(2)}%`);
 
     console.log(COLOR_RED + '\nAdverse Excursion Analysis (Price Movement Against Us):' + COLOR_RESET);
-    console.log(`  Average Movement: -${statistics.excursions.avgMAE.toFixed(2)}%`);
-    console.log(`  Highest Movement: -${statistics.excursions.maxMAE.toFixed(2)}%`);
+    console.log(`  Average Movement: -${statistics.excursions.avgAdverse.toFixed(2)}%`);
+    console.log(`  Highest Movement: -${statistics.excursions.highestAdverse.toFixed(2)}%`);
 
     console.log('-'.repeat(80) + '\n');
     

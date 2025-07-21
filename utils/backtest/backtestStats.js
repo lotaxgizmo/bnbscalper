@@ -31,15 +31,15 @@ export class BacktestStats {
 
     return {
       totalTrades: this.trades.length,
-      winRate,
+      winRate: Number(winRate.toFixed(2)),
       wins,
       losses: this.trades.length - wins,
-      totalPnL,
-      avgPnL,
-      highestWinPnL,
-      lowestWinPnL,
-      highestLossPnL,
-      lowestLossPnL
+      totalPnL: Number(totalPnL.toFixed(2)),
+      avgPnL: Number(avgPnL.toFixed(2)),
+      highestWinPnL: Number(highestWinPnL.toFixed(2)),
+      lowestWinPnL: Number(lowestWinPnL.toFixed(2)),
+      highestLossPnL: Number(highestLossPnL.toFixed(2)),
+      lowestLossPnL: Number(lowestLossPnL.toFixed(2))
     };
   }
 
@@ -74,10 +74,12 @@ export class BacktestStats {
     const maxMAE = Math.max(...this.trades.map(t => t.maxAdverseExcursion));
 
     return {
-      avgMFE,
-      avgMAE,
-      maxMFE,
-      maxMAE
+      avgFavorable: Number(avgMFE.toFixed(2)),
+      highestFavorable: Number(maxMFE.toFixed(2)),
+      lowestFavorable: Number(Math.min(...this.trades.map(t => t.maxFavorableExcursion)).toFixed(2)),
+      avgAdverse: Number(avgMAE.toFixed(2)),
+      highestAdverse: Number(maxMAE.toFixed(2)),
+      lowestAdverse: Number(Math.min(...this.trades.map(t => t.maxAdverseExcursion)).toFixed(2))
     };
   }
 
@@ -96,10 +98,10 @@ export class BacktestStats {
     });
 
     return {
-      initialCapital,
-      finalCapital,
-      totalReturn,
-      maxDrawdown
+      initialCapital: Number(initialCapital.toFixed(2)),
+      finalCapital: Number(finalCapital.toFixed(2)),
+      totalReturn: Number(totalReturn.toFixed(2)),
+      maxDrawdown: Number(maxDrawdown.toFixed(2))
     };
   }
 }

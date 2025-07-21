@@ -62,8 +62,9 @@ const pivotConfig = {
   const engine = new BacktestEngine(pivotConfig, tradeConfig);
   const exporter = new BacktestExporter({
     saveJson: tradeConfig.saveToFile,
-    saveCsv: tradeConfig.saveToFile
-  });
+    saveCsv: tradeConfig.saveToFile,
+    config: tradeConfig
+  }, { config: tradeConfig });
 
   // Run backtest
   const results = await engine.runBacktest(candles);

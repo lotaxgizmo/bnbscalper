@@ -1,14 +1,14 @@
 // Trade configuration for backtesting
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell')
-    direction: 'sell',
+    direction: 'buy',
 
     // Profit and loss settings (in %)
     takeProfit: 0.1,    // Take profit at 0.2%
     stopLoss: 15,      // Stop loss at 0.1%
 
     // Leverage multiplier
-    leverage: 7,        // 1x leverage (spot trading)
+    leverage: 8,        // 1x leverage (spot trading)
 
     // Trading fees
     totalMakerFee: 0.04, // 0.04% maker fee
