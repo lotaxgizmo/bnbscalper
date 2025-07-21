@@ -24,6 +24,11 @@ You can now configure the chart's timeframe in `config.js`:
 - Shared data processing between analysis and trading
 - Consistent calculations and formatting
 - Reliable pivot detection across all components
+- Detailed P&L analysis including:
+  * Highest and lowest winning trade P&L
+  * Highest and lowest losing trade P&L
+  * Exported to JSON and CSV summary files
+  * Helps identify best and worst trade performance
 
 
 ### 1. Real-Time Price Tracking

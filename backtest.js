@@ -321,6 +321,16 @@ const pivotConfig = {
     const avgPnL = (totalPnL / trades.length).toFixed(2);
     const capitalReturn = ((currentCapital/tradeConfig.initialCapital - 1)*100).toFixed(2);
 
+    // Calculate P&L statistics
+    const winningTrades = trades.filter(t => t.result === 'WIN');
+    const losingTrades = trades.filter(t => t.result === 'LOSS');
+    
+    // Calculate highest and lowest P&L for winning and losing trades
+    const highestWinPnL = winningTrades.length ? Math.max(...winningTrades.map(t => t.pnl)) : 0;
+    const lowestWinPnL = winningTrades.length ? Math.min(...winningTrades.map(t => t.pnl)) : 0;
+    const highestLossPnL = losingTrades.length ? Math.max(...losingTrades.map(t => t.pnl)) : 0;
+    const lowestLossPnL = losingTrades.length ? Math.min(...losingTrades.map(t => t.pnl)) : 0;
+
     if (!tradeConfig.performanceMode) {
       console.log(COLOR_YELLOW + '\n— Final Summary —' + COLOR_RESET);
       
@@ -352,6 +362,14 @@ const pivotConfig = {
       console.log(`Total P&L: ${totalPnL}%`);
       console.log(`Average P&L per Trade: ${avgPnL}%`);
 
+      console.log(COLOR_GREEN + '\nWinning Trades P&L Analysis:' + COLOR_RESET);
+      console.log(`  Highest Win: +${highestWinPnL.toFixed(2)}%`);
+      console.log(`  Lowest Win: +${lowestWinPnL.toFixed(2)}%`);
+
+      console.log(COLOR_RED + '\nLosing Trades P&L Analysis:' + COLOR_RESET);
+      console.log(`  Highest Loss: ${highestLossPnL.toFixed(2)}%`);
+      console.log(`  Lowest Loss: ${lowestLossPnL.toFixed(2)}%`);
+
       // Calculate favorable and adverse excursion statistics
       const avgFavorable = trades.reduce((sum, t) => sum + t.maxFavorableExcursion, 0) / trades.length;
       const avgAdverse = trades.reduce((sum, t) => sum + t.maxAdverseExcursion, 0) / trades.length;
@@ -378,7 +396,6 @@ const pivotConfig = {
     }
 
     // Calculate additional statistics
-    const winningTrades = trades.filter(t => t.result === 'WIN');
     const avgDuration = Math.round(trades.reduce((sum, t) => sum + (t.exitTime - t.entryTime)/(1000*60), 0) / trades.length);
     const bestTrade = Math.max(...trades.map(t => t.pnl));
     const worstTrade = Math.min(...trades.map(t => t.pnl));
@@ -401,6 +418,10 @@ const pivotConfig = {
     // Prepare chart data
     const chartData = {
         trades: trades.map(t => ({
+            highestWinPnL,
+            lowestWinPnL,
+            highestLossPnL,
+            lowestLossPnL,
             entry: t.entry,
             exit: t.exit,
             entryTime: t.entryTime,
@@ -428,6 +449,10 @@ const pivotConfig = {
             avgDuration: `${avgDuration} minutes`,
             bestTrade: bestTrade.toFixed(2),
             worstTrade: worstTrade.toFixed(2),
+            highestWinPnL: highestWinPnL.toFixed(2),
+            lowestWinPnL: lowestWinPnL.toFixed(2),
+            highestLossPnL: highestLossPnL.toFixed(2),
+            lowestLossPnL: lowestLossPnL.toFixed(2),
             startingCapital: tradeConfig.initialCapital.toFixed(2),
             finalCapital: currentCapital.toFixed(2),
             totalReturn: ((currentCapital/tradeConfig.initialCapital - 1)*100).toFixed(2),
@@ -460,8 +485,8 @@ const pivotConfig = {
 
         // Write summary to CSV
         const csvPath = path.join(dataDir, 'backtest_summary.csv');
-        const csvHeader = 'take_profit,stop_loss,total_trades,win_rate,failed_trades,total_pnl,avg_pnl,avg_favorable_excursion,highest_favorable,lowest_favorable,avg_adverse_excursion,highest_adverse,lowest_adverse,final_capital,total_return\n';
-        const csvData = `${tradeConfig.takeProfit},${tradeConfig.stopLoss},${trades.length},${winRate},${trades.length - wins},${totalPnL},${avgPnL},${avgFavorable.toFixed(2)},${highestFavorable.toFixed(2)},${lowestFavorable.toFixed(2)},${avgAdverse.toFixed(2)},${highestAdverse.toFixed(2)},${lowestAdverse.toFixed(2)},${currentCapital.toFixed(2)},${capitalReturn}\n`;
+        const csvHeader = 'take_profit,stop_loss,total_trades,win_rate,failed_trades,total_pnl,avg_pnl,highest_win_pnl,lowest_win_pnl,highest_loss_pnl,lowest_loss_pnl,avg_favorable_excursion,highest_favorable,lowest_favorable,avg_adverse_excursion,highest_adverse,lowest_adverse,final_capital,total_return\n';
+        const csvData = `${tradeConfig.takeProfit},${tradeConfig.stopLoss},${trades.length},${winRate},${trades.length - wins},${totalPnL},${avgPnL},${highestWinPnL.toFixed(2)},${lowestWinPnL.toFixed(2)},${highestLossPnL.toFixed(2)},${lowestLossPnL.toFixed(2)},${avgFavorable.toFixed(2)},${highestFavorable.toFixed(2)},${lowestFavorable.toFixed(2)},${avgAdverse.toFixed(2)},${highestAdverse.toFixed(2)},${lowestAdverse.toFixed(2)},${currentCapital.toFixed(2)},${capitalReturn}\n`;
         
         fs.writeFileSync(csvPath, csvHeader + csvData);
         console.log('Summary data saved to: data/backtest_summary.csv');

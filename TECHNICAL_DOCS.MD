@@ -21,3 +21,17 @@
 - Uses same configuration as backtest system
 - Shares pivot cache with main application
 - Maintains consistent styling and theming
+
+## Performance Metrics
+
+The system tracks various performance metrics including:
+
+- Trade success rates and win/loss ratios
+- P&L calculations with leverage and fees
+  * Highest and lowest winning trade P&L values
+  * Highest and lowest losing trade P&L values
+- Capital changes and returns
+- Favorable and adverse price excursions
+- Trade durations and timing
+- Data exported to JSON and displayed in console output
+- Helps identify trade performance extremes
