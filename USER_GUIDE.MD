@@ -1,5 +1,34 @@
 # User Guide
 
+## Console Output
+
+The application provides detailed console output during backtesting:
+
+### Initial Setup
+- Strategy configuration display
+- Data source information (API or cache)
+- Candle fetch statistics
+
+### Trade Details
+When `showTradeDetails` is enabled in config:
+- Entry and exit prices
+- Raw price movement and P&L
+- Capital changes
+- Maximum favorable/adverse excursions
+- Trade timing and duration
+
+### Final Summary
+- Date range and elapsed time
+- Total trade count and win rate
+- Overall P&L statistics
+- Capital growth analysis
+- Excursion analysis
+
+### Performance Mode
+- Set `performanceMode: true` in config to disable detailed console output
+- Useful for running multiple backtests quickly
+- Only critical errors will be displayed
+
 ## Viewing Backtest Results
 
 ### Chart Interface

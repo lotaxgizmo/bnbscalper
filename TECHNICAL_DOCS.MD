@@ -1,5 +1,30 @@
 # Technical Documentation
 
+## Console Logger System
+
+### Overview
+The console logging system has been modularized into a dedicated ConsoleLogger class that handles all output formatting and display logic. This separation improves code organization and maintainability.
+
+### Components
+
+#### ConsoleLogger Class (utils/backtest/consoleLogger.js)
+- Handles all console output formatting
+- Configurable through performance mode
+- Methods:
+  * logInitialConfig: Display initial trade settings
+  * logCacheStatus: Show pivot cache status
+  * logFetchDetails: Display candle fetch information
+  * logTradeDetails: Format and show individual trade results
+  * logFinalSummary: Display comprehensive backtest results
+  * logExportStatus: Confirm data export completion
+  * logError: Format and display error messages
+
+### Integration
+- Used by backtest.js for all console output
+- Respects performance mode settings
+- Maintains consistent color coding and formatting
+- Centralizes all output string templates
+
 ## Chart System
 
 ### Backtest Chart (charts/backtest_chart.html)

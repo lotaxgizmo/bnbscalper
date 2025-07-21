@@ -6,4 +6,6 @@
 
 - If i am doing something wrong, you can tell me, be critical and focus on efficiency, advice me, I will ultimately tell you my decision.
 
+- If you come accross any issues and solve them, put them in an issue.md file, that way, you dont come across them again, so read the issues file anytime you want to make a change to the code, same as the tech docs and user guide.
 
+- Now if you are editing the issues file, show the issue exactly, dont be vague, show the fix itself, the snippet of code. That way, future llms can see exactly.

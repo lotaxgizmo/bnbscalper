@@ -1,6 +1,6 @@
 // backtestEngine.js
-import PivotTracker from './pivotTracker.js';
-import { colors } from './formatters.js';
+import PivotTracker from '../pivotTracker.js';
+import { colors } from '../formatters.js';
 
 export class BacktestEngine {
   constructor(config, tradeConfig) {
