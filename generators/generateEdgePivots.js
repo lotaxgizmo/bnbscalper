@@ -87,6 +87,15 @@ function calculateEdgePosition(currentPrice, candles, timeframe, edges, timefram
         (position / edges[timeframe].max) * 100 : 
         (position / edges[timeframe].min) * 100;
     
+    console.log(`${timeframe} edge data:`, {
+        startPrice,
+        currentPrice: currentPrice.close,
+        change,
+        position,
+        percentToEdge,
+        edges: edges[timeframe]
+    });
+    
     return {
         max: edges[timeframe].max,
         min: edges[timeframe].min,
@@ -158,6 +167,7 @@ async function generateEdgePivots() {
                     biweekly: calculateEdgePosition(candle, candles, 'biweekly', edges, timeframeDurations.biweekly),
                     monthly: calculateEdgePosition(candle, candles, 'monthly', edges, timeframeDurations.monthly)
                 };
+                console.log('Edge data:', pivot.edges);
                 pivots.push(pivot);
             }
         }

@@ -23,9 +23,32 @@ The console logging system has been modularized into a dedicated ConsoleLogger c
 
 ### Integration
 - Used by backtest.js for all console output
+- Extended by EdgeConsoleLogger for edge-enhanced backtesting
 - Respects performance mode settings
 - Maintains consistent color coding and formatting
 - Centralizes all output string templates
+
+### Edge-Enhanced Backtesting
+
+#### EdgeConsoleLogger Class (utils/backtest/edgeConsoleLogger.js)
+- Extends ConsoleLogger with edge proximity data display
+- Shows edge percentages for daily, weekly, and monthly timeframes
+- Format: `D:+1.8%(U) W:-1.4%(L) M:+2.1%(U)`
+  * D/W/M: Daily/Weekly/Monthly timeframe
+  * +/-: Position relative to edge
+  * %: Percentage to edge
+  * U/L: Upper/Lower edge
+
+#### Edge Data Flow
+1. generateEdgePivots.js calculates edge data for all timeframes
+2. backtestWithEdges.js loads edge-enhanced pivot cache
+3. PivotTracker preserves edge data during pivot detection
+4. EdgeConsoleLogger formats and displays edge proximity
+
+#### Integration Points
+- Uses same pivot cache system as regular backtest
+- Maintains backward compatibility through class extension
+- Edge data preserved throughout backtest pipeline
 
 ## Chart System
 

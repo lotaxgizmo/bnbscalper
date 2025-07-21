@@ -36,17 +36,26 @@ export default class PivotTracker {
     this.downSwingsLong    = [];
   }
 
+  loadPivots(pivots) {
+    // Replace internal pivot array with pre-calculated pivots
+    this.pivots = pivots;
+  }
+
   update(candle) {
     const { high, low, close: price, time } = candle;
 
     // First-ever initialization
     if (this.pivotPrice === null) {
       this.pivotPrice   = price;
-      this.pivotTime    = time; // Already in seconds
+      this.pivotTime    = time;
       this.extremePrice = price;
-      this.extremeTime  = time; // Already in seconds
+      this.extremeTime  = time;
+      this.direction    = null;
       return null;
     }
+
+    // Find matching pivot in loaded data
+    const loadedPivot = this.pivots.find(p => p.time === time && Math.abs(p.price - price) < 0.01);
 
     // Count candle in this leg
     this.legBars++;
@@ -103,6 +112,9 @@ export default class PivotTracker {
     // Calculate swing percentage
     const movePct = Math.abs((this.extremePrice - this.pivotPrice) / this.pivotPrice);
 
+    // Find matching pivot in loaded data
+    const loadedPivot = this.pivots.find(p => p.time === this.extremeTime && Math.abs(p.price - this.extremePrice) < 0.01);
+
     // Create pivot point with all necessary properties
     const pivot = {
       type,
@@ -111,7 +123,8 @@ export default class PivotTracker {
       previousPrice: this.pivotPrice,
       previousTime: this.pivotTime,
       movePct,
-      bars: this.legBars
+      bars: this.legBars,
+      edges: loadedPivot?.edges // Preserve edge data if found
     };
 
     // Record swing data

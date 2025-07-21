@@ -18,7 +18,7 @@ import { savePivotData, loadPivotData } from './utils/pivotCache.js';
 import { BacktestEngine } from './utils/backtest/backtestEngine.js';
 import { BacktestStats } from './utils/backtest/backtestStats.js';
 import { BacktestExporter } from './utils/backtest/backtestExporter.js';
-import { ConsoleLogger } from './utils/backtest/consoleLogger.js';
+import { EdgeConsoleLogger } from './utils/backtest/edgeConsoleLogger.js';
 
 // Configuration for pivot detection
 const pivotConfig = {
@@ -31,7 +31,7 @@ const pivotConfig = {
 
 (async () => {
   // Initialize logger
-  const logger = new ConsoleLogger(tradeConfig);
+  const logger = new EdgeConsoleLogger(tradeConfig);
   
   // Log initial configuration
   logger.logInitialConfig(symbol, interval, api, tradeConfig);
@@ -39,18 +39,22 @@ const pivotConfig = {
   // Try to load cached pivot data first
   const cachedData = loadPivotData(symbol, interval, pivotConfig);
 
-  let candles;
-  if (cachedData) {
+  let candles, pivots;
+  if (cachedData && cachedData.metadata.edgeAnalysis) {
     logger.logCacheStatus(true);
     candles = cachedData.metadata.candles || [];
+    pivots = cachedData.pivots || [];
   } else {
-    // If no cache, log error and exit
-    logger.logError('No cached pivot data found. Please run generatePivotData.js first.');
+    // If no edge-enhanced cache, log error and exit
+    logger.logError('No edge-enhanced pivot data found. Please run generateEdgePivots.js first.');
     process.exit(1);
   }
 
   // Initialize components
   const engine = new BacktestEngine(pivotConfig, tradeConfig, logger);
+  
+  // Pre-load the edge-enhanced pivots
+  engine.pivotTracker.loadPivots(pivots);
   const exporter = new BacktestExporter({
     saveJson: tradeConfig.saveToFile,
     saveCsv: tradeConfig.saveToFile,

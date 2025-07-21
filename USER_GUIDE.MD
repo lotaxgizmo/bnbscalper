@@ -38,6 +38,25 @@ When `showLimits` is enabled in config:
 - Capital growth analysis
 - Excursion analysis
 
+### Edge-Enhanced Backtesting
+
+#### Setup
+1. Run `node generators/generateEdgePivots.js` to calculate edge data
+2. Run `node backtestWithEdges.js` to backtest with edge analysis
+
+#### Edge Information
+For each pivot and limit order, you'll see edge proximity data:
+```
+D:+1.8%(U) W:-1.4%(L) M:+2.1%(U)
+```
+Where:
+- D/W/M: Daily/Weekly/Monthly timeframe
+- +/-: Position relative to edge
+- %: Percentage to edge
+- U/L: Upper/Lower edge
+
+This helps identify trades near significant market edges across multiple timeframes.
+
 ### Performance Mode
 - Set `performanceMode: true` in config to disable detailed console output
 - Useful for running multiple backtests quickly

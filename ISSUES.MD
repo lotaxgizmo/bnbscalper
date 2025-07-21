@@ -1,5 +1,43 @@
 # Issues and Solutions Log
 
+## 9. Edge Data Loss in Limit Orders
+**Issue**: Edge data was being lost in limit orders due to a type/side mismatch in EdgeConsoleLogger.
+
+**Fix**:
+In edgeConsoleLogger.js, updated order property reference from 'side' to 'type':
+```javascript
+// Before (error):
+const line = `[ORDER] ${order.side.toUpperCase()} LIMIT @ ${order.price.toFixed(2)} | `
+
+// After (fixed):
+const line = `[ORDER] ${order.type.toUpperCase()} LIMIT @ ${order.price.toFixed(2)} | `
+```
+
+**Benefits**:
+- Consistent order type display
+- Edge data preserved in order logs
+- Improved debugging clarity
+
+## 10. Missing Move Percentage in Orders
+**Issue**: Orders lacked movePct property causing undefined values in edge-enhanced logs.
+
+**Fix**:
+In backtestEngine.js, added movePct calculation to order creation:
+```javascript
+const movePct = avgMove * this.tradeConfig.orderDistancePct/100;
+const order = {
+  type: isLong ? 'buy' : 'sell',
+  price: limitPrice,
+  // ... other properties
+  movePct
+};
+```
+
+**Benefits**:
+- Complete order information in logs
+- Accurate move percentage display
+- Better trade analysis capabilities
+
 ## 8. Inefficient File Duplication Method
 **Issue**: When duplicating backtest.js to create backtestWithEdges.js, attempted to recreate the file piece by piece instead of doing a simple file copy, leading to errors and wasted time.
 

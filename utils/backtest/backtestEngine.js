@@ -168,6 +168,7 @@ export class BacktestEngine {
     if (isBuySetup || isSellSetup) {
       const avgMove = this.pivotTracker.avgShort;
       
+
       if (avgMove > 0) {
         const isLong = this.tradeConfig.direction === 'buy';
         const limitPrice = isLong
@@ -179,12 +180,16 @@ export class BacktestEngine {
           return null;
         }
             
+        const movePct = avgMove * this.tradeConfig.orderDistancePct/100;
         const order = {
           type: isLong ? 'buy' : 'sell',
           price: limitPrice,
           time: pivot.time, // Already in milliseconds from PivotTracker
           isLong,
-          pivotPrice: pivot.price
+          pivotPrice: pivot.price,
+          edges: pivot.edges, // Pass edge data to order
+          referencePrice: pivot.price, // For edge logger
+          movePct
         };
 
         // Log limit order creation
