@@ -308,10 +308,127 @@
     },
     {
       "entry": 98418.563249527,
-      "exit": 113181.34773695604,
+      "exit": 108260.4195744797,
       "entryTime": 1750623720000,
-      "exitTime": 1752167340000,
-      "pnl": -120.31999999999996,
+      "exitTime": 1751198040000,
+      "pnl": -80.32000000000005,
+      "isLong": false,
+      "result": "LOSS"
+    },
+    {
+      "entry": 107064.84292439374,
+      "exit": 106957.77808146935,
+      "entryTime": 1751297340000,
+      "exitTime": 1751320380000,
+      "pnl": 0.47999999999995974,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 107168.09811738372,
+      "exit": 107060.93001926634,
+      "entryTime": 1751321040000,
+      "exitTime": 1751323680000,
+      "pnl": 0.48000000000000925,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 107270.84364907641,
+      "exit": 107163.57280542733,
+      "entryTime": 1751330820000,
+      "exitTime": 1751334720000,
+      "pnl": 0.4800000000000217,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 106877.99179364818,
+      "exit": 106771.11380185453,
+      "entryTime": 1751355060000,
+      "exitTime": 1751359080000,
+      "pnl": 0.4799999999999995,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 106557.0340780247,
+      "exit": 106450.47704394668,
+      "entryTime": 1751370540000,
+      "exitTime": 1751372400000,
+      "pnl": 0.4800000000000025,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 106608.29214054797,
+      "exit": 106501.68384840743,
+      "entryTime": 1751376660000,
+      "exitTime": 1751377140000,
+      "pnl": 0.4799999999999915,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 106528.1653949,
+      "exit": 106421.6372295051,
+      "entryTime": 1751377680000,
+      "exitTime": 1751380080000,
+      "pnl": 0.4800000000000448,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 106130.15546314445,
+      "exit": 106024.0253076813,
+      "entryTime": 1751386320000,
+      "exitTime": 1751386740000,
+      "pnl": 0.4800000000000418,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 106067.43736341601,
+      "exit": 105961.3699260526,
+      "entryTime": 1751390520000,
+      "exitTime": 1751393820000,
+      "pnl": 0.47999999999995563,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 105641.76228052191,
+      "exit": 105536.1205182414,
+      "entryTime": 1751397900000,
+      "exitTime": 1751398620000,
+      "pnl": 0.4799999999999594,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 105434.23975588511,
+      "exit": 105328.80551612923,
+      "entryTime": 1751401020000,
+      "exitTime": 1751411460000,
+      "pnl": 0.47999999999995663,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 105629.81629298537,
+      "exit": 105524.18647669238,
+      "entryTime": 1751414220000,
+      "exitTime": 1751416680000,
+      "pnl": 0.48000000000002624,
+      "isLong": false,
+      "result": "WIN"
+    },
+    {
+      "entry": 105363.74034554997,
+      "exit": 115900.11438010498,
+      "entryTime": 1751419200000,
+      "exitTime": 1752182340000,
+      "pnl": -80.32000000000004,
       "isLong": false,
       "result": "LOSS"
     },
@@ -632,20 +749,20 @@
     }
   ],
   "stats": {
-    "totalTrades": 70,
-    "winRate": 98.57,
-    "wins": 69,
-    "losses": 1,
-    "totalPnL": -87.2,
-    "avgPnL": -1.25,
+    "totalTrades": 83,
+    "winRate": 97.59,
+    "wins": 81,
+    "losses": 2,
+    "totalPnL": -121.76,
+    "avgPnL": -1.47,
     "highestWinPnL": "0.48",
     "lowestWinPnL": "0.48",
-    "highestLossPnL": "-120.32",
-    "lowestLossPnL": "-120.32",
-    "sharpeRatio": "-0.09",
+    "highestLossPnL": "-80.32",
+    "lowestLossPnL": "-80.32",
+    "sharpeRatio": "-0.12",
     "initialCapital": 100,
-    "finalCapital": -28.28,
-    "totalReturn": -128.28,
-    "maxDrawdown": 124.03
+    "finalCapital": 5.71,
+    "totalReturn": -94.29,
+    "maxDrawdown": 95.9
   }
 }

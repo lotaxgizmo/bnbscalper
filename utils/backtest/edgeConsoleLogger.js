@@ -154,7 +154,7 @@ export class EdgeConsoleLogger extends ConsoleLogger {
         `Move: ${rawPriceMove.toFixed(2)}% | ` +
         `P&L: ${trade.pnl.toFixed(2)}% | ` +
         `Capital: $${trade.capitalBefore.toFixed(2)} → $${trade.capitalAfter.toFixed(2)} | ` +
-        `${trade.result}` +
+        `${trade.result}` + `\n\n` +
         (trade.edges ? this.formatEdges(trade.edges) : '') +
         COLOR_RESET
       );

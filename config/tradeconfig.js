@@ -5,7 +5,7 @@ export const tradeConfig = {
 
     // Profit and loss settings (in %)
     takeProfit: 0.1,    // Take profit at 0.2%
-    stopLoss: 15,      // Stop loss at 0.1%
+    stopLoss: 10,      // Stop loss at 0.1%
 
     // Leverage multiplier
     leverage: 8,        // 1x leverage (spot trading)
@@ -22,8 +22,8 @@ export const tradeConfig = {
     cancelThresholdPct: 100,   // Percentage of average swing to use for order cancellation (100 = same as average)
 
     // Display settings
-    showPivot: true,
-    showLimits: true,
+    showPivot: false,
+    showLimits: false,
     showTradeDetails: true,
     
     // Export settings
