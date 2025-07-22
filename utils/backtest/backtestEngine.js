@@ -153,7 +153,8 @@ export class BacktestEngine {
         entry: price,
         entryTime: candle.time, // Already in seconds
         isLong,
-        orderTime: order.time // Already in milliseconds from handlePivotSignal
+        orderTime: order.time, // Already in milliseconds from handlePivotSignal
+        edges: order.edges // Pass edge data to trade
       };
       return { cancelled: false, filled: true, trade };
     }

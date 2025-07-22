@@ -115,17 +115,16 @@ export class ConsoleLogger {
   logLimitOrderCreation(order, pivot, avgMove) {
     if (this.performanceMode || !this.showLimits) return;
 
-    console.log(COLOR_YELLOW + 
+    console.log( 
       `[ORDER] ${order.isLong ? 'BUY' : 'SELL'} LIMIT @ ${order.price.toFixed(2)} | ` +
-      `Reference: ${pivot.price.toFixed(2)} | Move: ${(avgMove * 100).toFixed(2)}%` +
-      COLOR_RESET
+      `Reference: ${pivot.price.toFixed(2)} | Move: ${(avgMove * 100).toFixed(2)}%` 
     );
   }
 
   logLimitOrderFill(order, candle) {
     if (this.performanceMode || !this.showLimits) return;
 
-    console.log(COLOR_GREEN + 
+    console.log(COLOR_CYAN + 
       `[ORDER] ${order.type.toUpperCase()} LIMIT FILLED @ ${order.price.toFixed(2)} | ` +
       `Current: ${candle.close.toFixed(2)} | ` +
       `Time: ${formatDateTime(candle.time)}` +

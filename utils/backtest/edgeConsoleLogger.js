@@ -1,6 +1,6 @@
 // edgeConsoleLogger.js
 import { ConsoleLogger } from './consoleLogger.js';
-import { colors } from '../formatters.js';
+import { colors, formatDuration } from '../formatters.js';
 import { formatDateTime } from '../candleAnalytics.js';
 
 const { reset: COLOR_RESET, red: COLOR_RED, green: COLOR_GREEN, yellow: COLOR_YELLOW, cyan: COLOR_CYAN } = colors;
@@ -68,9 +68,71 @@ export class EdgeConsoleLogger extends ConsoleLogger {
       this.formatEdges(order.edges);
 
     if (cancelReason) {
-      console.log(COLOR_YELLOW + line + ` | Cancelled: ${cancelReason}` + COLOR_RESET);
+      console.log( line + ` | Cancelled: ${cancelReason}`  );
     } else {
-      console.log(COLOR_CYAN + line + COLOR_RESET);
+      console.log( line );
+    }
+  }
+
+  logLimitOrderCreation(order, pivot, avgMove) {
+    if (this.performanceMode || !this.showLimits) return;
+
+    const line = `[ORDER] ${order.type.toUpperCase()} LIMIT @ ${order.price.toFixed(2)} | ` +
+      `Reference: ${order.referencePrice.toFixed(2)} | ` +
+      `Move: ${order.movePct.toFixed(2)}%` +
+      this.formatEdges(order.edges);
+
+    console.log(line);
+  }
+
+  logLimitOrderFill(order, candle) {
+    if (this.performanceMode || !this.showLimits) return;
+
+    const line = `[ORDER] ${order.type.toUpperCase()} LIMIT FILLED @ ${order.price.toFixed(2)} | ` +
+      `Current: ${candle.close.toFixed(2)} | ` +
+      `Time: ${formatDateTime(candle.time)}` +
+      this.formatEdges(order.edges);
+
+    console.log(COLOR_CYAN + line + COLOR_RESET);
+  }
+
+  logTradeDetails(trade, index) {
+    if (!this.performanceMode) {
+      console.log('\n' + '-'.repeat(80));
+
+      const color = trade.result === 'WIN' ? COLOR_GREEN : COLOR_RED;
+      const rawPriceMove = trade.isLong
+        ? ((trade.exit - trade.entry) / trade.entry * 100)
+        : ((trade.entry - trade.exit) / trade.entry * 100);
+
+      // Trade header
+      console.log(color + `[TRADE ${index+1}] ${trade.isLong ? 'LONG' : 'SHORT'} | ` +
+        `Entry: ${trade.entry.toFixed(2)} | ` +
+        `Exit: ${trade.exit.toFixed(2)} | ` +
+        `Move: ${rawPriceMove.toFixed(2)}% | ` +
+        `P&L: ${trade.pnl.toFixed(2)}% | ` +
+        `Capital: $${trade.capitalBefore.toFixed(2)} → $${trade.capitalAfter.toFixed(2)} | ` +
+        `${trade.result}` +
+        (trade.edges ? this.formatEdges(trade.edges) : '') +
+        COLOR_RESET
+      );
+
+      // Excursion analysis
+      console.log(COLOR_YELLOW +
+        `  Max Favorable: +${trade.maxFavorableExcursion.toFixed(2)}%\n` +
+        `  Max Adverse:   -${trade.maxAdverseExcursion.toFixed(2)}%` +
+        COLOR_RESET
+      );
+
+      // Timing details
+      console.log(COLOR_CYAN +
+        `  Order Time: ${formatDateTime(trade.orderTime)}\n` +
+        `  Entry Time: ${formatDateTime(trade.entryTime)}\n` +
+        `  Exit Time:  ${formatDateTime(trade.exitTime)}\n` +
+        `  Duration:   ${formatDuration(Math.floor((trade.exitTime - trade.entryTime) / (60 * 1000)))}` +
+        COLOR_RESET
+      );
+      console.log('-'.repeat(80));
     }
   }
 }

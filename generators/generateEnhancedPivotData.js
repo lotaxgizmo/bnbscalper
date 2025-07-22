@@ -177,7 +177,7 @@ function drawProgressBars(workerProgress, startTime) {
     output.push('');
 
     // Add progress bars
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= NUM_WORKERS; i++) {
         const progress = workerProgress[i] || 0;
         const progressBar = '='.repeat(progress / 2) + '>' + ' '.repeat(50 - progress / 2);
         output.push(`Worker ${i}: [${progressBar}] ${progress}%`);
@@ -212,7 +212,7 @@ async function generateEnhancedPivotData() {
     timerInterval = setInterval(() => {
         // Only clear and redraw if we have some progress to show
         if (Object.keys(workerProgress).length > 0) {
-            clearLines(6);
+            clearLines(NUM_WORKERS + 2); // +2 for timer and blank line
             drawProgressBars(workerProgress, globalStartTime);
         }
     }, 1000);
