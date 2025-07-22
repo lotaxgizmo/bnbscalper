@@ -8,6 +8,54 @@ process.env.USE_LOCAL_DATA = 'true';
 
 import { fetchCandles } from '../utils/candleAnalytics.js';
 
+// ANSI color codes
+const colors = {
+    daily: '\x1b[36m',    // Cyan
+    weekly: '\x1b[32m',   // Green
+    biweekly: '\x1b[33m', // Yellow
+    monthly: '\x1b[35m',  // Magenta
+    reset: '\x1b[0m'      // Reset
+};
+
+// Calculate average move for a given timeframe
+function calculateAverageMove(candles, endTime, periodMs, count) {
+    const moves = [];
+    
+    // Calculate for each period
+    for (let i = 1; i <= count; i++) {
+        const periodEnd = endTime - (i - 1) * periodMs;
+        const periodStart = periodEnd - periodMs;
+        const result = calculateMove(candles, periodStart, periodEnd);
+        if (result) {
+            moves.push(parseFloat(result.move));
+        }
+    }
+    
+    // Calculate average
+    const average = moves.reduce((a, b) => a + b, 0) / moves.length;
+    return average.toFixed(2);
+}
+
+// Calculate average daily move for a specific number of days
+function calculateAverageDailyMove(candles, endTime, days) {
+    return calculateAverageMove(candles, endTime, 24 * 60 * 60 * 1000, days);
+}
+
+// Calculate average weekly move for the past 4 weeks
+function calculateAverageWeeklyMove(candles, endTime) {
+    return calculateAverageMove(candles, endTime, 7 * 24 * 60 * 60 * 1000, 4);
+}
+
+// Calculate average biweekly move for the past 2 months
+function calculateAverageBiweeklyMove(candles, endTime) {
+    return calculateAverageMove(candles, endTime, 14 * 24 * 60 * 60 * 1000, 4);
+}
+
+// Calculate average monthly move for the past 3 months
+function calculateAverageMonthlyMove(candles, endTime) {
+    return calculateAverageMove(candles, endTime, 30 * 24 * 60 * 60 * 1000, 3);
+}
+
 // Calculate percentage move within a specific time window
 function calculateMove(candles, windowStart, windowEnd) {
     // Get candles within window using timestamps directly
@@ -67,6 +115,7 @@ async function calculateSimpleEdges() {
     const timeframes = {
         daily: 24 * 60 * 60 * 1000,      // Exactly 24 hours
         weekly: 7 * 24 * 60 * 60 * 1000,  // Exactly 7 days
+        biweekly: 14 * 24 * 60 * 60 * 1000, // Exactly 14 days
         monthly: 30 * 24 * 60 * 60 * 1000 // Exactly 30 days
     };
     
@@ -86,7 +135,7 @@ async function calculateSimpleEdges() {
         const hours = Math.floor(timeDiff / (1000 * 60 * 60));
         const days = Math.floor(hours / 24);
         
-        console.log(`\n${timeframe.toUpperCase()}:`);
+        console.log(`\n${colors[timeframe]}${timeframe.toUpperCase()}:${colors.reset}`);
         console.log(`Window: ${new Date(windowStart).toLocaleString()} to ${new Date(windowEnd).toLocaleString()}`);
         if (timeframe === 'daily') {
             console.log(`Time Frame: ${hours} hours`);
@@ -98,6 +147,30 @@ async function calculateSimpleEdges() {
         console.log(`Low: ${result.low} (${result.lowTime})`);
         console.log(`Current: ${result.current}`);
         console.log(`Move: ${result.move}% | Current: ${result.position}%`);
+        
+        // Show averages after daily and weekly calculations
+        if (timeframe === 'daily') {
+            const avg7d = calculateAverageDailyMove(allCandles, windowEnd, 7);
+            const avg14d = calculateAverageDailyMove(allCandles, windowEnd, 14);
+            const avg30d = calculateAverageDailyMove(allCandles, windowEnd, 30);
+            console.log(`${colors[timeframe]}Average Daily Moves:${colors.reset}`);
+            console.log(`${colors[timeframe]}• Past Week: ${avg7d}%${colors.reset}`);
+            console.log(`${colors[timeframe]}• Past 2 Weeks: ${avg14d}%${colors.reset}`);
+            console.log(`${colors[timeframe]}• Past Month: ${avg30d}%${colors.reset}`);
+            console.log('');
+        } else if (timeframe === 'weekly') {
+            const avgMove = calculateAverageWeeklyMove(allCandles, windowEnd);
+            console.log(`${colors[timeframe]}Average Weekly Move (4 weeks): ${avgMove}%${colors.reset}`);
+            console.log('');
+        } else if (timeframe === 'biweekly') {
+            const avgMove = calculateAverageBiweeklyMove(allCandles, windowEnd);
+            console.log(`${colors[timeframe]}Average Biweekly Move (2 months): ${avgMove}%${colors.reset}`);
+            console.log('');
+        } else if (timeframe === 'monthly') {
+            const avgMove = calculateAverageMonthlyMove(allCandles, windowEnd);
+            console.log(`${colors[timeframe]}Average Monthly Move (3 months): ${avgMove}%${colors.reset}`);
+            console.log('');
+        }
     }
 }
 
