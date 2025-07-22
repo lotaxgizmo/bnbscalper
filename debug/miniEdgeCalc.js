@@ -146,7 +146,12 @@ async function calculateSimpleEdges() {
         console.log(`High: ${result.high} (${result.highTime})`);
         console.log(`Low: ${result.low} (${result.lowTime})`);
         console.log(`Current: ${result.current}`);
-        console.log(`Move: ${result.move}% | Current: ${result.position}%`);
+        // Calculate direction based on recent movement
+        const recentCandles = allCandles.filter(c => c.time >= windowEnd - (60 * 60 * 1000) && c.time <= windowEnd);
+        const direction = recentCandles.length > 1 ? 
+            (recentCandles[recentCandles.length-1].close > recentCandles[0].close ? '+' : '-') : '';
+        
+        console.log(`Move: ${direction}${result.move}% | Current: ${direction}${result.position}%`);
         
         // Show averages after daily and weekly calculations
         if (timeframe === 'daily') {

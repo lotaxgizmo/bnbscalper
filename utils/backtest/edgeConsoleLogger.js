@@ -14,7 +14,12 @@ export class EdgeConsoleLogger extends ConsoleLogger {
       const type = t === 'D' ? 'daily' : t === 'W' ? 'weekly' : 'monthly';
       const edge = edges[type];
       if (!edge) return '';
-      return `${t}:${edge.position > 0 ? '+' : '-'}${edge.percentToEdge.toFixed(1)}%(${edge.direction[0].toUpperCase()})`;
+      
+      // Calculate distance to edge (high - current) / current * 100
+      const distanceToHigh = ((edge.high - edge.current) / edge.current) * 100;
+      const direction = distanceToHigh > 0 ? 'U' : 'D';
+      
+      return `${t}:${edge.position >= 0 ? '+' : '-'}${Math.abs(edge.position).toFixed(1)}%(${direction})`;
     }).filter(Boolean).join(' ');
   }
 

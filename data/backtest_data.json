@@ -1,119 +1,20 @@
 {
   "trades": [
     {
-      "entry": 107870.89555398001,
-      "exit": 107978.76644953397,
-      "entryTime": 1748073120000,
-      "exitTime": 1748076240000,
-      "pnl": 0.4799999999998688,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 108885.23069465376,
-      "exit": 108994.1159253484,
-      "entryTime": 1748107380000,
-      "exitTime": 1748108280000,
-      "pnl": 0.47999999999986614,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 108843.87538379301,
-      "exit": 108952.7192591768,
-      "entryTime": 1748120760000,
-      "exitTime": 1748213520000,
-      "pnl": 0.47999999999993076,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 109395.44708614076,
-      "exit": 109504.8425332269,
-      "entryTime": 1748221560000,
-      "exitTime": 1748223600000,
-      "pnl": 0.47999999999996085,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 109490.72224554271,
-      "exit": 109600.21296778825,
-      "entryTime": 1748224560000,
-      "exitTime": 1748224980000,
-      "pnl": 0.4799999999999565,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 109401.31691188466,
-      "exit": 109510.71822879653,
-      "entryTime": 1748236320000,
-      "exitTime": 1748236980000,
-      "pnl": 0.47999999999989146,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 109891.66864084684,
-      "exit": 110001.56030948767,
-      "entryTime": 1748243700000,
-      "exitTime": 1748244000000,
-      "pnl": 0.4799999999999051,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 109677.0761687071,
-      "exit": 109786.7532448758,
-      "entryTime": 1748253120000,
-      "exitTime": 1748254860000,
-      "pnl": 0.47999999999989734,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 109780.93830800058,
-      "exit": 109890.71924630857,
-      "entryTime": 1748265720000,
-      "exitTime": 1748266260000,
-      "pnl": 0.479999999999905,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 110082.2417128725,
-      "exit": 110192.32395458537,
-      "entryTime": 1748274240000,
-      "exitTime": 1748274720000,
-      "pnl": 0.4799999999999502,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 110147.97229781299,
-      "exit": 110258.12027011078,
-      "entryTime": 1748276040000,
-      "exitTime": 1748351400000,
-      "pnl": 0.47999999999988036,
-      "isLong": true,
-      "result": "WIN"
-    },
-    {
-      "entry": 110401.00278268945,
-      "exit": 110511.40378547212,
+      "entry": 110373.63692866314,
+      "exit": 110484.01056559179,
       "entryTime": 1748352240000,
       "exitTime": 1748352600000,
-      "pnl": 0.47999999999988413,
+      "pnl": 0.479999999999897,
       "isLong": true,
       "result": "WIN"
     },
     {
-      "entry": 110307.07186724839,
-      "exit": 110417.37893911563,
+      "entry": 110341.19250447206,
+      "exit": 110451.53369697652,
       "entryTime": 1748352900000,
-      "exitTime": 1748363940000,
-      "pnl": 0.47999999999993076,
+      "exitTime": 1748364480000,
+      "pnl": 0.4799999999999403,
       "isLong": true,
       "result": "WIN"
     },
@@ -452,20 +353,20 @@
     }
   ],
   "stats": {
-    "totalTrades": 50,
+    "totalTrades": 39,
     "winRate": 100,
-    "wins": 50,
+    "wins": 39,
     "losses": 0,
-    "totalPnL": 24,
+    "totalPnL": 18.72,
     "avgPnL": 0.48,
     "highestWinPnL": "0.48",
     "lowestWinPnL": "0.48",
     "highestLossPnL": "0.00",
     "lowestLossPnL": "0.00",
-    "sharpeRatio": "14788444785725.88",
+    "sharpeRatio": "14902422048048.71",
     "initialCapital": 100,
-    "finalCapital": 127.05,
-    "totalReturn": 27.05,
+    "finalCapital": 120.53,
+    "totalReturn": 20.53,
     "maxDrawdown": 0
   }
 }

@@ -1,4 +1,4 @@
-// backtest.js
+// backtestWithEdges.js - Enhanced version that uses edge-aware pivot data
 import {
   api,
   time as interval,
@@ -36,25 +36,45 @@ const pivotConfig = {
   // Log initial configuration
   logger.logInitialConfig(symbol, interval, api, tradeConfig);
 
-  // Try to load cached pivot data first
-  const cachedData = loadPivotData(symbol, interval, pivotConfig);
+  // Try to load enhanced pivot data
+  const cachedData = loadPivotData(symbol, interval + '_enhanced', pivotConfig);
 
   let candles, pivots;
-  if (cachedData && cachedData.metadata.edgeAnalysis) {
+  if (cachedData && cachedData.pivots && cachedData.pivots.length > 0 && cachedData.pivots[0].edges) {
     logger.logCacheStatus(true);
+    console.log('Found enhanced pivot data with edge analysis');
     candles = cachedData.metadata.candles || [];
     pivots = cachedData.pivots || [];
+    
+    // Log edge analysis summary
+    const lastPivot = pivots[pivots.length - 1];
+    console.log('\nLatest Edge Analysis:');
+    for (const [timeframe, data] of Object.entries(lastPivot.edges)) {
+      console.log(`\n${timeframe.toUpperCase()}:`);
+      console.log(`Current Move: ${data.move}% | Position: ${data.position}%`);
+      if (timeframe === 'daily' && data.averageMove) {
+        console.log('Average Moves:');
+        console.log(`• Past Week: ${data.averageMove.week}%`);
+        console.log(`• Past 2 Weeks: ${data.averageMove.twoWeeks}%`);
+        console.log(`• Past Month: ${data.averageMove.month}%`);
+      } else if (data.averageMove) {
+        console.log(`Average Move: ${data.averageMove}%`);
+      }
+    }
+    console.log('\n');
   } else {
-    // If no edge-enhanced cache, log error and exit
-    logger.logError('No edge-enhanced pivot data found. Please run generateEdgePivots.js first.');
+    // If no enhanced pivot data found, log error and exit
+    logger.logError('No enhanced pivot data found. Please run generateEnhancedPivotData.js first.');
     process.exit(1);
   }
 
   // Initialize components
   const engine = new BacktestEngine(pivotConfig, tradeConfig, logger);
   
-  // Pre-load the edge-enhanced pivots
+  // Pre-load the enhanced pivots with edge data
   engine.pivotTracker.loadPivots(pivots);
+  
+  // Configure exporter with edge analysis enabled
   const exporter = new BacktestExporter({
     saveJson: tradeConfig.saveToFile,
     saveCsv: tradeConfig.saveToFile,
