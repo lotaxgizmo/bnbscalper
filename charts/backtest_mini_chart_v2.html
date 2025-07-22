@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scalper Backtest Mini Chart</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-color: #f0f0f0;
+            --accent-color: #007bff;
+            --win-color: #4caf50;
+            --loss-color: #f44336;
+            --grid-color: #333333;
+            --border-color: #444444;
+        }
+        
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+        
+        h1, h2, h3 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .container {
+            width: 95%;
+            max-width: 1500px;
+            margin: 0 auto;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .win-rate {
+            color: var(--win-color);
+        }
+        
+        .loss-rate {
+            color: var(--loss-color);
+        }
+        
+        .capital-gain {
+            color: var(--accent-color);
+        }
+        
+        .capital-loss {
+            color: var(--loss-color);
+        }
+        
+        .chart-container {
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        .chart-wrapper {
+            position: relative;
+            height: 500px;
+            width: 100%;
+        }
+        
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        
+        .tab-button {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin: 0 5px;
+            border-radius: 5px;
+        }
+        
+        .tab-button:hover {
+            background-color: var(--accent-color);
+        }
+        
+        .tab-button.active {
+            background-color: var(--accent-color);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .trade-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 20px;
+        }
+        
+        .trade-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid var(--border-color);
+            transition: background-color 0.2s;
+        }
+        
+        .trade-item:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        
+        .win {
+            border-left: 3px solid var(--win-color);
+        }
+        
+        .loss {
+            border-left: 3px solid var(--loss-color);
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .trade-point {
+            border-radius: 50%;
+            width: 10px;
+            height: 10px;
+            cursor: pointer;
+        }
+
+        .win-point {
+            background-color: var(--win-color);
+        }
+
+        .loss-point {
+            background-color: var(--loss-color);
+        }
+
+        .entry-point {
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+            width: 12px;
+            height: 12px;
+        }
+        
+        .exit-point {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 18px;
+            color: var(--text-color);
+        }
+
+        /* Tooltip styles */
+        #tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            pointer-events: none;
+            z-index: 100;
+            font-size: 14px;
+            max-width: 250px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Scalper Backtest Results</h1>
+        
+        <div class="tabs">
+            <button class="tab-button active" data-tab="dashboard">Dashboard</button>
+            <button class="tab-button" data-tab="capital">Capital Chart</button>
+            <button class="tab-button" data-tab="trades">Trade List</button>
+            <button class="tab-button" data-tab="stats">Statistics</button>
+        </div>
+        
+        <div class="tab-content active" id="dashboard">
+            <div class="dashboard">
+                <div class="card">
+                    <h3>Win Rate</h3>
+                    <div class="stat-value win-rate" id="win-rate">--</div>
+                    <div id="win-loss-ratio">--</div>
+                </div>
+                <div class="card">
+                    <h3>Total PnL</h3>
+                    <div class="stat-value" id="total-pnl">--</div>
+                    <div id="avg-pnl">--</div>
+                </div>
+                <div class="card">
+                    <h3>Capital</h3>
+                    <div class="stat-value" id="final-capital">--</div>
+                    <div id="capital-return">--</div>
+                </div>
+                <div class="card">
+                    <h3>Trade Stats</h3>
+                    <div id="trade-count">--</div>
+                    <div id="max-drawdown">--</div>
+                    <div id="sharpe-ratio">--</div>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <h2>Performance Overview</h2>
+                <div class="chart-wrapper">
+                    <canvas id="dashboardChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="capital">
+            <div class="chart-container">
+                <h2>Capital Growth</h2>
+                <div class="chart-wrapper">
+                    <canvas id="capitalChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="trades">
+            <div class="chart-container">
+                <h2>Trade List</h2>
+                <div class="trade-list" id="trade-list">
+                    <div class="loading">Loading trade data...</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="stats">
+            <div class="chart-container">
+                <h2>Win/Loss Distribution</h2>
+                <div class="chart-wrapper">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <h2>Trade Performance Stats</h2>
+                <div class="dashboard">
+                    <div class="card">
+                        <h3>Win Trades</h3>
+                        <div class="stat-value" id="win-count">--</div>
+                        <div id="avg-win">--</div>
+                        <div id="best-win">--</div>
+                    </div>
+                    <div class="card">
+                        <h3>Loss Trades</h3>
+                        <div class="stat-value" id="loss-count">--</div>
+                        <div id="avg-loss">--</div>
+                        <div id="worst-loss">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="tooltip"></div>
+    
+    <footer>
+        Scalper Backtest Mini Chart &copy; 2025 | Last updated: July 22, 2025
+    </footer>
+
+    <script>
+        // Initialize charts
+        let dashboardChart, capitalChart, distributionChart;
+        let trades = [];
+        let stats = {};
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Tab switching logic
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const tabId = button.getAttribute('data-tab');
+                    
+                    // Deactivate all tabs
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    tabContents.forEach(content => content.classList.remove('active'));
+                    
+                    // Activate the selected tab
+                    button.classList.add('active');
+                    document.getElementById(tabId).classList.add('active');
+                });
+            });
+            
+            // Setup tooltips
+            const tooltip = document.getElementById('tooltip');
+            
+            function showTooltip(x, y, text) {
+                tooltip.innerHTML = text;
+                tooltip.style.left = x + 15 + 'px';
+                tooltip.style.top = y + 'px';
+                tooltip.style.opacity = 1;
+            }
+            
+            function hideTooltip() {
+                tooltip.style.opacity = 0;
+            }
+            
+            // Fetch backtest data
+            fetch('../data/backtest_data.json')
+                .then(response => response.json())
+                .then(data => {
+                    trades = data.trades || [];
+                    stats = data.stats || {};
+                    initializeData();
+                })
+                .catch(error => {
+                    console.error('Error loading backtest data:', error);
+                    document.querySelectorAll('.loading').forEach(el => {
+                        el.textContent = 'Error loading data. Please check console for details.';
+                    });
+                });
+                
+            function initializeData() {
+                // Update dashboard stats
+                updateDashboardStats();
+                
+                // Create charts
+                createDashboardChart();
+                createCapitalChart();
+                createDistributionChart();
+                
+                // Create trade list
+                createTradeList();
+            }
+            
+            function updateDashboardStats() {
+                document.getElementById('win-rate').textContent = `${stats.winRate}%`;
+                document.getElementById('win-loss-ratio').textContent = `${stats.wins} Wins / ${stats.losses} Losses`;
+                
+                const totalPnlEl = document.getElementById('total-pnl');
+                totalPnlEl.textContent = `${stats.totalPnL}%`;
+                totalPnlEl.className = stats.totalPnL >= 0 ? 'stat-value win-rate' : 'stat-value loss-rate';
+                
+                document.getElementById('avg-pnl').textContent = `Avg: ${stats.avgPnL}% per trade`;
+                
+                const finalCapitalEl = document.getElementById('final-capital');
+                finalCapitalEl.textContent = `$${stats.finalCapital.toFixed(2)}`;
+                finalCapitalEl.className = stats.totalReturn >= 0 ? 'stat-value capital-gain' : 'stat-value capital-loss';
+                
+                const returnEl = document.getElementById('capital-return');
+                returnEl.textContent = `${stats.totalReturn}% return`;
+                returnEl.className = stats.totalReturn >= 0 ? 'capital-gain' : 'capital-loss';
+                
+                document.getElementById('trade-count').textContent = `${stats.totalTrades} Total Trades`;
+                document.getElementById('max-drawdown').textContent = `Max Drawdown: ${stats.maxDrawdown}%`;
+                document.getElementById('sharpe-ratio').textContent = `Sharpe Ratio: ${stats.sharpeRatio}`;
+                
+                // Update stats tab
+                document.getElementById('win-count').textContent = stats.wins;
+                document.getElementById('avg-win').textContent = `Avg: ${stats.highestWinPnL}%`;
+                document.getElementById('best-win').textContent = `Best: ${stats.highestWinPnL}%`;
+                
+                document.getElementById('loss-count').textContent = stats.losses;
+                document.getElementById('avg-loss').textContent = `Avg: ${stats.highestLossPnL}%`;
+                document.getElementById('worst-loss').textContent = `Worst: ${stats.lowestLossPnL}%`;
+            }
+            
+            function createDashboardChart() {
+                // Calculate running pnl
+                let runningPnL = 0;
+                const pnlData = [{x: 0, y: 0}]; // Start at 0
+                
+                trades.forEach((trade, i) => {
+                    runningPnL += trade.pnl;
+                    pnlData.push({
+                        x: i + 1,
+                        y: runningPnL
+                    });
+                });
+                
+                const ctx = document.getElementById('dashboardChart').getContext('2d');
+                dashboardChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Cumulative PnL (%)',
+                            data: pnlData,
+                            borderColor: '#4caf50',
+                            backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                            fill: true,
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Trade Number',
+                                    color: '#f0f0f0'
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: '#f0f0f0'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Cumulative PnL (%)',
+                                    color: '#f0f0f0'
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: '#f0f0f0',
+                                    callback: function(value) {
+                                        return value + '%';
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: '#f0f0f0'
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: function(context) {
+                                        const index = context[0].dataIndex;
+                                        return index === 0 ? 'Start' : `Trade #${index}`;
+                                    },
+                                    label: function(context) {
+                                        return `PnL: ${context.parsed.y.toFixed(2)}%`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            function createCapitalChart() {
+                if (trades.length === 0) return;
+                
+                // Calculate capital growth
+                const capitalData = [];
+                let runningCapital = stats.initialCapital;
+                
+                // First point is initial capital
+                capitalData.push({
+                    x: 0,
+                    y: runningCapital,
+                    trade: null
+                });
+                
+                // Add capital after each trade
+                trades.forEach((trade, index) => {
+                    const pnlMultiplier = 1 + (trade.pnl / 100);
+                    runningCapital *= pnlMultiplier;
+                    
+                    capitalData.push({
+                        x: index + 1,
+                        y: runningCapital,
+                        trade: trade
+                    });
+                });
+                
+                const ctx = document.getElementById('capitalChart').getContext('2d');
+                capitalChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Account Balance ($)',
+                            data: capitalData,
+                            borderColor: runningCapital >= stats.initialCapital ? '#4caf50' : '#f44336',
+                            backgroundColor: runningCapital >= stats.initialCapital ? 
+                                'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)',
+                            fill: true,
+                            tension: 0.1,
+                            pointRadius: function(context) {
+                                const index = context.dataIndex;
+                                return index === 0 ? 5 : 3; // Make first point bigger
+                            },
+                            pointBackgroundColor: function(context) {
+                                const index = context.dataIndex;
+                                if (index === 0) return '#007bff'; // Starting capital
+                                const point = capitalData[index];
+                                return point.trade && point.trade.result === 'WIN' ? 
+                                    '#4caf50' : '#f44336';
+                            }
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Trade Number',
+                                    color: '#f0f0f0'
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: '#f0f0f0'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Capital ($)',
+                                    color: '#f0f0f0'
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: '#f0f0f0',
+                                    callback: function(value) {
+                                        return '$' + value.toFixed(2);
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: '#f0f0f0'
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: function(context) {
+                                        const index = context[0].dataIndex;
+                                        return index === 0 ? 'Initial Capital' : `After Trade #${index}`;
+                                    },
+                                    label: function(context) {
+                                        const value = context.parsed.y;
+                                        const initialCapital = stats.initialCapital;
+                                        const percentChange = ((value - initialCapital) / initialCapital) * 100;
+                                        
+                                        return [
+                                            `Balance: $${value.toFixed(2)}`,
+                                            `Change: ${percentChange.toFixed(2)}%`
+                                        ];
+                                    },
+                                    afterLabel: function(context) {
+                                        const index = context.dataIndex;
+                                        if (index === 0) return ''; // No trade info for initial capital
+                                        
+                                        const trade = capitalData[index].trade;
+                                        if (!trade) return '';
+                                        
+                                        const date = new Date(trade.exitTime);
+                                        return [
+                                            `Trade Result: ${trade.result}`,
+                                            `PnL: ${trade.pnl.toFixed(2)}%`,
+                                            `Date: ${date.toLocaleString()}`
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            function createDistributionChart() {
+                if (trades.length === 0) return;
+                
+                // Count win/loss trades
+                const winCount = stats.wins;
+                const lossCount = stats.losses;
+                
+                const ctx = document.getElementById('distributionChart').getContext('2d');
+                distributionChart = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: ['Wins', 'Losses'],
+                        datasets: [{
+                            data: [winCount, lossCount],
+                            backgroundColor: [
+                                'rgba(76, 175, 80, 0.8)',
+                                'rgba(244, 67, 54, 0.8)'
+                            ],
+                            borderColor: [
+                                'rgba(76, 175, 80, 1)',
+                                'rgba(244, 67, 54, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: '#f0f0f0'
+                                },
+                                position: 'top'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label;
+                                        const value = context.parsed;
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = Math.round((value / total) * 100);
+                                        return `${label}: ${value} (${percentage}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            function createTradeList() {
+                const tradeList = document.getElementById('trade-list');
+                tradeList.innerHTML = '';
+                
+                if (trades.length === 0) {
+                    tradeList.innerHTML = '<p>No trades found</p>';
+                    return;
+                }
+                
+                // Sort trades by exit time (latest first)
+                const sortedTrades = [...trades].sort((a, b) => b.exitTime - a.exitTime);
+                
+                sortedTrades.forEach((trade, index) => {
+                    const tradeItem = document.createElement('div');
+                    tradeItem.className = `trade-item ${trade.result.toLowerCase()}`;
+                    
+                    const entryDate = new Date(trade.entryTime).toLocaleString();
+                    const exitDate = new Date(trade.exitTime).toLocaleString();
+                    const direction = trade.isLong ? 'Long' : 'Short';
+                    const result = trade.result;
+                    const pnl = trade.pnl.toFixed(2) + '%';
+                    
+                    tradeItem.innerHTML = `
+                        <div>
+                            <strong>Trade #${sortedTrades.length - index}</strong><br>
+                            ${direction} | ${result}<br>
+                            Entry: ${entryDate}<br>
+                            Exit: ${exitDate}
+                        </div>
+                        <div>
+                            <strong class="${result === 'WIN' ? 'win-rate' : 'loss-rate'}">${pnl}</strong><br>
+                            Entry: ${trade.entry}<br>
+                            Exit: ${trade.exit}
+                        </div>
+                    `;
+                    
+                    tradeList.appendChild(tradeItem);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
