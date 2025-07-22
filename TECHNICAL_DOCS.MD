@@ -45,6 +45,23 @@ The console logging system has been modularized into a dedicated ConsoleLogger c
 3. PivotTracker preserves edge data during pivot detection
 4. EdgeConsoleLogger formats and displays edge proximity
 
+#### Edge Calculation
+- Calculated relative to period start price
+- Maintains directional accuracy:
+  * Position: Shows percentage from period start to current price
+    - Positive when price is above period start
+    - Negative when price is below period start
+  * Range: Shows maximum range within the period as a percentage
+    - Calculated as (high-low)/reference
+    - Always positive value representing volatility
+  * Direction indicators (U/D) match the sign of the percentage
+    - U (Up): Current price above reference
+    - D (Down): Current price below reference
+  * Negative when price below period start
+  * Positive when price above period start
+- Uses candle.open for period start
+- Uses candle.close for current price
+
 #### Integration Points
 - Uses same pivot cache system as regular backtest
 - Maintains backward compatibility through class extension

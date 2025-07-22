@@ -3,23 +3,53 @@ import { ConsoleLogger } from './consoleLogger.js';
 import { colors, formatDuration } from '../formatters.js';
 import { formatDateTime } from '../candleAnalytics.js';
 
-const { reset: COLOR_RESET, red: COLOR_RED, green: COLOR_GREEN, yellow: COLOR_YELLOW, cyan: COLOR_CYAN } = colors;
+const { reset: COLOR_RESET, red: COLOR_RED, green: COLOR_GREEN, yellow: COLOR_YELLOW, cyan: COLOR_CYAN, magenta: COLOR_MAGENTA, bright: COLOR_BRIGHT, brightCyan: COLOR_BRIGHT_CYAN } = colors;
 
 export class EdgeConsoleLogger extends ConsoleLogger {
   formatEdges(edges) {
     if (!edges) return '';
     
-    // Format edge data for daily, weekly, monthly
-    return ` Edges: ` + ['D', 'W', 'M'].map(t => {
+    // Format current edge data
+    const currentEdge = ' Edges: ' + ['D', 'W', 'M'].map(t => {
       const type = t === 'D' ? 'daily' : t === 'W' ? 'weekly' : 'monthly';
       const edge = edges[type];
       if (!edge) return '';
       
-      // Calculate distance to edge (high - current) / current * 100
-      const sign = edge.position >= 0 ? '+' : '-';
+      // Direction should match sign - positive is up, negative is down
       const direction = edge.position >= 0 ? 'U' : 'D';
-      return `${t}:${sign}${Math.abs(edge.position).toFixed(1)}%(${direction})`;
+      const sign = edge.position >= 0 ? '+' : '';  // Negative sign is already included in the number
+      return `${t}:${sign}${edge.position.toFixed(1)}%(${direction})`;
     }).filter(Boolean).join(' ');
+
+    // Format average edge data
+    const avgEdge = '\n Average Edge ' + ['D', 'W', 'M'].map(t => {
+      const type = t === 'D' ? 'daily' : t === 'W' ? 'weekly' : 'monthly';
+      const edge = edges[type];
+      if (!edge || !edge.averageMove) return '';
+      
+      const avgMove = type === 'daily' 
+        ? edge.averageMove.week  // Use weekly average for daily
+        : edge.averageMove;      // Use direct average for weekly/monthly
+      
+      // Direction should match sign - positive is up, negative is down
+      const direction = avgMove >= 0 ? 'U' : 'D';
+      const sign = avgMove >= 0 ? '+' : '';  // Negative sign is already included in the number
+      return `${t}:${sign}${avgMove.toFixed(1)}%(${direction})`;
+    }).filter(Boolean).join(' ');
+
+    // Format total/range edge data
+    const totalEdge = ' | Range/Total Edge ' + ['D', 'W', 'M'].map(t => {
+      const type = t === 'D' ? 'daily' : t === 'W' ? 'weekly' : 'monthly';
+      const edge = edges[type];
+      if (!edge || !edge.move) return '';
+      
+      // Direction should match sign - positive is up, negative is down
+      const direction = edge.move >= 0 ? 'U' : 'D';
+      const sign = edge.move >= 0 ? '+' : '';  // Negative sign is already included in the number
+      return `${t}:${sign}${edge.move.toFixed(1)}%(${direction})`;
+    }).filter(Boolean).join(' ');
+
+    return currentEdge + avgEdge + totalEdge;
   }
 
   logPivot(pivot, candle) {
@@ -94,6 +124,18 @@ export class EdgeConsoleLogger extends ConsoleLogger {
       this.formatEdges(order.edges);
 
     console.log(COLOR_CYAN + line + COLOR_RESET);
+  }
+
+  logLimitOrderClose(order, exitPrice, pnl) {
+    if (this.performanceMode || !this.showLimits) return;
+
+    const pnlColor = pnl >= 0 ? COLOR_BRIGHT_CYAN : COLOR_YELLOW;
+    const result = pnl >= 0 ? 'PROFIT' : 'LOSS';
+    const line = `[ORDER ${order.tradeNumber}] ${order.type.toUpperCase()} LIMIT CLOSED @ ${exitPrice.toFixed(2)} | ` +
+      `${result} ${pnl.toFixed(2)}%` +
+      this.formatEdges(order.edges);
+
+    console.log(pnlColor + line + COLOR_RESET);
   }
 
   logTradeDetails(trade, index) {

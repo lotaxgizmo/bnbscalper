@@ -51,9 +51,9 @@ D:+1.8%(U) W:-1.4%(L) M:+2.1%(U)
 ```
 Where:
 - D/W/M: Daily/Weekly/Monthly timeframe
-- +/-: Position relative to edge
-- %: Percentage to edge
-- U/L: Upper/Lower edge
+- +/-: Sign indicates position relative to period start price
+- %: Percentage movement from period start
+- U/D: Direction indicator (Up when price is above period start, Down when below)
 
 This helps identify trades near significant market edges across multiple timeframes.
 

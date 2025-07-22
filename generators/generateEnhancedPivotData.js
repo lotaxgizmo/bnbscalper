@@ -38,32 +38,47 @@ function calculateMove(candles, windowStart, windowEnd) {
     
     if (!windowCandles.length) return null;
     
-    let highCandle = windowCandles[0];
-    let lowCandle = windowCandles[0];
+    // Get reference price from start of period
+    const referencePrice = windowCandles[0].open;
+    const currentPrice = windowCandles[windowCandles.length - 1].close;
+    
+    // Track high and low for total range
+    let highPrice = windowCandles[0].high;
+    let lowPrice = windowCandles[0].low;
+    let highTime = windowCandles[0].time;
+    let lowTime = windowCandles[0].time;
     
     for (const candle of windowCandles) {
-        if (candle.high > highCandle.high) highCandle = candle;
-        if (candle.low < lowCandle.low) lowCandle = candle;
+        if (candle.high > highPrice) {
+            highPrice = candle.high;
+            highTime = candle.time;
+        }
+        if (candle.low < lowPrice) {
+            lowPrice = candle.low;
+            lowTime = candle.time;
+        }
     }
     
-    const move = ((highCandle.high - lowCandle.low) / lowCandle.low) * 100;
-    const currentPrice = windowCandles[windowCandles.length - 1].close;
-    const currentMove = ((currentPrice - lowCandle.low) / lowCandle.low) * 100;
-
-    // Calculate direction based on last hour's movement
-    const hourAgo = windowEnd - (60 * 60 * 1000);
-    const recentCandles = candles.filter(c => c.time >= hourAgo && c.time <= windowEnd);
-    const direction = recentCandles.length > 1 ? 
-        (recentCandles[recentCandles.length-1].close > recentCandles[0].close ? 1 : -1) : 0;
+    // Calculate position relative to reference (start of period)
+    const positionPct = ((currentPrice - referencePrice) / referencePrice) * 100;
+    
+    // Calculate total range relative to reference
+    const totalRange = ((highPrice - lowPrice) / referencePrice) * 100;
+    
+    // Direction is based on position relative to reference, not short-term movement
+    const direction = positionPct >= 0 ? 'U' : 'D';
 
     return {
-        high: highCandle.high,
-        highTime: highCandle.time,
-        low: lowCandle.low,
-        lowTime: lowCandle.time,
+        high: highPrice,
+        highTime: highTime,
+        low: lowPrice,
+        lowTime: lowTime,
         current: currentPrice,
-        move: parseFloat((direction * move).toFixed(2)),
-        position: parseFloat((direction * currentMove).toFixed(2))
+        reference: referencePrice,
+        // Total range is always positive
+        move: parseFloat(totalRange.toFixed(2)),
+        // Position maintains its sign to show where we are relative to reference
+        position: parseFloat(positionPct.toFixed(2))
     };
 }
 

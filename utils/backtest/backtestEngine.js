@@ -10,6 +10,7 @@ export class BacktestEngine {
     this.currentCapital = tradeConfig.initialCapital;
     this.pivotTracker = new PivotTracker(config);
     this.logger = logger;
+    this.tradeNumber = 0;
     
     // Custom strategy handlers
     this.entryRules = [];
@@ -113,6 +114,15 @@ export class BacktestEngine {
         maxAdverseExcursion: trade.maxAdverseExcursion || 0,
         result: hitTakeProfit ? 'WIN' : 'LOSS'
       };
+
+      // Log order closure with P&L
+      this.logger?.logLimitOrderClose({
+        type: trade.isLong ? 'buy' : 'sell',
+        price: trade.entry,
+        edges: trade.edges,
+        tradeNumber: this.tradeNumber + 1
+      }, exitPrice, pnl);
+      this.tradeNumber++;
 
       return { closed: true, trade: completedTrade };
     }

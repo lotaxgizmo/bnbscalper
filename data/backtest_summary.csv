@@ -1,2 +1,2 @@
 take_profit,stop_loss,total_trades,win_rate,failed_trades,total_pnl,avg_pnl,highest_win_pnl,lowest_win_pnl,highest_loss_pnl,lowest_loss_pnl,avg_favorable_excursion,highest_favorable,lowest_favorable,avg_adverse_excursion,highest_adverse,lowest_adverse,final_capital,total_return
-0.1,15,39,100,0,18.72,0.48,0.48,0.48,0.00,0.00,0.15,0.45,0.1,0.87,10.85,0.02,120.53,20.53
+0.1,15,70,98.57,1,-87.2,-1.25,0.48,0.48,-120.32,-120.32,0.15,0.38,0.05,0.87,15.09,0.01,-28.28,-128.28

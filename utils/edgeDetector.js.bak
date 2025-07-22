@@ -7,13 +7,13 @@ export class EdgeDetector {
         this.config = edgeConfig;
     }
 
-    // Calculate percentage move from period start to current price
+    // Calculate percentage move from lowest to highest in a period
     calculateMove(candles) {
         if (!candles.length) return 0;
         
-        const periodStart = candles[0].open;
-        const currentPrice = candles[candles.length - 1].close;
-        return ((currentPrice - periodStart) / periodStart) * 100;
+        const high = Math.max(...candles.map(c => c.high));
+        const low = Math.min(...candles.map(c => c.low));
+        return ((high - low) / low) * 100;
     }
 
     // Get candles for different timeframes

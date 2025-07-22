@@ -5,7 +5,9 @@ export const colors = {
   green: '\x1b[32m',
   yellow: '\x1b[33m',
   cyan: '\x1b[36m',
-  magenta: '\x1b[35m'
+  magenta: '\x1b[35m',
+  bright: '\x1b[1;37m',
+  brightCyan: '\x1b[1;36m'
 };
 
 export const formatDuration = (totalMinutes, showFullTimePeriod = true) => {
