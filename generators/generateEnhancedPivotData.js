@@ -1,4 +1,12 @@
 // generateEnhancedPivotData.js
+
+// Configuration - Change this value to modify number of parallel workers
+const NUM_WORKERS = 8;
+
+import { Worker } from 'worker_threads';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 import {
     api,
     time as interval,
@@ -42,14 +50,20 @@ function calculateMove(candles, windowStart, windowEnd) {
     const currentPrice = windowCandles[windowCandles.length - 1].close;
     const currentMove = ((currentPrice - lowCandle.low) / lowCandle.low) * 100;
 
+    // Calculate direction based on last hour's movement
+    const hourAgo = windowEnd - (60 * 60 * 1000);
+    const recentCandles = candles.filter(c => c.time >= hourAgo && c.time <= windowEnd);
+    const direction = recentCandles.length > 1 ? 
+        (recentCandles[recentCandles.length-1].close > recentCandles[0].close ? 1 : -1) : 0;
+
     return {
         high: highCandle.high,
         highTime: highCandle.time,
         low: lowCandle.low,
         lowTime: lowCandle.time,
         current: currentPrice,
-        move: parseFloat(move.toFixed(2)),
-        position: parseFloat(currentMove.toFixed(2))
+        move: parseFloat((direction * move).toFixed(2)),
+        position: parseFloat((direction * currentMove).toFixed(2))
     };
 }
 
@@ -102,22 +116,109 @@ function calculateEdgeData(candles, timestamp) {
     return edgeData;
 }
 
+function createWorker(workerData, workerProgress) {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const workerPath = path.join(__dirname, 'pivotWorker.js');
+    
+    return new Promise((resolve, reject) => {
+        const worker = new Worker(workerPath);
+        let workerPivots = [];
+
+        worker.on('message', (message) => {
+            if (message.type === 'progress') {
+                // Update progress for this worker
+                workerProgress[message.workerId] = message.progress;
+            } else if (message.type === 'complete') {
+                workerPivots = message.pivots;
+                worker.terminate();
+                resolve({ pivots: workerPivots });
+            }
+        });
+
+        worker.on('error', reject);
+        worker.on('exit', (code) => {
+            if (code !== 0 && code !== null) {
+                reject(new Error(`Worker stopped with exit code ${code}`));
+            }
+        });
+
+        worker.postMessage(workerData);
+    });
+}
+
+function clearLines(count) {
+    // Move up count lines
+    process.stdout.write(`\x1b[${count}A`);
+    // Clear everything below
+    process.stdout.write('\x1b[J');
+    // Move cursor to beginning of line
+    process.stdout.write('\r');
+}
+
+let timerInterval = null;
+let globalStartTime = 0;
+let workerProgress = {};
+
+function formatTimer(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function drawProgressBars(workerProgress, startTime) {
+    const output = [];
+    // Calculate elapsed time
+    const elapsed = performance.now() - startTime;
+
+    // Add timer line
+    output.push(`⏱️ Time elapsed: ${formatTimer(elapsed)}`);
+    output.push('');
+
+    // Add progress bars
+    for (let i = 1; i <= 4; i++) {
+        const progress = workerProgress[i] || 0;
+        const progressBar = '='.repeat(progress / 2) + '>' + ' '.repeat(50 - progress / 2);
+        output.push(`Worker ${i}: [${progressBar}] ${progress}%`);
+    }
+
+    // Write all lines at once
+    process.stdout.write(output.join('\n') + '\n');
+}
+
+function formatDuration(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    
+    const remainingMinutes = minutes % 60;
+    const remainingSeconds = seconds % 60;
+    const remainingMs = ms % 1000;
+
+    let result = '';
+    if (hours > 0) result += `${hours}h `;
+    if (remainingMinutes > 0) result += `${remainingMinutes}m `;
+    if (remainingSeconds > 0) result += `${remainingSeconds}s `;
+    result += `${remainingMs}ms`;
+    
+    return result;
+}
+
 async function generateEnhancedPivotData() {
-    console.log(`
-▶ Generating Enhanced Pivot Data for ${symbol} [${interval}] using ${api}
-`);
-
-    // Configuration for pivot detection
-    const pivotConfig = {
-        minSwingPct,
-        shortWindow,
-        longWindow,
-        confirmOnClose,
-        minLegBars
-    };
-
-    const tracker = new PivotTracker(pivotConfig);
-    const pivots = [];
+    globalStartTime = performance.now();
+    
+    // Setup timer interval
+    timerInterval = setInterval(() => {
+        // Only clear and redraw if we have some progress to show
+        if (Object.keys(workerProgress).length > 0) {
+            clearLines(6);
+            drawProgressBars(workerProgress, globalStartTime);
+        }
+    }, 1000);
+    
+    // Initial setup message
+    console.log(`\n▶ Generating Enhanced Pivot Data for ${symbol} [${interval}] using ${api}\n`);
 
     // 1. Get candles
     console.log('Reading candles from local data...');
@@ -137,60 +238,38 @@ async function generateEnhancedPivotData() {
     console.log(`End: ${endDate}
 `);
 
-    // 2. Process candles in batches
-    const batchSize = 1000;
+    // 2. Process candles in parallel batches using workers
+    const batchSize = Math.ceil(candles.length / NUM_WORKERS); // Split into equal parts based on NUM_WORKERS
+    const batches = [];
     
     for (let i = 0; i < candles.length; i += batchSize) {
-        const batch = candles.slice(i, i + batchSize);
-        const progress = ((i + batchSize) / candles.length * 100).toFixed(2);
-        const processedCandles = Math.min(i + batchSize, candles.length);
-        console.log(`Progress: ${progress}% (${processedCandles}/${candles.length} candles)...`);
-        
-        for (const candle of batch) {
-            const pivot = tracker.update(candle);
-            if (pivot) {
-                // Calculate edges silently to avoid cluttering progress display
-                process.stdout.write(`\rFound pivot at ${new Date(pivot.time).toLocaleString()}...                    \r`);
-                
-                // Calculate edge data for each timeframe
-                const edgeData = {};
-                for (const [timeframe, duration] of Object.entries(timeframes)) {
-                    process.stdout.write(`\rCalculating ${timeframe} edges...                    `);
-                    const windowEnd = pivot.time;
-                    const windowStart = windowEnd - duration;
-                    
-                    const move = calculateMove(candles, windowStart, windowEnd);
-                    if (!move) continue;
-
-                    let averageMove = null;
-                    if (timeframe === 'daily') {
-                        process.stdout.write(`\rCalculating daily averages (7d, 14d, 30d)...    `);
-                        averageMove = {
-                            week: calculateAverageMove(candles, windowEnd, duration, 7),
-                            twoWeeks: calculateAverageMove(candles, windowEnd, duration, 14),
-                            month: calculateAverageMove(candles, windowEnd, duration, 30)
-                        };
-                    } else {
-                        const periods = timeframe === 'monthly' ? 3 : 4;
-                        averageMove = calculateAverageMove(candles, windowEnd, duration, periods);
-                    }
-
-                    edgeData[timeframe] = { ...move, averageMove };
-                }
-                // Clear the pivot message
-                process.stdout.write('\r                                                                              \r');
-                
-                pivots.push({
-                    ...pivot,
-                    edges: edgeData
-                });
-            }
-        }
-        if ((i + batchSize) % 10000 === 0) {
-            console.log(`
-Processed ${i + batchSize} candles...`);
-        }
+        batches.push(candles.slice(i, i + batchSize));
     }
+
+    console.log(`Processing ${candles.length} candles in ${batches.length} parallel batches...\n`);
+    
+    // Reset progress tracking
+    workerProgress = {};
+    
+    const pivotConfig = { minSwingPct, shortWindow, longWindow, confirmOnClose, minLegBars };
+    // Draw initial progress bars
+    drawProgressBars(workerProgress, globalStartTime);
+
+    const workerPromises = batches.map((batch, index) => {
+        return createWorker({
+            batch,
+            pivotConfig,
+            candles, // Full candle set needed for edge calculations
+            timeframes,
+            workerId: index + 1
+        }, workerProgress);
+    });
+
+    const results = await Promise.all(workerPromises);
+    let pivots = results.flatMap(result => result.pivots);
+    
+    // Sort pivots by time to ensure chronological order
+    pivots.sort((a, b) => a.time - b.time);
 
     console.log(`Total enhanced pivots found: ${pivots.length}`);
 
@@ -202,8 +281,15 @@ Processed ${i + batchSize} candles...`);
         lastUpdate: Date.now()
     });
 
+    const endTime = performance.now();
+    const duration = endTime - globalStartTime;
+    
+    // Clear timer interval
+    clearInterval(timerInterval);
+    
     console.log('\n✅ Enhanced pivot data generation complete!');
-    console.log('You can now use this data for advanced edge-aware analysis');
+    console.log(`\n⏱️ Total execution time: ${formatTimer(duration)}`);
+    console.log('\nYou can now use this data for advanced edge-aware analysis');
 }
 
 // Run the generator

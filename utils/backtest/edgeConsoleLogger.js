@@ -16,10 +16,9 @@ export class EdgeConsoleLogger extends ConsoleLogger {
       if (!edge) return '';
       
       // Calculate distance to edge (high - current) / current * 100
-      const distanceToHigh = ((edge.high - edge.current) / edge.current) * 100;
-      const direction = distanceToHigh > 0 ? 'U' : 'D';
-      
-      return `${t}:${edge.position >= 0 ? '+' : '-'}${Math.abs(edge.position).toFixed(1)}%(${direction})`;
+      const sign = edge.position >= 0 ? '+' : '-';
+      const direction = edge.position >= 0 ? 'U' : 'D';
+      return `${t}:${sign}${Math.abs(edge.position).toFixed(1)}%(${direction})`;
     }).filter(Boolean).join(' ');
   }
 
