@@ -9,19 +9,17 @@ export const getCandles = (api) => {
 };
 
 // Paginated fetch to respect API limits and ensure we get exactly `limit` candles
-export async function fetchCandles(symbol, interval, limit, api, delay = 0) {
+export async function fetchCandles(symbol, interval, limit, api, delay = 0, customEndTime = null, forceLocal = false) {
   const rawGetCandles = getCandles(api);
   
-  // When using local data, fetch all at once with no batch limit
-  if (typeof rawGetCandles.isUsingLocalData === 'function' && rawGetCandles.isUsingLocalData()) {
-    console.log(`Fetching ${limit} candles from local data...`);
-    const result = await rawGetCandles(symbol, interval, limit);
-    console.log(`Successfully read ${result.length} candles from local data`);
+  // When using local data or forced local, fetch all at once with no batch limit
+  if (forceLocal || (typeof rawGetCandles.isUsingLocalData === 'function' && rawGetCandles.isUsingLocalData())) {
+    console.log(`Reading ${limit} candles from local data...`);
+    const result = await rawGetCandles(symbol, interval, limit, customEndTime, forceLocal);
     return result;
   }
 
   // For API calls, use batching
-  console.log('Using API with batching...');
   const maxPerBatch = 500; // common API cap
   let all = [];
   let fetchSince = null;
@@ -34,7 +32,7 @@ export async function fetchCandles(symbol, interval, limit, api, delay = 0) {
 
   while (all.length < limit) {
     const batchLimit = Math.min(maxPerBatch, limit - all.length);
-    const batch = await rawGetCandles(symbol, interval, batchLimit, fetchSince);
+    const batch = await rawGetCandles(symbol, interval, batchLimit, fetchSince, forceLocal);
     if (!batch.length) break;
 
     // ensure ascending

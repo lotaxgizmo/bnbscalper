@@ -37,67 +37,38 @@ async function readLocalCandles(symbol, interval, limit = 100, customEndTime = n
       return [];
     }
 
-    // Create read stream and line interface
-    const fileStream = fs.createReadStream(filePath);
-    const rl = (await import('readline')).createInterface({
-      input: fileStream,
-      crlfDelay: Infinity
-    });
+    // Read file content in one go for better performance
+    const fileContent = fs.readFileSync(filePath, 'utf8');
+    const lines = fileContent.split('\n');
 
-    let allLines = [];
-    let isHeader = true;
+    // Skip header and process lines from newest to oldest
+    const allCandles = [];
+    for (let i = lines.length - 1; i > 0; i--) {
+      const line = lines[i].trim();
+      if (!line) continue;
 
-    try {
-      // First, collect all lines
-      for await (const line of rl) {
-        if (isHeader) {
-          isHeader = false;
-          continue;
-        }
-        if (line.trim()) {
-          allLines.push(line);
-        }
-      }
+      const [time, open, high, low, close, volume] = line.split(',').map(parseFloat);
+      if (isNaN(time)) continue;
 
-      // Sort lines by timestamp to ensure chronological order
-      allLines.sort((a, b) => {
-        const timeA = parseInt(a.split(',')[0]);
-        const timeB = parseInt(b.split(',')[0]);
-        return timeA - timeB;
+      // Skip candles after customEndTime if provided
+      if (customEndTime && time > customEndTime) continue;
+
+      allCandles.push({
+        time: time,
+        open: open,
+        high: high,
+        low: low,
+        close: close,
+        volume: volume
       });
 
-      // Take the required number of lines from the end
-      const linesToProcess = allLines.slice(-limit);
-      console.log(`Processing ${linesToProcess.length} candles from ${allLines.length} total`);
-
-      // Parse the selected lines into candles
-      let result = linesToProcess.map(line => {
-        const [time, open, high, low, close, volume] = line.split(',');
-        return {
-          time: parseInt(time),
-          open: parseFloat(open),
-          high: parseFloat(high),
-          low: parseFloat(low),
-          close: parseFloat(close),
-          volume: parseFloat(volume)
-        };
-      });
-
-      // Sort by time ascending (in case file wasn't already sorted)
-      result.sort((a, b) => a.time - b.time);
-
-      // Apply custom end time filter if provided
-      if (customEndTime) {
-        result = result.filter(c => c.time <= customEndTime);
-      }
-
-      return result;
-
-    } finally {
-      // Always close the stream
-      rl.close();
-      fileStream.close();
+      if (allCandles.length >= limit) break;
     }
+
+    // Sort by time ascending for consistency
+    allCandles.sort((a, b) => a.time - b.time);
+    console.log(`Processing ${allCandles.length} candles from ${lines.length - 1} total`);
+    return allCandles;
 
   } catch (error) {
     console.error('Error reading local candles:', error);
@@ -113,12 +84,12 @@ export function isUsingLocalData() {
 // Attach isUsingLocalData to getCandles for candleAnalytics.js to use
 getCandles.isUsingLocalData = isUsingLocalData;
 
-export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100, customEndTime = null) {
+export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100, customEndTime = null, forceLocal = false) {
   // Convert interval to format used in CSV files (e.g., '1' to '1m')
   const csvInterval = interval.endsWith('m') ? interval : `${interval}m`;
 
-  // If using local data, only use local CSV
-  if (isUsingLocalData()) {
+  // If using local data or forced to use local, only use local CSV
+  if (forceLocal || isUsingLocalData()) {
     console.log(`Reading ${limit} candles from local CSV...`);
     return await readLocalCandles(symbol, csvInterval, limit, customEndTime);
   }

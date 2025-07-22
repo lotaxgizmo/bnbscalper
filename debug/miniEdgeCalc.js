@@ -5,10 +5,14 @@ import {
     limit
 } from '../config/config.js';
 
-const interval = '15';  // Use 15m candles instead of 1m
+const interval = '1';  // Use 1m candles for more precision
 
-// Make sure we use local data
+// Data is already in UTC+1, no offset needed
+const utcOffset = 0;
+
+// Force local data - this calculator never uses API
 process.env.USE_LOCAL_DATA = 'true';
+const forceLocalData = true;  // Extra safety to ensure we never use API
 
 import { fetchCandles } from '../utils/candleAnalytics.js';
 
@@ -26,6 +30,9 @@ function calculateMove(candles) {
     
     const move = ((highCandle.high - lowCandle.low) / lowCandle.low) * 100;
     
+    // Account for UTC+1 timezone
+    const now = new Date(Date.now() + utcOffset);
+    
     return {
         high: highCandle.high,
         highTime: new Date(highCandle.time).toLocaleString(),
@@ -36,16 +43,14 @@ function calculateMove(candles) {
 }
 
 async function calculateSimpleEdges() {
-    console.log(`\n▶ Calculating simple edges for ${symbol} [${interval}] using ${api}\n`);
+    console.log(`\n▶ Calculating simple edges for ${symbol} [${interval}] from local data\n`);
 
-    // Calculate needed candles for a full month of 15m data
-    const candlesPerDay = 24 * 4; // 96 candles per day (15m intervals)
+    // Calculate needed candles for a full month of 1m data
+    const candlesPerDay = 24 * 60; // 1440 candles per day (1m intervals)
     const daysNeeded = 31;
-    const neededCandles = candlesPerDay * daysNeeded; // ~2976 candles
+    const neededCandles = candlesPerDay * daysNeeded; // ~44,640 candles
     
-    console.log(`Fetching ${neededCandles} candles from local data...`);
-    const allCandles = await fetchCandles(symbol, interval, neededCandles, api);
-    console.log(`Fetched ${allCandles.length} candles.`);
+    const allCandles = await fetchCandles(symbol, interval, neededCandles, api, 0, undefined, true);
     
     // Sort candles by time to ensure chronological order
     allCandles.sort((a, b) => a.time - b.time);
@@ -56,9 +61,9 @@ async function calculateSimpleEdges() {
     const currentTime = Date.now();
     
     console.log('\nTimestamp Analysis:');
-    console.log(`First Candle: ${new Date(firstCandle.time).toLocaleString()}`);
-    console.log(`Last Candle: ${new Date(lastCandle.time).toLocaleString()}`);
-    console.log(`Current Time: ${new Date(currentTime).toLocaleString()}`);
+    console.log(`First Candle: ${new Date(allCandles[0].time).toLocaleString()}`);
+    console.log(`Last Candle: ${new Date(allCandles[allCandles.length-1].time).toLocaleString()}`);
+    console.log(`Current Time: ${new Date().toLocaleString()}`);
     console.log(`Time since last candle: ${((currentTime - lastCandle.time) / 1000 / 60).toFixed(2)} minutes\n`);
 
     if (!allCandles.length) {
@@ -70,11 +75,11 @@ async function calculateSimpleEdges() {
     allCandles.sort((a, b) => a.time - b.time);
     
     // Get timeframes
-    // For 15m candles:
-    // 1 day = 96 candles (24 hours * 4 candles per hour)
-    // 1 week = 672 candles (96 * 7)
-    // 1 month = 2880 candles (96 * 30)
-    const candleDuration = 15 * 60 * 1000; // 15 minutes in ms
+    // For 1m candles:
+    // 1 day = 1440 candles (24 hours * 60 candles per hour)
+    // 1 week = 10080 candles (1440 * 7)
+    // 1 month = 43200 candles (1440 * 30)
+    const candleDuration = 60 * 1000; // 1 minute in ms
     const timeframes = {
         daily: 24 * 60 * 60 * 1000,      // 1 day in ms
         weekly: 7 * 24 * 60 * 60 * 1000,  // 1 week in ms
@@ -89,11 +94,13 @@ async function calculateSimpleEdges() {
     
     // Calculate and display moves for each timeframe
     for (const [timeframe, duration] of Object.entries(timeframes)) {
-        const windowStart = lastCandle.time - duration;
-        const windowCandles = allCandles.filter(c => c.time >= windowStart);
+        const windowEnd = lastCandle.time;
+        const windowStart = windowEnd - duration;
+        const windowCandles = allCandles.filter(c => c.time >= windowStart && c.time <= windowEnd);
+        console.log(`
+${timeframe.toUpperCase()}:`);
+        console.log(`Window: ${new Date(windowStart).toLocaleString()} to ${new Date(windowEnd).toLocaleString()}`);
         const result = calculateMove(windowCandles);
-        
-        console.log(`\n${timeframe.toUpperCase()}:`);
         console.log(`High: ${result.high} (${result.highTime})`);
         console.log(`Low: ${result.low} (${result.lowTime})`);
         console.log(`Move: ${result.move}%`);

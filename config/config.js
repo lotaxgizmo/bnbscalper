@@ -1,7 +1,7 @@
 // config.js
 
 // Data source settings
-export const useLocalData = true;  // Use local historical data instead of API calls
+export const useLocalData = false;  // Force API data fetching
 
 // API settings
 export const api = 'bybit'; // 'binance' or 'bybit'

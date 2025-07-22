@@ -188,7 +188,7 @@ function findMissingRanges(existingCandles, targetStartTime, now, intervalMs) {
 }
 
 // Fetch historical data for a pair and interval
-async function fetchHistoricalData(pair, interval) {
+async function fetchHistoricalData(pair, interval, clearExisting = false) {
     // Keep original interval format for file paths
     const cleanInterval = interval;
     console.log(`Processing ${pair} - ${cleanInterval}`);
@@ -196,16 +196,25 @@ async function fetchHistoricalData(pair, interval) {
     const filePath = getFilePath(pair, cleanInterval);
     ensureDirectoryExists(path.dirname(filePath));
 
+    // Data is already in UTC+1, no offset needed
     const now = Date.now();
     const monthsInMs = historicalDataConfig.months * 30 * 24 * 60 * 60 * 1000;
     const targetStartTime = now - monthsInMs;
     const intervalMs = getIntervalMs(cleanInterval);
 
     try {
-        // Load existing data
-        console.log(`Loading existing data for ${pair} - ${cleanInterval}...`);
-        const existingCandles = loadExistingCandles(filePath);
-        console.log(`Found ${existingCandles.length} existing candles`);
+        // Handle existing data
+        let existingCandles = [];
+        if (!clearExisting) {
+            console.log(`Loading existing data for ${pair} - ${cleanInterval}...`);
+            existingCandles = loadExistingCandles(filePath);
+            console.log(`Found ${existingCandles.length} existing candles`);
+        } else {
+            console.log(`Clearing existing data for ${pair} - ${cleanInterval}...`);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
 
         // Find missing ranges
         const missingRanges = findMissingRanges(existingCandles, targetStartTime, now, intervalMs);
