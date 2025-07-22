@@ -45,7 +45,7 @@ const pivotConfig = {
     console.log('Found enhanced pivot data with edge analysis');
     candles = cachedData.metadata.candles || [];
     pivots = cachedData.pivots || [];
-    
+
     // Log edge analysis summary
     const lastPivot = pivots[pivots.length - 1];
     console.log('\nLatest Edge Analysis:');
