@@ -1,5 +1,28 @@
 # User Guide
 
+## Testing Tools
+
+### Pivot Timestamp Test
+
+A lightweight test tool is available to verify pivot timestamp and price accuracy with enhanced predictive detection:
+
+```bash
+node pivotTimestampTest.js
+```
+
+This tool:
+- Loads a small subset of candle data from your data directory
+- Generates pivots with accurate timestamps
+- Validates pivot prices against candle data
+- Simulates a mini backtest to verify timestamp display
+- Processes all pivots without targeting specific timestamps
+
+Requirements:
+- Candle data file in `data/historical/1m.csv` format
+- Node.js environment
+
+The output will show detailed information about pivot timestamps, prices, and any discrepancies found.
+
 ## Console Output
 
 The application provides detailed console output during backtesting:
@@ -22,7 +45,11 @@ When `showPivot` is enabled in config:
 - Real-time pivot detection display
 - Pivot price and type (high/low)
 - Swing percentage and duration
-- Timestamp of pivot formation
+- Accurate timestamps showing both pivot time and candle time
+- Improved pivot detection with closing price confirmation
+- Validation to ensure pivot data matches actual candle data
+- **New**: Enhanced predictive pivot detection using 2 minimum leg bars (reduced from 3)
+- **New**: Earlier pivot signals while maintaining the 0.3% minimum swing requirement
 
 ### Limit Orders
 When `showLimits` is enabled in config:

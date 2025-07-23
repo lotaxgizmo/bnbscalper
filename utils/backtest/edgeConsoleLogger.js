@@ -74,8 +74,13 @@ export class EdgeConsoleLogger extends ConsoleLogger {
     // Pad pivot type to match HIGH length
     const pivotType = pivot.type.toUpperCase().padEnd(4, ' ');
     
+    // Use pivot.time directly for timestamp display (already in seconds)
+    // This fixes the timestamp discrepancy issue
+    const pivotTime = pivot.displayTime || formatDateTime(pivot.time * 1000);
+    
     const line = `${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
-      `Time: ${formatDateTime(candle.time)} | ` +
+      `Time: ${pivotTime} | ` +
+      `Candle Time: ${formatDateTime(candle.time)} | ` +
       `Move: ${pivot.movePct.toFixed(2)}% | ` +
       `Bars: ${String(pivot.bars || 'N/A').padStart(4, ' ').padEnd(4, ' ')} | ` +
       this.formatEdges(pivot.edges);

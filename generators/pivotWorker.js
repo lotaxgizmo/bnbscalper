@@ -65,11 +65,12 @@ function calculateAverageMove(candles, endTime, periodMs, count) {
 }
 
 // Process batch of candles
-parentPort.on('message', ({ batch, pivotConfig, candles, timeframes, workerId }) => {
+parentPort.on('message', ({ batch, pivotConfig, candles, timeframes, workerId, hasOverlap, overlapSize, actualStartIndex }) => {
     const tracker = new PivotTracker(pivotConfig);
     const pivots = [];
     let lastProgress = 0;
 
+    // Process all candles in a single chronological pass
     for (let i = 0; i < batch.length; i++) {
         const candle = batch[i];
         const pivot = tracker.update(candle);
@@ -80,7 +81,16 @@ parentPort.on('message', ({ batch, pivotConfig, candles, timeframes, workerId })
             parentPort.postMessage({ type: 'progress', workerId, progress });
             lastProgress = progress;
         }
-        if (pivot) {
+        
+        // Only consider pivots that are within this worker's actual responsibility range
+        // Skip pivots found in the overlap region (except for the first worker)
+        const isInOverlapRegion = hasOverlap && i < overlapSize;
+        
+        if (pivot && !isInOverlapRegion) {
+            // Add displayTime for better readability
+            pivot.displayTime = new Date(pivot.time * 1000).toLocaleTimeString();
+            
+            // Calculate edge data for this pivot
             const edgeData = {};
             for (const [timeframe, duration] of Object.entries(timeframes)) {
                 const windowEnd = pivot.time;
@@ -104,9 +114,21 @@ parentPort.on('message', ({ batch, pivotConfig, candles, timeframes, workerId })
                 edgeData[timeframe] = { ...move, averageMove };
             }
             
+            // Add validation data to ensure pivot matches actual candle data
+            const matchingCandle = candles.find(c => c.time === pivot.time);
+            if (matchingCandle) {
+                pivot.candleData = {
+                    open: matchingCandle.open,
+                    high: matchingCandle.high,
+                    low: matchingCandle.low,
+                    close: matchingCandle.close
+                };
+            }
+            
             pivots.push({
                 ...pivot,
-                edges: edgeData
+                edges: edgeData,
+                batchId: workerId // Add batch ID for debugging
             });
         }
     }

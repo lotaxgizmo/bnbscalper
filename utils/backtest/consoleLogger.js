@@ -91,8 +91,13 @@ export class ConsoleLogger {
     const prefix = pivot.type === 'low' ? `${paddedNumber}.` : '    ';
     // Pad LOW to match HIGH length
     const pivotType = pivot.type.toUpperCase().padEnd(4, ' ');
+    
+    // Use pivot.time directly for timestamp display (already in seconds)
+    // This fixes the timestamp discrepancy issue
+    const pivotTime = pivot.displayTime || (pivot.time ? formatDateTime(pivot.time * 1000) : formatDateTime(candle.time));
+    
     const line = `${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
-      `Time: ${formatDateTime(candle.time)} | ` +
+      `Time: ${pivotTime} | ` +
       `Move: ${pivot.movePct.toFixed(2)}% | ` +
       `Bars: ${pivot.bars || 'N/A'}`;
 

@@ -147,7 +147,25 @@ function createWorker(workerData, workerProgress) {
                 // Update progress for this worker
                 workerProgress[message.workerId] = message.progress;
             } else if (message.type === 'complete') {
-                workerPivots = message.pivots;
+                // Process pivots to add validation data and displayTime
+                const processedPivots = message.pivots.map(pivot => {
+                    // Add validation to ensure pivot data matches actual candle data
+                    const matchingCandle = workerData.candles.find(c => c.time === pivot.time);
+                    if (matchingCandle) {
+                        // Add candle data to pivot for validation
+                        pivot.candleData = {
+                            open: matchingCandle.open,
+                            high: matchingCandle.high,
+                            low: matchingCandle.low,
+                            close: matchingCandle.close
+                        };
+                        // Add display time for better readability
+                        pivot.displayTime = new Date(pivot.time * 1000).toLocaleTimeString();
+                    }
+                    return pivot;
+                });
+                
+                workerPivots = processedPivots;
                 worker.terminate();
                 resolve({ pivots: workerPivots });
             }
@@ -255,12 +273,24 @@ async function generateEnhancedPivotData() {
     console.log(`End: ${endDate}
 `);
 
-    // 2. Process candles in parallel batches using workers
+    // 2. Process candles in parallel batches using workers with overlap to prevent missing pivots
     const batchSize = Math.ceil(candles.length / NUM_WORKERS); // Split into equal parts based on NUM_WORKERS
     const batches = [];
     
+    // Define overlap size based on the longWindow parameter to ensure no pivots are missed
+    // This ensures each batch has enough context from the previous batch
+    const overlapSize = Math.max(longWindow * 2, 50); // At least twice the long window or 50 candles
+    
     for (let i = 0; i < candles.length; i += batchSize) {
-        batches.push(candles.slice(i, i + batchSize));
+        // For all batches except the first, include overlap from previous batch
+        const startIndex = i === 0 ? 0 : Math.max(0, i - overlapSize);
+        const endIndex = Math.min(candles.length, i + batchSize);
+        batches.push({
+            candles: candles.slice(startIndex, endIndex),
+            actualStartIndex: i, // Store the actual start index without overlap
+            hasOverlap: i > 0,
+            overlapSize: i > 0 ? i - startIndex : 0
+        });
     }
 
     console.log(`Processing ${candles.length} candles in ${batches.length} parallel batches...\n`);
@@ -272,13 +302,16 @@ async function generateEnhancedPivotData() {
     // Draw initial progress bars
     drawProgressBars(workerProgress, globalStartTime);
 
-    const workerPromises = batches.map((batch, index) => {
+    const workerPromises = batches.map((batchInfo, index) => {
         return createWorker({
-            batch,
+            batch: batchInfo.candles,
             pivotConfig,
             candles, // Full candle set needed for edge calculations
             timeframes,
-            workerId: index + 1
+            workerId: index + 1,
+            hasOverlap: batchInfo.hasOverlap,
+            overlapSize: batchInfo.overlapSize,
+            actualStartIndex: batchInfo.actualStartIndex
         }, workerProgress);
     });
 

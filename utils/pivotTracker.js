@@ -83,6 +83,8 @@ export default class PivotTracker {
         this.extremeTime  = time; // Already in seconds
       }
       // measure pullback
+      // When confirmOnClose is true, use closing price for confirmation
+      // but still track the actual high as the pivot price
       const reference = this.confirmOnClose ? price : low;
       const retrace   = (this.extremePrice - reference) / this.extremePrice;
 
@@ -97,6 +99,8 @@ export default class PivotTracker {
         this.extremeTime  = time; // Already in seconds
       }
       // measure bounce
+      // When confirmOnClose is true, use closing price for confirmation
+      // but still track the actual low as the pivot price
       const reference = this.confirmOnClose ? price : high;
       const retrace   = (reference - this.extremePrice) / this.extremePrice;
 
@@ -124,7 +128,10 @@ export default class PivotTracker {
       previousTime: this.pivotTime,
       movePct,
       bars: this.legBars,
-      edges: loadedPivot?.edges // Preserve edge data if found
+      edges: loadedPivot?.edges, // Preserve edge data if found
+      // Add additional data for validation and debugging
+      confirmedOnClose: this.confirmOnClose,
+      displayTime: new Date(this.extremeTime * 1000).toLocaleTimeString() // Convert timestamp to readable format
     };
 
     // Record swing data

@@ -1,5 +1,136 @@
 # Issues and Solutions Log
 
+## 11. Pivot Data Timestamp Discrepancy
+**Issue**: There was a discrepancy between the timestamps displayed in console output and the actual pivot data timestamps, causing confusion and potential trade failures.
+
+**Example**:
+- Console showed pivot HIGH @ 108900.00 at 10:11:00 AM
+- JSON data showed timestamp 1752039540000 (10:19:00 AM)
+- Actual historical data confirmed 10:19:00 AM was correct
+
+**Fix**:
+In edgeConsoleLogger.js and consoleLogger.js, updated the timestamp display logic to use pivot time directly:
+```javascript
+// Before (error):
+const line = `${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
+  `Time: ${formatDateTime(candle.time)} | `
+
+// After (fixed):
+const pivotTime = pivot.displayTime || (pivot.time ? formatDateTime(pivot.time * 1000) : formatDateTime(candle.time));
+const line = `${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
+  `Time: ${pivotTime} | `
+```
+
+**Benefits**:
+- Accurate timestamp display matching actual pivot data
+- Improved debugging and trade analysis
+- Consistent time representation across the application
+
+## 12. Price Identification Issues with confirmOnClose
+**Issue**: When confirmOnClose was true, the system was still using extreme high/low prices for pivot identification instead of closing prices, leading to inaccurate pivot detection.
+
+**Example**:
+- System correctly identified 108900 as the high price
+- But this was an intracandle high, not the closing price (108819.7)
+- Trades executed based on briefly touched high prices rather than confirmed closing prices
+
+**Fix**:
+In pivotTracker.js, we had already updated the code to use closing prices for confirmation while still tracking the actual high/low as pivot price:
+```javascript
+// When confirmOnClose is true, use closing price for confirmation
+// but still track the actual high as the pivot price
+const reference = this.confirmOnClose ? price : low;
+const retrace = (this.extremePrice - reference) / this.extremePrice;
+```
+
+**Benefits**:
+- More reliable pivot confirmation based on closing prices
+- Maintains accurate pivot price representation
+- Improved trade signal reliability
+
+## 13. Batch Processing Boundary Issues
+**Issue**: The worker-based batch processing in generatePivotData.js could lead to boundary issues where pivots near batch edges might be missed.
+
+**Fix for generatePivotData.js**:
+Modified generatePivotData.js to process candles in a single pass and add validation:
+```javascript
+// Before (error):
+for (let i = 0; i < candles.length; i += batchSize) {
+    const batch = candles.slice(i, i + batchSize);
+    for (const candle of batch) {
+        const pivot = tracker.update(candle);
+        if (pivot) pivots.push(pivot);
+    }
+}
+
+// After (fixed):
+for (let i = 0; i < candles.length; i++) {
+    const candle = candles[i];
+    const pivot = tracker.update(candle);
+    if (pivot) {
+        // Add validation to ensure pivot data matches actual candle data
+        const matchingCandle = candles.find(c => c.time === pivot.time);
+        if (matchingCandle) {
+            // Add candle data to pivot for validation
+            pivot.candleData = {
+                open: matchingCandle.open,
+                high: matchingCandle.high,
+                low: matchingCandle.low,
+                close: matchingCandle.close
+            };
+            // Add display time for better readability
+            pivot.displayTime = new Date(pivot.time * 1000).toLocaleTimeString();
+        }
+        pivots.push(pivot);
+    }
+}
+```
+
+**Fix for generateEnhancedPivotData.js**:
+Implemented overlapping batches to maintain parallel processing while preventing missed pivots:
+```javascript
+// Before (error):
+const batchSize = Math.ceil(candles.length / NUM_WORKERS);
+const batches = [];
+for (let i = 0; i < candles.length; i += batchSize) {
+    batches.push(candles.slice(i, i + batchSize));
+}
+
+// After (fixed):
+const batchSize = Math.ceil(candles.length / NUM_WORKERS);
+const batches = [];
+// Define overlap size based on the longWindow parameter
+const overlapSize = Math.max(longWindow * 2, 50);
+
+for (let i = 0; i < candles.length; i += batchSize) {
+    // For all batches except the first, include overlap from previous batch
+    const startIndex = i === 0 ? 0 : Math.max(0, i - overlapSize);
+    const endIndex = Math.min(candles.length, i + batchSize);
+    batches.push({
+        candles: candles.slice(startIndex, endIndex),
+        actualStartIndex: i,
+        hasOverlap: i > 0,
+        overlapSize: i > 0 ? i - startIndex : 0
+    });
+}
+```
+
+And in pivotWorker.js, added logic to skip pivots in the overlap region:
+```javascript
+// Only consider pivots that are within this worker's actual responsibility range
+const isInOverlapRegion = hasOverlap && i < overlapSize;
+if (pivot && !isInOverlapRegion) {
+    // Process pivot...
+}
+```
+
+**Benefits**:
+- Eliminated batch boundary issues while maintaining parallel processing speed
+- Added validation to ensure pivots match actual candle data
+- Improved pivot detection accuracy with overlapping context
+- Better timestamp representation
+- Maintained performance advantages of parallel processing
+
 ## 9. Edge Data Loss in Limit Orders
 **Issue**: Edge data was being lost in limit orders due to a type/side mismatch in EdgeConsoleLogger.
 
