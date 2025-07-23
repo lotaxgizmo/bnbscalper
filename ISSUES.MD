@@ -1,5 +1,242 @@
 # Issues and Solutions Log
 
+## 15. EdgeConsoleLogger Timestamp Display Fix
+
+**Issue**: After implementing the enhanced pivot detection system, the `EdgeConsoleLogger` was still displaying incorrect timestamps in the backtest output. The console was showing pivot times that didn't match the actual candle data on the live chart. This was because the logger wasn't properly using the new dual timestamp structure (extreme time and confirmation time) from our enhanced pivots.
+
+**Example**:
+```
+// pivotTimestampTest.js output showed:
+Pivot #5 (HIGH): Extreme time: 7/21/2025, 8:15:00 PM, Confirmation time: 7/21/2025, 8:27:00 PM
+
+// But backtestWithEdges.js output showed only one timestamp:
+[PIVOT] HIGH @ 117315.70 | Time: 11:00:00 PM | Candle Time: Tuesday 2025-07-22 05:25:00 AM
+```
+
+**Solution**:
+Modified the `EdgeConsoleLogger` class to properly display both extreme time and confirmation time for enhanced pivots:
+
+```javascript
+// Before: Only showed a single timestamp
+const pivotTime = pivot.displayTime || formatDateTime(pivot.time * 1000);
+const line = `${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
+  `Time: ${pivotTime} | ` +
+  // Rest of the line formatting...
+
+// After: Shows both extreme and confirmation times for enhanced pivots
+if (pivot.extremeTime && pivot.confirmTime) {
+  // Enhanced pivot with both timestamps
+  const extremeTimeStr = formatDateTime(pivot.extremeTime * 1000);
+  const confirmTimeStr = formatDateTime(pivot.confirmTime * 1000);
+  line = `${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
+    `Extreme: ${extremeTimeStr} | Confirm: ${confirmTimeStr} | ` +
+    // Rest of the line formatting...
+}
+```
+
+**Benefits**:
+- Provides complete transparency into pivot formation and confirmation timing
+- Helps validate pivot data against live chart data
+- Maintains compatibility with legacy pivot format
+- Improves debugging and analysis capabilities
+
+## 16. Enhanced Pivot Timestamp Display in EdgeConsoleLogger
+
+**Issue**: The EdgeConsoleLogger was not correctly displaying both extreme and confirmation timestamps for enhanced pivots, causing confusion and discrepancies compared to the pristine pivot data display in pivotTimestampTest.js.
+
+**Root Cause**:
+- The EdgeConsoleLogger was using incorrect property names (`extremeTime`, `confirmTime`) that did not match the actual pivot data properties (`time`, `confirmationTime`).
+- The logger was only showing a single timestamp instead of both extreme and confirmation times.
+- There was a duplicate conditional check in the logger code causing confusion in timestamp handling.
+- The backtestWithEdges.js output showed inconsistent timestamp formats compared to pivotTimestampTest.js.
+
+**Example**:
+```
+// pivotTimestampTest.js output showed:
+Pivot #680 (LOW): Extreme time: 7/22/2025, 1:33:00 PM, Confirmation time: 7/22/2025, 1:46:00 PM
+
+// But backtestWithEdges.js output showed:
+[PIVOT] LOW  @ 119090.00 | Time: 11:00:00 PM | Candle Time: Tuesday   2025-07-22 01:46:00 PM
+```
+
+**Fix**:
+1. Updated the EdgeConsoleLogger to use the correct property names (`time`, `confirmationTime`) from the enhanced pivot data.
+2. Modified the logPivot method to display both extreme and confirmation timestamps for all pivots.
+3. Implemented consistent timestamp formatting using JavaScript's native Date.toLocaleString() method.
+4. Added timestamp normalization to handle both millisecond and second timestamps.
+5. Removed duplicate conditional logic that was causing inconsistent display.
+
+```javascript
+// Before fix
+let pivotTime;
+if (pivot.confirmTime) {
+  pivotTime = formatDateTime(pivot.confirmTime * 1000);
+} else {
+  pivotTime = pivot.displayTime || formatDateTime(pivot.time * 1000);
+}
+
+// After fix
+// Ensure we have both timestamps for all pivots
+// For cached pivots, ensure we convert any seconds to milliseconds
+let extremeTime = pivot.time;
+let confirmTime = pivot.confirmationTime;
+
+// Handle legacy format or ensure correct format
+if (!extremeTime) {
+  // Legacy pivot with no time property
+  extremeTime = pivot.extremeTime ? pivot.extremeTime * 1000 : candle.time;
+} else if (extremeTime < 10000000000) {
+  // Time is in seconds, convert to milliseconds
+  extremeTime = extremeTime * 1000;
+}
+
+if (!confirmTime) {
+  // Legacy pivot with no confirmationTime property
+  confirmTime = pivot.confirmTime ? pivot.confirmTime * 1000 : candle.time;
+} else if (confirmTime < 10000000000) {
+  // Time is in seconds, convert to milliseconds
+  confirmTime = confirmTime * 1000;
+}
+
+// Convert timestamps to Date objects for consistent formatting
+const extremeDate = new Date(extremeTime);
+const confirmDate = new Date(confirmTime);
+
+// Format the timestamps in a readable format
+const extremeTimeStr = extremeDate.toLocaleString();
+const confirmTimeStr = confirmDate.toLocaleString();
+```
+
+**Result**:
+Now backtestWithEdges.js shows the same timestamp format as pivotTimestampTest.js:
+```
+[PIVOT] LOW  @ 119090.00 | Extreme: 7/22/2025, 1:33:00 PM | Confirm: 7/22/2025, 1:46:00 PM | Move: 0.00% | Bars:   14 |  Edges: D:+0.7%(U) W:+1.6%(U) M:+16.2%(U)
+```
+
+**Benefits**:
+- Consistent timestamp display across all backtest outputs
+- Improved transparency in pivot detection and confirmation timing
+- Better debugging and analysis capabilities
+- Exact match between backtestWithEdges.js and pivotTimestampTest.js output formats
+- Proper handling of both legacy and enhanced pivot data formats
+- The timestamp formats were inconsistent between pivotTimestampTest.js and the backtest output.
+
+**Fix**:
+```javascript
+// Before fix
+let pivotTime;
+if (pivot.confirmTime) {
+  pivotTime = formatDateTime(pivot.confirmTime * 1000);
+} else {
+  pivotTime = pivot.displayTime || formatDateTime(pivot.time * 1000);
+}
+
+// After fix - now using Date objects for consistent formatting
+if (pivot.time && pivot.confirmationTime) {
+  // Convert timestamps to Date objects for consistent formatting
+  const extremeDate = new Date(pivot.time);
+  const confirmDate = new Date(pivot.confirmationTime);
+  
+  // Format the timestamps in a readable format
+  const extremeTimeStr = extremeDate.toLocaleString();
+  const confirmTimeStr = confirmDate.toLocaleString();
+  
+  // Enhanced pivot with both timestamps - match pivotTimestampTest.js format
+  line = `${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
+    `Extreme: ${extremeTimeStr} | Confirm: ${confirmTimeStr} | ` +
+    `Move: ${pivot.movePct.toFixed(2)}% | ` +
+    `Bars: ${String(pivot.bars || 'N/A').padStart(4, ' ')} | ` +
+    this.formatEdges(pivot.edges);
+}
+```
+
+**Additional Changes**:
+- Updated the EdgeConsoleLogger.logPivot method to correctly use `pivot.time` for extreme time and `pivot.confirmationTime` for confirmation time.
+- Changed the timestamp formatting to use JavaScript's native Date.toLocaleString() method for consistent display across the application.
+- Removed duplicate conditional statements and simplified the logic for displaying pivot timestamps.
+- Created a test script (testPivotDisplay.js) to verify the correct display of pivot timestamps in different formats.
+
+**Verification**:
+- Confirmed that the enhanced pivot data contains both `time` and `confirmationTime` properties.
+- Verified that the EdgeConsoleLogger now displays both timestamps in the same format as pivotTimestampTest.js.
+- Ensured backward compatibility with legacy pivot data that may lack confirmation timestamps.
+
+## 14. Enhanced Pivot Detection System Implementation
+**Issue**: The pivot detection system had several architectural flaws that caused timestamp discrepancies and inaccurate pivot identification:
+
+1. The system used high/low prices rather than closing prices for pivot confirmation when `confirmOnClose` was true
+2. Pivot timestamps were not properly tracked, causing discrepancies between displayed times and actual pivot times
+3. Worker-based batch processing created boundary issues where pivots near batch edges could be missed
+4. Validation was insufficient to ensure pivots matched actual candle data
+
+**Example**:
+```javascript
+// Console output showed pivot HIGH @ 108900.00 at 10:11:00 AM
+// JSON data showed timestamp 1752039540000 (10:19:00 AM)
+// Actual historical data at 1752039540000 showed:
+//   - Open: 108830.1
+//   - High: 108900
+//   - Low: 108807.9
+//   - Close: 108819.7
+```
+
+**Solution**:
+Created a completely new enhanced pivot detection system with these components:
+
+1. Created `enhancedPivotWorker.js` with an improved `EnhancedPivotTracker` class:
+```javascript
+// When confirmOnClose is true, use closing price for confirmation
+// but still track the actual high as the pivot price
+const reference = this.confirmOnClose ? price : low;
+const retrace = (this.extremePrice - reference) / this.extremePrice;
+
+// Store both extreme and confirmation candles
+const pivot = {
+    type,
+    price: this.extremePrice,
+    time: this.extremeTime,
+    previousPrice: this.pivotPrice,
+    previousTime: this.pivotTime,
+    movePct,
+    bars: this.legBars,
+    confirmedOnClose: this.confirmOnClose,
+    displayTime: new Date(this.extremeTime * 1000).toLocaleTimeString(),
+    confirmationTime: confirmationCandle.time,
+    confirmationDisplayTime: new Date(confirmationCandle.time * 1000).toLocaleTimeString(),
+    // Store the original candle where the extreme price was found
+    extremeCandle: this.extremeCandle,
+    // Also store the confirmation candle
+    confirmationCandle: {...confirmationCandle}
+};
+```
+
+2. Updated `generateEnhancedPivotData.js` to use the enhanced worker:
+```javascript
+// Use the enhanced pivot worker
+const workerPath = path.join(__dirname, 'enhancedPivotWorker.js');
+
+// Increased overlap size to ensure proper pivot detection
+const overlapSize = Math.max(longWindow * 3, 75); // At least 3x the long window or 75 candles
+
+// Added algorithm version tracking
+savePivotData(symbol, interval + '_enhanced', pivots, pivotConfig, { 
+    candles,
+    generatedAt: Date.now(),
+    lastUpdate: Date.now(),
+    enhancedAlgorithm: true, // Mark that we're using the enhanced algorithm
+    confirmOnClose: confirmOnClose // Explicitly store this setting
+});
+```
+
+**Benefits**:
+1. Proper handling of `confirmOnClose` setting using closing prices for pivot confirmation
+2. Accurate timestamp tracking with both extreme time and confirmation time stored
+3. Complete candle data storage for both extreme and confirmation points
+4. Increased batch overlap to prevent missing pivots at batch boundaries
+5. Full validation data to ensure pivots match actual candle data
+6. Maintained compatibility with existing edge data structures
+7. Improved real-time readiness with event-driven architecture
+
 ## 11. Pivot Data Timestamp Discrepancy
 **Issue**: There was a discrepancy between the timestamps displayed in console output and the actual pivot data timestamps, causing confusion and potential trade failures.
 

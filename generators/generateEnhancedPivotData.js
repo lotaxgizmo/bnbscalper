@@ -7,6 +7,7 @@ const NUM_WORKERS = 8;
 import { Worker } from 'worker_threads';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { performance } from 'perf_hooks';
 
 
 import {
@@ -136,7 +137,7 @@ function calculateEdgeData(candles, timestamp) {
 function createWorker(workerData, workerProgress) {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    const workerPath = path.join(__dirname, 'pivotWorker.js');
+    const workerPath = path.join(__dirname, 'enhancedPivotWorker.js'); // Use the enhanced pivot worker
     
     return new Promise((resolve, reject) => {
         const worker = new Worker(workerPath);
@@ -279,7 +280,8 @@ async function generateEnhancedPivotData() {
     
     // Define overlap size based on the longWindow parameter to ensure no pivots are missed
     // This ensures each batch has enough context from the previous batch
-    const overlapSize = Math.max(longWindow * 2, 50); // At least twice the long window or 50 candles
+    // Increased overlap size to ensure proper pivot detection with the enhanced algorithm
+    const overlapSize = Math.max(longWindow * 3, 75); // At least 3x the long window or 75 candles
     
     for (let i = 0; i < candles.length; i += batchSize) {
         // For all batches except the first, include overlap from previous batch
@@ -328,7 +330,9 @@ async function generateEnhancedPivotData() {
     savePivotData(symbol, interval + '_enhanced', pivots, pivotConfig, { 
         candles,
         generatedAt: Date.now(),
-        lastUpdate: Date.now()
+        lastUpdate: Date.now(),
+        enhancedAlgorithm: true, // Mark that we're using the enhanced algorithm
+        confirmOnClose: confirmOnClose // Explicitly store this setting
     });
 
     const endTime = performance.now();

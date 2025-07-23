@@ -1,7 +1,7 @@
 // Trade configuration for backtesting
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell')
-    direction: 'sell',
+    direction: 'buy',
 
     // Profit and loss settings (in %)
     takeProfit: 0.15,    // Take profit at 0.2%

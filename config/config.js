@@ -49,7 +49,7 @@ export const pricePercentile = 0;
 
 // export const lowPercentile = 0.2;
 
-
+    
 
 export const minSwingPct    = 0.3;   // minimum % move to mark a pivot
 export const shortWindow    = 6;     // number of recent swings to average

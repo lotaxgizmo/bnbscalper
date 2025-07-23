@@ -2,6 +2,22 @@
 
 ## Testing Tools
 
+### Enhanced Pivot Detection System
+
+The system now uses an improved pivot detection algorithm with better timestamp handling and proper closing price confirmation:
+
+```bash
+node generators/generateEnhancedPivotData.js
+```
+
+This enhanced generator:
+- Uses a completely redesigned pivot detection algorithm
+- Properly handles the `confirmOnClose` setting for more accurate pivots
+- Stores both extreme candle and confirmation candle data
+- Increases batch overlap to ensure no pivots are missed
+- Adds validation data to every pivot point
+- Maintains full compatibility with existing edge data
+
 ### Pivot Timestamp Test
 
 A lightweight test tool is available to verify pivot timestamp and price accuracy with enhanced predictive detection:
@@ -16,12 +32,28 @@ This tool:
 - Validates pivot prices against candle data
 - Simulates a mini backtest to verify timestamp display
 - Processes all pivots without targeting specific timestamps
+- Features real-time ready architecture for live trading integration
 
 Requirements:
-- Candle data file in `data/historical/1m.csv` format
+- Candle data file in `data/historical/SYMBOL/INTERVAL.csv` format
 - Node.js environment
 
 The output will show detailed information about pivot timestamps, prices, and any discrepancies found.
+
+#### Real-Time Trading Capability
+
+The EnhancedPivotTracker class is designed for real-time operation with these features:
+- Candle-by-candle processing for efficient memory usage
+- Stateful design that maintains trend direction between updates
+- Proper timestamp handling for accurate pivot identification
+- Complete pivot data with price, time, and move percentage information
+- Proper handling of closing price confirmation when `confirmOnClose` is true
+- Storage of both extreme and confirmation candle data for validation
+
+To adapt for real-time use:
+1. Replace the historical data source with a WebSocket connection
+2. Process incoming candles through the EnhancedPivotTracker.update() method
+3. Add signal handling code to act on pivot detections
 
 ## Console Output
 
@@ -48,6 +80,9 @@ When `showPivot` is enabled in config:
 - Accurate timestamps showing both pivot time and candle time
 - Improved pivot detection with closing price confirmation
 - Validation to ensure pivot data matches actual candle data
+- **New**: Enhanced pivot detection algorithm with proper timestamp handling
+- **New**: Complete candle data storage for both extreme and confirmation points
+- **New**: Proper implementation of `confirmOnClose` setting for accurate pivot confirmation
 - **New**: Enhanced predictive pivot detection using 2 minimum leg bars (reduced from 3)
 - **New**: Earlier pivot signals while maintaining the 0.3% minimum swing requirement
 

@@ -74,15 +74,41 @@ export class EdgeConsoleLogger extends ConsoleLogger {
     // Pad pivot type to match HIGH length
     const pivotType = pivot.type.toUpperCase().padEnd(4, ' ');
     
-    // Use pivot.time directly for timestamp display (already in seconds)
-    // This fixes the timestamp discrepancy issue
-    const pivotTime = pivot.displayTime || formatDateTime(pivot.time * 1000);
+    // Ensure we have both timestamps for all pivots
+    // For cached pivots, ensure we convert any seconds to milliseconds
+    let extremeTime = pivot.time;
+    let confirmTime = pivot.confirmationTime;
     
+    // Handle legacy format or ensure correct format
+    if (!extremeTime) {
+      // Legacy pivot with no time property
+      extremeTime = pivot.extremeTime ? pivot.extremeTime * 1000 : candle.time;
+    } else if (extremeTime < 10000000000) {
+      // Time is in seconds, convert to milliseconds
+      extremeTime = extremeTime * 1000;
+    }
+    
+    if (!confirmTime) {
+      // Legacy pivot with no confirmationTime property
+      confirmTime = pivot.confirmTime ? pivot.confirmTime * 1000 : candle.time;
+    } else if (confirmTime < 10000000000) {
+      // Time is in seconds, convert to milliseconds
+      confirmTime = confirmTime * 1000;
+    }
+    
+    // Convert timestamps to Date objects for consistent formatting
+    const extremeDate = new Date(extremeTime);
+    const confirmDate = new Date(confirmTime);
+    
+    // Format the timestamps in a readable format
+    const extremeTimeStr = extremeDate.toLocaleString();
+    const confirmTimeStr = confirmDate.toLocaleString();
+    
+    // Enhanced pivot with both timestamps - match pivotTimestampTest.js format
     const line = `${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
-      `Time: ${pivotTime} | ` +
-      `Candle Time: ${formatDateTime(candle.time)} | ` +
+      `Extreme: ${extremeTimeStr} | Confirm: ${confirmTimeStr} | ` +
       `Move: ${pivot.movePct.toFixed(2)}% | ` +
-      `Bars: ${String(pivot.bars || 'N/A').padStart(4, ' ').padEnd(4, ' ')} | ` +
+      `Bars: ${String(pivot.bars || 'N/A').padStart(4, ' ')} | ` +
       this.formatEdges(pivot.edges);
 
     console.log((pivot.type === 'high' ? COLOR_GREEN : COLOR_RED) + line + COLOR_RESET);
