@@ -168,6 +168,30 @@ export class EdgeConsoleLogger extends ConsoleLogger {
 
     console.log(pnlColor + line + COLOR_RESET);
   }
+  
+  logEdgeProximity(pivot, proximityPct, averageMove, action) {
+    if (this.performanceMode) return;
+    
+    // Use magenta to make it stand out
+    console.log(COLOR_MAGENTA + `[EDGE ALERT] Detected proximity to average daily edge!`);
+    console.log(`  Current position: ${proximityPct.toFixed(2)}% of average daily move`);
+    console.log(`  Average daily move: ${averageMove.toFixed(2)}%`);
+    console.log(`  Current move: ${pivot.edges?.daily?.move?.toFixed(2)}%`); // Debug info
+    
+    // Log the action taken
+    if (action === 'noTrade') {
+      console.log(`  Action: Not placing order due to edge proximity`);
+    } else if (action === 'reverseTrade') {
+      console.log(`  Action: Reversing trade direction due to edge proximity`);
+    }
+    
+    // Show the edge data
+    if (pivot.edges) {
+      console.log(`  Edge Details: ${this.formatEdges(pivot.edges)}`);
+    }
+    
+    console.log(COLOR_RESET);
+  }
 
   logTradeDetails(trade, index) {
     if (!this.performanceMode) {
@@ -185,10 +209,16 @@ export class EdgeConsoleLogger extends ConsoleLogger {
         `Move: ${rawPriceMove.toFixed(2)}% | ` +
         `P&L: ${trade.pnl.toFixed(2)}% | ` +
         `Capital: $${trade.capitalBefore.toFixed(2)} → $${trade.capitalAfter.toFixed(2)} | ` +
-        `${trade.result}` + `\n\n` +
-        (trade.edges ? this.formatEdges(trade.edges) : '') +
+        `${trade.result}` +
         COLOR_RESET
       );
+
+      // Edge data (if available)
+      if (trade.edges) {
+        console.log('\nEdges: ' + this.formatCurrentEdges(trade.edges));
+        console.log('Average Edge ' + this.formatAverageEdges(trade.edges) + 
+                  ' | Range/Total Edge ' + this.formatTotalEdges(trade.edges) + '\n');
+      }
 
       // Excursion analysis
       console.log(COLOR_YELLOW +
@@ -207,5 +237,52 @@ export class EdgeConsoleLogger extends ConsoleLogger {
       );
       console.log('-'.repeat(80));
     }
+  }
+
+  // Helper methods for formatting different parts of edge data
+  formatCurrentEdges(edges) {
+    if (!edges) return '';
+    
+    return ['D', 'W', 'M'].map(t => {
+      const type = t === 'D' ? 'daily' : t === 'W' ? 'weekly' : 'monthly';
+      const edge = edges[type];
+      if (!edge) return '';
+      
+      const direction = edge.position >= 0 ? 'U' : 'D';
+      const sign = edge.position >= 0 ? '+' : '';  // Negative sign is already included
+      return `${t}:${sign}${edge.position.toFixed(1)}%(${direction})`;
+    }).filter(Boolean).join(' ');
+  }
+
+  formatAverageEdges(edges) {
+    if (!edges) return '';
+    
+    return ['D', 'W', 'M'].map(t => {
+      const type = t === 'D' ? 'daily' : t === 'W' ? 'weekly' : 'monthly';
+      const edge = edges[type];
+      if (!edge || !edge.averageMove) return '';
+      
+      const avgMove = type === 'daily' 
+        ? edge.averageMove.week  // Use weekly average for daily
+        : edge.averageMove;      // Use direct average for weekly/monthly
+      
+      const direction = avgMove >= 0 ? 'U' : 'D';
+      const sign = avgMove >= 0 ? '+' : '';  // Negative sign is already included
+      return `${t}:${sign}${avgMove.toFixed(1)}%(${direction})`;
+    }).filter(Boolean).join(' ');
+  }
+
+  formatTotalEdges(edges) {
+    if (!edges) return '';
+    
+    return ['D', 'W', 'M'].map(t => {
+      const type = t === 'D' ? 'daily' : t === 'W' ? 'weekly' : 'monthly';
+      const edge = edges[type];
+      if (!edge || !edge.move) return '';
+      
+      const direction = edge.move >= 0 ? 'U' : 'D';
+      const sign = edge.move >= 0 ? '+' : '';  // Negative sign is already included
+      return `${t}:${sign}${edge.move.toFixed(1)}%(${direction})`;
+    }).filter(Boolean).join(' ');
   }
 }

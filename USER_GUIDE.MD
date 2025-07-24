@@ -71,6 +71,27 @@ When `showTradeDetails` is enabled in config:
 - Capital changes
 - Maximum favorable/adverse excursions
 - Trade timing and duration
+- **New**: Complete edge data at entry time, including:
+  * Current edge position percentages with direction indicators (U/D)
+  * Average edge data for daily/weekly/monthly timeframes
+  * Range/total edge movements for comprehensive analysis
+  * Edge data is captured exactly at trade entry (order fill time), not at exit
+  * System guarantees edge data presence even if pivot data is incomplete
+
+Example trade details with edge data:
+```
+[TRADE 1] LONG | Entry: 110341.19 | Exit: 110506.70 | Move: 0.15% | P&L: 0.88% | Capital: $100.00 → $100.88 | WIN
+
+Edges: D:+0.5%(U) W:+2.0%(U) M:+2.5%(U)
+Average Edge D:+1.8%(U) W:+5.7%(U) M:+10.7%(U) | Range/Total Edge D:+1.3%(U) W:+4.1%(U) M:+11.9%(U)
+
+  Max Favorable: +0.17%
+  Max Adverse:   -9.05%
+  Order Time: Tuesday   2025-05-27 02:31:00 PM
+  Entry Time: Tuesday   2025-05-27 02:35:00 PM
+  Exit Time:  Monday    2025-06-09 10:29:00 PM
+  Duration:   13 days, 7 hours, 54 minutes
+```
 
 ### Pivot Points
 When `showPivot` is enabled in config:

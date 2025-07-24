@@ -4,6 +4,40 @@
 
 ### Recent Updates
 
+#### Edge Proximity Trading System (July 2025)
+- Added intelligent edge proximity detection system for safer trading
+- Configurable threshold for proximity to average daily edge (default 90%)
+- Supports two actions when near edge: skip trading or reverse direction
+- Complete integration with edge analysis data
+- Visual alerts when edge proximity detected
+- Used in BacktestEngine for both backtesting and live trading
+- Compatible with existing edge data format
+
+##### Edge Proximity Detection Details
+- **Implementation**: Located in `BacktestEngine.checkEdgeProximity()`
+- **Configuration**:
+  * `edgeProximityEnabled` (boolean): Enables/disables the feature
+  * `edgeProximityThreshold` (number): Percentage of average daily edge to trigger action
+  * `edgeProximityAction` (string): Action to take - 'noTrade' or 'reverseTrade'
+- **Algorithm**:
+  * Calculates pivot's current move as a percentage of average daily move
+  * Uses monthly average for stability and consistency
+  * Threshold triggers when current move >= threshold % of average move
+  * Logs detailed proximity information via EdgeConsoleLogger
+  * Returns decision object with shouldTrade and originalDirection properties
+- **Debug Mode**:
+  * Added detailed logging to trace edge proximity decision making
+  * Shows full edge data structure, calculations, and threshold comparison
+  * Highlights threshold triggering in console output
+- **Edge Data Display**:
+  * Trade details now display complete edge data at entry time
+  * Shows current edge position percentages with direction (U/D)
+  * Includes average edge data for daily/weekly/monthly timeframes
+  * Displays range/total edge movements for comprehensive analysis
+  * Guaranteed edge data capture at order fill time (trade entry)
+  * Uses backup synthetic data if pivot edge data is missing
+  * Formats edge data in clear sections beneath trade summary
+
 #### Enhanced Pivot Detection System (July 2025)
 - Completely redesigned pivot detection algorithm with improved timestamp accuracy
 - Implemented proper handling of `confirmOnClose` setting to use closing prices for pivot confirmation

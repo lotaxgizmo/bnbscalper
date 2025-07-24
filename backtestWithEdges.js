@@ -9,7 +9,10 @@ import {
   longWindow,
   confirmOnClose,
   minLegBars,
-  delay
+  delay,
+  edgeProximityEnabled,
+  edgeProximityThreshold,
+  edgeProximityAction
 } from './config/config.js';
 
 import { tradeConfig } from './config/tradeconfig.js';
@@ -30,11 +33,26 @@ const pivotConfig = {
 };
 
 (async () => {
+  // Debug logging function
+  const debugLog = (message) => {
+    console.log(message);
+    // We'll just use console.log for now since fs requires different import method in ES modules
+  };
+  
+  // Add edge proximity settings to tradeConfig with debug function
+  const enhancedTradeConfig = {
+    ...tradeConfig,
+    edgeProximityEnabled,
+    edgeProximityThreshold,
+    edgeProximityAction,
+    debugLog
+  };
+  
   // Initialize logger
-  const logger = new EdgeConsoleLogger(tradeConfig);
+  const logger = new EdgeConsoleLogger(enhancedTradeConfig);
   
   // Log initial configuration
-  logger.logInitialConfig(symbol, interval, api, tradeConfig);
+  logger.logInitialConfig(symbol, interval, api, enhancedTradeConfig);
 
   // Try to load enhanced pivot data
   const cachedData = loadPivotData(symbol, interval + '_enhanced', pivotConfig);
@@ -69,29 +87,29 @@ const pivotConfig = {
   }
 
   // Initialize components
-  const engine = new BacktestEngine(pivotConfig, tradeConfig, logger);
+  const engine = new BacktestEngine(pivotConfig, enhancedTradeConfig, logger);
   
   // Pre-load the enhanced pivots with edge data
   engine.pivotTracker.loadPivots(pivots);
   
   // Configure exporter with edge analysis enabled
   const exporter = new BacktestExporter({
-    saveJson: tradeConfig.saveToFile,
-    saveCsv: tradeConfig.saveToFile,
-    config: tradeConfig
-  }, { config: tradeConfig });
+    saveJson: enhancedTradeConfig.saveToFile,
+    saveCsv: enhancedTradeConfig.saveToFile,
+    config: enhancedTradeConfig
+  }, { config: enhancedTradeConfig });
 
   // Run backtest
   const results = await engine.runBacktest(candles);
   
   // Calculate statistics
-  const stats = new BacktestStats(results.trades, tradeConfig);
+  const stats = new BacktestStats(results.trades, enhancedTradeConfig);
   const statistics = stats.calculate();
 
  
   if (results.trades.length) {
     // Show individual trade details if enabled
-    if (tradeConfig.showTradeDetails) {
+    if (enhancedTradeConfig.showTradeDetails) {
       console.log('\n— Trade Details —');
       results.trades.forEach((trade, i) => logger.logTradeDetails(trade, i));
       console.log('\n');

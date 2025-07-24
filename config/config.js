@@ -64,3 +64,8 @@ export const averageSwingThresholdPct = 100;   // e.g. 50 = half of average, 200
 
 // Whether to show detailed information about trades that pass the threshold
 export const showThresholdTrades = false;    // set to false to hide threshold trade details
+
+// Edge proximity settings
+export const edgeProximityEnabled = true;  // Enable/disable edge proximity check
+export const edgeProximityThreshold = 0;   // Percentage of average daily edge to trigger action (e.g. 90 = 90%)
+export const edgeProximityAction = 'noTrade'; // Action to take: 'noTrade' or 'reverseTrade'
