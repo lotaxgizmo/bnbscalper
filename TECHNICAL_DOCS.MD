@@ -378,3 +378,20 @@ The system tracks various performance metrics including:
   - Durations are now correctly calculated in milliseconds and formatted into a human-readable `days, hours, minutes` string.
 - Data exported to JSON and displayed in console output
 - Helps identify trade performance extremes
+
+## Simulation Tools
+
+### Historical Streamer (`historicalStreamer.js`)
+
+- **Purpose**: To simulate a live WebSocket data feed using historical candle data. This provides a hybrid front-testing/backtesting environment, allowing for the evaluation of live trading logic (`paperTrader.js`) against a complete historical dataset.
+- **Mechanism**:
+  - The script loads the entire historical candle dataset for a given symbol and interval from local CSV files.
+  - It then iterates through the candles chronologically, feeding each candle into the `PivotTracker` and `PaperTradeManager` instances.
+  - This process mimics the behavior of the WebSocket connection in `paperTrader.js`, where candles are processed as they are received.
+- **Integration**:
+  - Utilizes the same configuration files (`config/config.js`, `config/tradeconfig.js`) as the live paper trader.
+  - Leverages the `getCandles` function from `apis/bybit.js`, using both the `limit` and `time` settings from `config.js` to load the precise historical window for the simulation.
+- **Benefit**: This tool enables rigorous, realistic testing of the live trading and pivot detection logic without needing to wait for a live market. It combines the real-time, event-driven nature of front-testing with the speed and comprehensiveness of a full historical backtest.
+- **Output Enhancements**:
+  - The streamer now logs which candle interval (e.g., '1m', '5m') from `config.js` it is using.
+  - Each detected pivot is sequentially numbered (e.g., `HISTORICAL PIVOT #1 DETECTED:`), making it easier to track the total count.

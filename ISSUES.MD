@@ -1,5 +1,36 @@
 # Issues and Solutions Log
 
+## 21. `historicalStreamer.js` Local Data Path Resolution Failure
+
+**Issue**: The `historicalStreamer.js` script, designed to simulate a live feed from local historical data, was unable to locate the candle data CSV files. This resulted in an empty dataset and prevented the simulation from running.
+
+**Root Cause**:
+The `readLocalCandles` function within `apis/bybit.js` constructed an incorrect file path. The key problems were:
+1.  **Relative Path Dependency**: The path was constructed relative to the current working directory, not the location of the `bybit.js` module. When `historicalStreamer.js` was executed from the project root, the relative path was incorrect.
+2.  **`import.meta.url` Handling**: Node.js ES modules use `import.meta.url`, which returns a `file://` URI. This URI must be converted to a standard file system path before it can be used with `path` and `fs` modules.
+3.  **Missing File Extension**: The `.csv` file extension was mistakenly removed from the path construction logic in a previous edit.
+
+**Fix**:
+The `readLocalCandles` function in `apis/bybit.js` was refactored to build a robust, absolute path.
+
+```javascript
+// Before (Incorrect relative path)
+const filePath = path.join(historicalDataConfig.dataPath, symbol, `${interval}.csv`);
+
+// After (Robust absolute path construction)
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// Construct an absolute path from the current module's directory
+const filePath = path.resolve(__dirname, '..', '..', 'data', 'historical', symbol, `${interval}.csv`);
+```
+
+**Benefits**:
+-   **Reliable Pathing**: The file path is now resolved absolutely from the module's location, making it independent of the script's execution directory.
+-   **Correct Module Usage**: Properly utilizes Node.js ES module features (`import.meta.url`) for path resolution.
+-   **Restored Functionality**: The `historicalStreamer.js` can now reliably access local data, fulfilling its purpose.
+
 ## 20. `testScheduledLimitOrder.js` Structural and Logical Errors
 
 **Issue**: The `testScheduledLimitOrder.js` script failed to execute due to a `SyntaxError: Identifier 'ScheduledLimitOrderExecutor' has already been declared`. This error was the result of several incorrect modifications made while trying to fix a bug related to the `simulationLength` configuration parameter being ignored.

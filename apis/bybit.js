@@ -3,11 +3,12 @@
 const axiosInstance = (typeof window !== 'undefined') ? window.axios : (await import('axios')).default;
 
 // Only import Node.js specific modules when not in browser
-let fs, path;
+let fs, path, fileURLToPath;
 const isNode = typeof window === 'undefined';
 if (isNode) {
     fs = await import('fs');
     path = await import('path');
+    ({ fileURLToPath } = await import('url'));
 }
 
 import { useLocalData } from '../config/config.js';
@@ -30,7 +31,8 @@ async function readLocalCandles(symbol, interval, limit = 100, customEndTime = n
   }
 
   try {
-    const filePath = path.join(historicalDataConfig.dataPath, symbol, `${interval}.csv`);
+                const __dirname = path.dirname(fileURLToPath(import.meta.url));
+        const filePath = path.join(__dirname, '..', 'data', 'historical', symbol, `${interval}.csv`);
     
     if (!fs.existsSync(filePath)) {
       console.error(`No local data found for ${symbol} - ${interval}`);
@@ -62,13 +64,17 @@ async function readLocalCandles(symbol, interval, limit = 100, customEndTime = n
         volume: volume
       });
 
-      if (allCandles.length >= limit) break;
+
     }
 
     // Sort by time ascending for consistency
     allCandles.sort((a, b) => a.time - b.time);
-    console.log(`Processing ${allCandles.length} candles from ${lines.length - 1} total`);
-    return allCandles;
+
+    // Apply the limit to return only the most recent candles
+    const limitedCandles = allCandles.slice(-limit);
+
+    console.log(`Loaded ${limitedCandles.length} of ${allCandles.length} available local candles (limit: ${limit}).`);
+    return limitedCandles;
 
   } catch (error) {
     console.error('Error reading local candles:', error);
@@ -90,7 +96,6 @@ export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100
 
   // If using local data or forced to use local, only use local CSV
   if (forceLocal || isUsingLocalData()) {
-    console.log(`Reading ${limit} candles from local CSV...`);
     return await readLocalCandles(symbol, csvInterval, limit, customEndTime);
   }
 

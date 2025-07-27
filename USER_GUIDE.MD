@@ -40,6 +40,20 @@ Requirements:
 
 The output will show detailed information about pivot timestamps, prices, and any discrepancies found.
 
+### Historical Data Streamer
+
+For a powerful hybrid of backtesting and live testing, you can use the historical data streamer. This tool simulates a real-time data feed using your local historical data, allowing you to see how your live trading logic would perform minute-by-minute.
+
+```bash
+node historicalStreamer.js
+```
+
+This script will:
+- Load a specific number of historical candles based on the `limit` setting in `config/config.js`.
+- Process them one-by-one, simulating a live market feed.
+- Use your existing `PivotTracker` and `PaperTradeManager` to detect pivots and execute trades based on your live strategy configuration.
+- The console will now confirm which candle timeframe is being used and assign a sequential number to each pivot for easy tracking.
+
 ### Backtest Output Readability
 
 The console output for backtests run with `backtestWithExecutor.js` has been significantly improved for clarity.

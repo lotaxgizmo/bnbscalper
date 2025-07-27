@@ -24,7 +24,7 @@ export const tradeConfig = {
     // Display settings
     showPivot: true,
     showLimits: true,
-    showTradeDetails: true,
+    showTradeDetails: false,
     
     // Export settings
     saveToFile: true,  // Set to false to disable JSON and CSV exports
