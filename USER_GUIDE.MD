@@ -40,6 +40,15 @@ Requirements:
 
 The output will show detailed information about pivot timestamps, prices, and any discrepancies found.
 
+### Backtest Output Readability
+
+The console output for backtests run with `backtestWithExecutor.js` has been significantly improved for clarity.
+
+- **Sequential Logging**: Pivot details are now immediately followed by the trade events (order creation, fills, closes) that result from them.
+- **Reduced Clutter**: Redundant log messages, such as the extra "Order Filled" line, have been removed.
+
+This provides a clean, step-by-step view of the backtest execution, making it easier to follow the strategy's logic and analyze its performance.
+
 #### Real-Time Trading Capability
 
 The EnhancedPivotTracker class is designed for real-time operation with these features:
@@ -157,6 +166,7 @@ Average Edge D:+1.8%(U) W:+5.7%(U) M:+10.7%(U) | Range/Total Edge D:+1.3%(U) W:+
 ### Pivot Points
 When `showPivot` is enabled in config:
 - Real-time pivot detection display
+- **New**: Pivots are now numbered sequentially (1, 2, 3, ...), providing a unique ID for every pivot.
 - Pivot price and type (high/low)
 - Swing percentage and duration
 - Accurate timestamps showing both pivot time and candle time
@@ -174,8 +184,10 @@ When `showLimits` is enabled in config:
 - Order cancellation events
 - Price movement analysis
 - Cancellation reasons
+- **New**: The backtest summary now explicitly states if a trade was `CANCELLED/NOT FILLED`, providing a clearer picture of your strategy's behavior.
 
 ### Final Summary
+- **New Trade Details Section**: If you set `showTradeDetails: true` in `config/tradeconfig.js`, the final summary will now include a "Trade Details" section. This provides a full breakdown of every single trade, including P&L, entry/exit times and prices, duration, and the specific edge data at the time of the trade.
 - Date range and elapsed time
 - Total trade count and win rate
 - Overall P&L statistics

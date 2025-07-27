@@ -16,7 +16,7 @@ const daylimit = weeklimit * 7;
 // const daylimit = 7;
 const hourlimit = daylimit * 24;
 const minlimit = hourlimit * 60;
-
+ 
 // export const limit = minlimit;
 export const limit = 1400;
 
@@ -66,6 +66,6 @@ export const averageSwingThresholdPct = 100;   // e.g. 50 = half of average, 200
 export const showThresholdTrades = false;    // set to false to hide threshold trade details
 
 // Edge proximity settings
-export const edgeProximityEnabled = true;  // Enable/disable edge proximity check
+export const edgeProximityEnabled = false;  // Enable/disable edge proximity check
 export const edgeProximityThreshold = 0;   // Percentage of average daily edge to trigger action (e.g. 90 = 90%)
 export const edgeProximityAction = 'noTrade'; // Action to take: 'noTrade' or 'reverseTrade'

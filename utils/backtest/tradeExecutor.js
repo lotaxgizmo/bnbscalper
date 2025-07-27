@@ -37,11 +37,10 @@ function formatDuration(ms) {
 }
 
 export class TradeExecutor {
-  constructor(config, allCandles, pivot, logger = null) {
+  constructor(config, allCandles, pivot) {
     this.config = config;
     this.candles = allCandles;
     this.pivot = pivot;
-    this.logger = logger;
     this.order = null;
     this.orderFilled = false;
     this.orderCancelled = false;
@@ -187,7 +186,6 @@ export class TradeExecutor {
     if (filled) {
       this.orderFilled = true;
       this.order.fillTime = candle.time;
-      console.log(`\n${colors.bright}${colors.green}✔ Order Filled${colors.reset} at ${colors.brightCyan}$${this.order.fillPrice.toFixed(4)}${colors.reset} on ${formatDateTime(candle.time)}`);
     }
     return filled;
   }
@@ -248,9 +246,7 @@ export class TradeExecutor {
     this.createLimitOrder(targetCandle);
     if (!this.order) return null;
 
-    if (this.logger) {
-      this.logger.logLimitOrderCreation(this.order, this.pivot);
-    }
+
 
     const targetIndex = this.candles.findIndex(c => c.time === targetCandle.time);
     if (targetIndex === -1) {
@@ -267,9 +263,7 @@ export class TradeExecutor {
       // If order is not filled, check for a fill.
       if (!this.orderFilled) {
         if (this.checkOrderFill(currentCandle)) {
-          if (this.logger) {
-            this.logger.logLimitOrderFill(this.order, currentCandle);
-          }
+
         }
       }
 
@@ -280,12 +274,7 @@ export class TradeExecutor {
 
         // Check for an exit condition (TP or SL).
         if (this.checkStopLossTakeProfit(currentCandle)) {
-          if (this.logger) {
-            const pnl = (this.order.side === 'BUY' 
-              ? (this.order.exitPrice - this.order.fillPrice) / this.order.fillPrice 
-              : (this.order.fillPrice - this.order.exitPrice) / this.order.fillPrice) * 100;
-            this.logger.logLimitOrderClose(this.order, this.order.exitPrice, pnl);
-          }
+
           break; // Trade is closed, exit simulation loop.
         }
 
@@ -300,10 +289,6 @@ export class TradeExecutor {
     if (!this.orderFilled) {
       this.order.status = 'CANCELLED';
       this.finalTradeResult = { status: 'NOT_FILLED', duration: 0, order: this.order };
-      if (this.logger) {
-        const lastCandle = this.candles[maxSimulateIndex];
-        this.logger.logLimitOrder(this.order, lastCandle, 'Not Filled');
-      }
     } else if (!this.takeProfitTriggered && !this.stopLossTriggered) {
       this.order.status = 'OPEN';
       this.finalTradeResult = { status: 'EXPIRED', duration: 0, order: this.order };

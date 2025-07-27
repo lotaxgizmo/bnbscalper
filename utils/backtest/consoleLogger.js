@@ -9,6 +9,7 @@ export class ConsoleLogger {
     this.performanceMode = config.performanceMode || false;
     this.showPivot = config.showPivot || false;
     this.showLimits = config.showLimits || false;
+    this.showTradeDetails = config.showTradeDetails || false;
     this.pivotPairCount = 0;
     this.lastPivotType = null;
   }

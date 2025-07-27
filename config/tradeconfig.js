@@ -4,7 +4,7 @@ export const tradeConfig = {
     direction: 'buy',
 
     // Profit and loss settings (in %)
-    takeProfit: 0.15,    // Take profit at 0.2%
+    takeProfit: 1,    // Take profit at 0.2%
     stopLoss: 11,      // Stop loss at 0.1%
 
     // Leverage multiplier

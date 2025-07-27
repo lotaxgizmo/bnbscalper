@@ -4,6 +4,30 @@
 
 ### Recent Updates
 
+#### Logging System Enhancements (July 2025)
+- **Sequential Pivot Numbering**: The pivot numbering system in the `EdgeConsoleLogger` has been corrected. Pivots are now assigned a unique, sequential number (1, 2, 3, ...) instead of being numbered in pairs. This provides a clearer and more accurate count of all detected pivots during a backtest.
+
+- **Consolidated Trade Details Summary**: The display of trade details has been fixed and improved.
+  - **Root Cause Fix**: The core issue was resolved by ensuring the `showTradeDetails` configuration from `tradeconfig.js` is correctly initialized in the base `ConsoleLogger` constructor.
+  - **New Summary Section**: The `EdgeConsoleLogger` now includes an overridden `logFinalSummary` method. When `showTradeDetails` is `true`, this method appends a new "Trade Details" section to the end of the backtest report. This section contains a full, detailed breakdown of every trade executed during the run, keeping the real-time log clean while providing comprehensive data in the final summary.
+
+#### Robust Logging for Unfilled Trades (July 2025)
+- **Issue**: The backtesting script would crash with a `TypeError` if it attempted to log the details of a trade that was never filled (e.g., a cancelled limit order).
+- **Fix**: The `EdgeConsoleLogger.logTradeDetails` method was updated to handle these cases gracefully.
+- **Implementation**:
+  - The logger now checks if `trade.entryPrice` is `undefined` or `null`.
+  - If the trade was not filled, it logs a clear `[TRADE X] CANCELLED/NOT FILLED` message, including the cancellation reason if available.
+  - This prevents the script from crashing and provides more transparent logging in the backtest output, improving the reliability of the testing suite.
+
+#### Backtest Output Refactoring (July 2025)
+- **Issue**: The backtest console output was cluttered and difficult to read due to interleaved log messages from different parts of the system. Pivot details and trade events were not logged sequentially.
+- **Fix**: A new `BacktestController` class (`utils/backtest/backtestController.js`) was introduced to orchestrate the backtesting process and centralize all console logging.
+- **Implementation**:
+  - The `TradeExecutor` was refactored to remove all direct `console.log` calls. It now returns trade lifecycle data (order creation, fill, close) to the controller.
+  - The main `backtestWithExecutor.js` script now instantiates and runs the `BacktestController`.
+  - The `BacktestController` iterates through pivots, calls the `TradeExecutor` for each, and then logs the pivot and all resulting trade events in a clean, sequential order using the `EdgeConsoleLogger`.
+  - This ensures that pivot logs are immediately followed by the logs of the trades they generate, improving readability and making the backtest output much easier to analyze.
+
 #### Backtest Refactoring (July 2025)
 - **Capital Tracking Removed**: The backtesting scripts (`backtestWithExecutor.js`) and statistics calculation (`utils/backtest/backtestStats.js`) have been refactored to remove all capital tracking logic.
   - The backtest no longer simulates portfolio growth or tracks initial/final capital.

@@ -10,7 +10,7 @@ export class EdgeConsoleLogger extends ConsoleLogger {
     if (!edges) return '';
     
     // Format current edge data
-    const currentEdge = ' Edges: ' + ['D', 'W', 'M'].map(t => {
+    const currentEdge = ' \n Edges: ' + ['D', 'W', 'M'].map(t => {
       const type = t === 'D' ? 'daily' : t === 'W' ? 'weekly' : 'monthly';
       const edge = edges[type];
       if (!edge) return '';
@@ -38,7 +38,7 @@ export class EdgeConsoleLogger extends ConsoleLogger {
     }).filter(Boolean).join(' ');
 
     // Format total/range edge data
-    const totalEdge = ' | Range/Total Edge ' + ['D', 'W', 'M'].map(t => {
+    const totalEdge = '\n Range/Total Edge ' + ['D', 'W', 'M'].map(t => {
       const type = t === 'D' ? 'daily' : t === 'W' ? 'weekly' : 'monthly';
       const edge = edges[type];
       if (!edge || !edge.move) return '';
@@ -61,15 +61,14 @@ export class EdgeConsoleLogger extends ConsoleLogger {
 
     if (this.performanceMode || !this.showPivot) return;
     
-    // Increment pair count when we see a new high after a low or vice versa
-    if (this.lastPivotType !== pivot.type) {
-      if (pivot.type === 'high') this.pivotPairCount++;
-      this.lastPivotType = pivot.type;
+    // Initialize pivot count if it doesn't exist
+    if (typeof this.pivotCount === 'undefined') {
+      this.pivotCount = 0;
     }
-    
-    // Only show number for lows (start of pair)
-    const paddedNumber = pivot.type === 'low' ? String(Math.ceil(this.pivotPairCount)).padStart(3, ' ') : '   ';
-    const prefix = pivot.type === 'low' ? `${paddedNumber}.` : '    ';
+    this.pivotCount++;
+
+    const paddedNumber = String(this.pivotCount).padStart(3, ' ');
+    const prefix = `${paddedNumber}.`;
     
     // Pad pivot type to match HIGH length
     const pivotType = pivot.type.toUpperCase().padEnd(4, ' ');
@@ -105,10 +104,10 @@ export class EdgeConsoleLogger extends ConsoleLogger {
     const confirmTimeStr = confirmDate.toLocaleString();
     
     // Enhanced pivot with both timestamps - match pivotTimestampTest.js format
-    const line = `${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
+    const line = `\n${prefix}[PIVOT] ${pivotType} @ ${pivot.price.toFixed(2)} | ` +
       `Extreme: ${extremeTimeStr} | Confirm: ${confirmTimeStr} | ` +
       `Move: ${pivot.movePct.toFixed(2)}% | ` +
-      `Bars: ${String(pivot.bars || 'N/A').padStart(4, ' ')} | ` +
+      `Bars: ${String(pivot.bars || 'N/A').padStart(4, ' ')} ` +
       this.formatEdges(pivot.edges);
 
     console.log((pivot.type === 'high' ? COLOR_GREEN : COLOR_RED) + line + COLOR_RESET);
@@ -149,14 +148,9 @@ export class EdgeConsoleLogger extends ConsoleLogger {
   }
 
   logLimitOrderFill(order, candle) {
-    if (this.performanceMode || !this.showLimits) return;
-
-    const line = `[ORDER] ${order.type.toUpperCase()} LIMIT FILLED @ ${order.price.toFixed(2)} | ` +
-      `Current: ${candle.close.toFixed(2)} | ` +
-      `Time: ${formatDateTime(candle.time)}` +
-      this.formatEdges(order.edges);
-
-    console.log(COLOR_CYAN + line + COLOR_RESET);
+    const timeStr = formatDateTime(candle.time);
+    const line = `[ORDER] ${order.side} LIMIT FILLED @ ${order.price.toFixed(2)} | Current: ${candle.close.toFixed(2)} | Time: ${timeStr} Edges: ${this.formatEdges(order.edges)}`;
+    console.log(COLOR_YELLOW + line + COLOR_RESET);
   }
 
   logLimitOrderClose(order, exitPrice, pnl) {
@@ -195,8 +189,52 @@ export class EdgeConsoleLogger extends ConsoleLogger {
     console.log(COLOR_RESET);
   }
 
+  logAllPivots(pivots) {
+    if (this.performanceMode || !this.showPivot) return;
+    if (!pivots || pivots.length === 0) return;
+    console.log(`\n${COLOR_BRIGHT}--- Pivot Details ---${COLOR_RESET}`);
+    pivots.forEach((pivot, i) => {
+        const type = pivot.type === 'high' ? 'HIGH' : 'LOW';
+        const typeColor = pivot.type === 'high' ? COLOR_GREEN : COLOR_RED;
+        const price = pivot.price.toFixed(2);
+        
+        // Robustly determine the extreme time, checking for different properties and formats
+        let extremeTimestamp = pivot.extremeTime || pivot.time;
+        if (extremeTimestamp < 10000000000) { // If timestamp is in seconds
+            extremeTimestamp *= 1000;
+        }
+
+        const extremeDate = formatDateTime(extremeTimestamp);
+
+        const move = (pivot.move || 0).toFixed(2);
+        const bars = (pivot.bars || 0).toString().padStart(5, ' ');
+
+        const edgeString = this.formatEdges(pivot.edges);
+
+        const logLine = `${(i + 1).toString().padStart(3)}.[PIVOT] ${type.padEnd(4)} @ ${String(price).padEnd(10)} | Extreme: ${extremeDate} | Move: ${move}% | Bars: ${bars} |${edgeString}`;
+
+        console.log(typeColor + logLine + COLOR_RESET);
+    });
+    console.log(`${COLOR_BRIGHT}-----------------------${COLOR_RESET}\n`);
+  }
+
   logTradeDetails(trade, index) {
-    if (this.performanceMode) return;
+    if (this.performanceMode || !this.showTradeDetails) return;
+
+    // Handle trades that were not filled (e.g., cancelled orders)
+    if (typeof trade.entryPrice === 'undefined' || trade.entryPrice === null) {
+      console.log('\n' + '-'.repeat(80));
+      console.log(COLOR_YELLOW + `[TRADE ${index + 1}] CANCELLED/NOT FILLED` + COLOR_RESET);
+      if (trade.cancellationReason) {
+        console.log(COLOR_YELLOW + `  Reason: ${trade.cancellationReason}` + COLOR_RESET);
+      }
+      // Log basic details if available
+      if (trade.side && trade.type) {
+        console.log(COLOR_CYAN + `  Side: ${trade.side}, Type: ${trade.type}` + COLOR_RESET);
+      }
+      console.log('-'.repeat(80));
+      return;
+    }
 
     const result = trade.pnl >= 0 ? 'WIN' : 'LOSS';
     const color = result === 'WIN' ? COLOR_GREEN : COLOR_RED;
@@ -267,5 +305,19 @@ export class EdgeConsoleLogger extends ConsoleLogger {
       const sign = edge.move >= 0 ? '+' : '';  // Negative sign is already included
       return `${t}:${sign}${edge.move.toFixed(1)}%(${direction})`;
     }).filter(Boolean).join(' ');
+  }
+
+  logFinalSummary(trades, statistics) {
+    // If trade details are enabled, log each one here under a separate header
+    if (this.showTradeDetails && trades && trades.length > 0) {
+      console.log('\n' + '-'.repeat(42));
+      console.log(COLOR_YELLOW + '— Trade Details —' + COLOR_RESET);
+      trades.forEach((trade, index) => {
+        this.logTradeDetails(trade, index);
+      });
+    }
+
+    // Call parent for the main summary statistics
+    super.logFinalSummary(trades, statistics);
   }
 }
