@@ -3,13 +3,24 @@ export class BacktestStats {
   constructor(trades, config) {
     this.trades = trades;
     this.config = config;
+    this.initialCapital = config.initialCapital || 0;
   }
 
   calculate() {
+    const finalCapital = this.trades.reduce((acc, trade) => acc + (trade.pnlValue || 0), this.initialCapital);
+    const basicStats = this.calculateBasicStats();
+    const advancedStats = this.calculateAdvancedStats();
+    const excursionStats = this.calculateExcursions();
+
     return {
-      basic: this.calculateBasicStats(),
-      advanced: this.calculateAdvancedStats(),
-      excursions: this.calculateExcursions()
+      basic: basicStats,
+      advanced: advancedStats,
+      excursions: excursionStats,
+      capital: {
+        initial: this.initialCapital,
+        final: finalCapital,
+        profit: finalCapital - this.initialCapital
+      }
     };
   }
 

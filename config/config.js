@@ -17,8 +17,8 @@ const daylimit = weeklimit * 7;
 const hourlimit = daylimit * 24;
 const minlimit = hourlimit * 60;
  
-// export const limit = minlimit;
-export const limit = 1400;
+export const limit = minlimit;
+// export const limit = 1400;
 
 // delay below
 // Limit being 49.1 months

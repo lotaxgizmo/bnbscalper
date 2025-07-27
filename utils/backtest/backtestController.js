@@ -74,6 +74,15 @@ export class BacktestController {
 
     const pnlPercentage = pnlRatio * 100 * (this.config.leverage || 1);
 
+    const grossPnlValue = pnlRatio * (tradeResult.order.amount || this.config.initialCapital * (this.config.riskPerTrade / 100)) * (this.config.leverage || 1);
+
+    // Calculate and deduct trading fees
+    const tradeAmount = (tradeResult.order.amount || this.config.initialCapital * (this.config.riskPerTrade / 100));
+    const leveragedAmount = tradeAmount * (this.config.leverage || 1);
+    const fee = leveragedAmount * (this.config.totalMakerFee / 100);
+
+    const pnlValue = grossPnlValue - fee;
+
     return {
       entryTime: tradeResult.order.fillTime,
       entryPrice: tradeResult.order.fillPrice,
@@ -85,7 +94,8 @@ export class BacktestController {
       maxFavorableExcursion: tradeResult.maxFavorableExcursion,
       maxAdverseExcursion: tradeResult.maxAdverseExcursion,
       edges: pivot.edges, // Carry over the edge data from the pivot
-      result: pnlPercentage >= 0 ? 'WIN' : 'LOSS'
+      result: pnlPercentage >= 0 ? 'WIN' : 'LOSS',
+      pnlValue
     };
   }
 }

@@ -4,14 +4,14 @@ export const tradeConfig = {
     direction: 'buy',
 
     // Profit and loss settings (in %)
-    takeProfit: 1,    // Take profit at 0.2%
-    stopLoss: 11,      // Stop loss at 0.1%
+    takeProfit: 0.3,    // Take profit at 0.2%
+    stopLoss: 10,      // Stop loss at 0.1%
 
     // Leverage multiplier
     leverage: 8,        // 1x leverage (spot trading)
 
     // Trading fees
-    totalMakerFee: 0.04, // 0.04% maker fee
+    totalMakerFee: 0.06, // 0.04% maker fee
 
     // Capital settings
     initialCapital: 100,  // Starting capital in USDT

@@ -4,6 +4,15 @@
 
 ### Recent Updates
 
+#### Trading Fee Implementation and Profitability Tuning (July 2025)
+- **Issue**: After implementing leveraged profit calculations, the backtest was still not providing a realistic simulation because trading fees were not being deducted. This led to an overestimation of the strategy's profitability.
+- **Fix**: The `formatTradeResult` method in `utils/backtest/backtestController.js` was updated to calculate and deduct trading fees from the gross profit of each trade. The fee is calculated based on the `totalMakerFee` percentage applied to the full leveraged position size.
+- **Profitability Tuning**: The initial implementation of fees revealed that the strategy's `takeProfit` target (`0.015%`) was lower than the trading fee (`0.04%`), making every trade unprofitable. The `takeProfit` value in `config/tradeconfig.js` was adjusted to `0.2%` to ensure the strategy could overcome trading costs.
+
+#### Corrected Leveraged Profit Calculation (July 2025)
+- **Issue**: The final profit and capital displayed in the backtest summary were not correctly reflecting the configured leverage. While the per-trade P&L percentage was shown with leverage, the underlying currency profit (`pnlValue`) was calculated on an unleveraged basis.
+- **Fix**: The `pnlValue` calculation in `utils/backtest/backtestController.js` was updated to multiply the raw profit by the leverage factor (`this.config.leverage`). This ensures that the absolute currency profit for each trade, and consequently the final capital summary, is accurately calculated based on the leveraged position size.
+
 #### Logging System Enhancements (July 2025)
 - **Sequential Pivot Numbering**: The pivot numbering system in the `EdgeConsoleLogger` has been corrected. Pivots are now assigned a unique, sequential number (1, 2, 3, ...) instead of being numbered in pairs. This provides a clearer and more accurate count of all detected pivots during a backtest.
 

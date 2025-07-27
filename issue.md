@@ -1,5 +1,54 @@
 # Issues Log
 
+## Strategy Unprofitable Due to Trading Fees
+
+### Issue:
+After correctly implementing trading fee deductions, the backtest became unprofitable. The net result for each trade was negative because the cost to execute the trade was higher than the profit target.
+
+### Root Cause:
+The `takeProfit` parameter in `config/tradeconfig.js` was set to `0.015` (representing 0.015%), while the `totalMakerFee` was `0.04%`. With 10x leverage, a trade's gross profit was `0.15%` (`$0.15`), but the fee on the leveraged position was `$0.40`, resulting in a net loss of `-$0.25` per trade. A comment in the code (`// Take profit at 0.2%`) indicated the intended value was much higher.
+
+### Fix:
+The `takeProfit` value in `config/tradeconfig.js` was updated from `0.015` to `0.2` to ensure the profit target is substantially higher than the trading fees, aligning the code with the documented intention.
+
+**Before:**
+```javascript
+// In config/tradeconfig.js
+  takeProfit: 0.015,    // Take profit at 0.2% 
+```
+
+**After:**
+```javascript
+// In config/tradeconfig.js
+  takeProfit: 0.2,    // Take profit at 0.2%
+```
+
+
+
+## Backtest Profit Calculation Did Not Reflect Leverage
+
+### Issue:
+The backtest summary's final profit and capital figures were incorrect because they were not being calculated with the configured leverage. The P&L percentage per trade appeared correct, but the absolute currency profit (`pnlValue`) was based on an unleveraged amount.
+
+### Root Cause:
+In `utils/backtest/backtestController.js`, within the `formatTradeResult` method, the `pnlValue` constant was calculated using the raw, unleveraged profit-to-loss ratio. The leverage was applied to the display percentage (`pnlPercentage`) but was omitted from the currency value calculation that feeds into the capital statistics.
+
+### Fix:
+The `pnlValue` calculation was corrected to multiply the result by the leverage factor from the configuration. This ensures the currency profit accurately reflects the leveraged position size.
+
+**Before:**
+```javascript
+// In utils/backtest/backtestController.js
+const pnlValue = pnlRatio * (tradeResult.order.amount || this.config.initialCapital * (this.config.riskPerTrade / 100));
+```
+
+**After:**
+```javascript
+// In utils/backtest/backtestController.js
+const pnlValue = pnlRatio * (tradeResult.order.amount || this.config.initialCapital * (this.config.riskPerTrade / 100)) * (this.config.leverage || 1);
+```
+
+
 ## Incorrect Pivot Numbering
 
 ### Issue:

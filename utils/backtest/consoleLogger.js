@@ -170,6 +170,14 @@ export class ConsoleLogger {
     const pnlColor = statistics.basic.totalPnL >= 0 ? COLOR_GREEN : COLOR_RED;
     console.log(`${pnlColor}Total P&L: ${statistics.basic.totalPnL.toFixed(2)}%${COLOR_RESET}`);
     console.log(`${pnlColor}Average P&L per Trade: ${statistics.basic.avgPnL.toFixed(2)}%${COLOR_RESET}`);
+
+    // Capital
+    if (statistics.capital) {
+      const profitColor = statistics.capital.profit >= 0 ? COLOR_GREEN : COLOR_RED;
+      console.log(`Initial Capital: $${statistics.capital.initial.toFixed(2)}`);
+      console.log(`${profitColor}Profit: $${statistics.capital.profit.toFixed(2)}${COLOR_RESET}`);
+      console.log(`Final Capital: $${statistics.capital.final.toFixed(2)}`);
+    }
     
     console.log('-'.repeat(80));
     
