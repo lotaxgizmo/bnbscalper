@@ -26,17 +26,78 @@
   * Logs detailed proximity information via EdgeConsoleLogger
   * Returns decision object with shouldTrade and originalDirection properties
 - **Debug Mode**:
-  * Added detailed logging to trace edge proximity decision making
-  * Shows full edge data structure, calculations, and threshold comparison
-  * Highlights threshold triggering in console output
+  * Debug logging has been removed from backtestEngine.js as of July 24, 2025
+  * For debugging, use the EdgeConsoleLogger which still shows concise edge data
+  * Logging is now focused on trade signals rather than internal calculations
 - **Edge Data Display**:
   * Trade details now display complete edge data at entry time
   * Shows current edge position percentages with direction (U/D)
   * Includes average edge data for daily/weekly/monthly timeframes
   * Displays range/total edge movements for comprehensive analysis
   * Guaranteed edge data capture at order fill time (trade entry)
-  * Uses backup synthetic data if pivot edge data is missing
+  * Uses pivot's exact edge data for orders (after July 24, 2025 fix)
+  * Dynamic edge data updates via LimitOrderHandler module (July 24, 2025 enhancement)
   * Formats edge data in clear sections beneath trade summary
+  * Consistent edge data between pivots and their derived orders
+  * Visual formatting with box-style borders and color-coded metrics (July 2025 enhancement)
+  * Color differentiation between timeframes (D/W/M) and movement directions (U/D)
+
+#### Limit Order Handler Module (July 24, 2025)
+- Specialized utility for managing limit orders with dynamic edge data updates
+- Handles proper edge data inheritance from pivot to order
+- Updates order edge data in real-time using historical data
+- Uses same edge calculation algorithm as generateEnhancedPivotData.js
+- Always uses actual historical data for accurate edge calculations
+- Maintains reference to parent pivot for consistency and troubleshooting
+- Integrates with backtestEngine.js for seamless limit order processing
+
+#### Market Order Edge Data Testing (July 2025)
+- Implemented test script for market orders with real edge data (testLimitOrderEdgeData.js)
+- Generates a small number of random market orders (5 by default)
+- Uses real candle data to calculate accurate edge metrics
+- Eliminates dependency on synthetic pivot-based edge data
+- Directly leverages LimitOrderHandler for edge data calculation
+- Intelligently spaces test orders across different weeks for varied edge data
+- Uses full historical candle dataset (all available candles) to ensure sufficient data for week-based spacing
+- Calculates appropriate week spacing based on the selected interval
+- Prevents orders from sharing the same weekly average edge metrics
+- Demonstrates dynamic edge data updates over time (5-minute intervals)
+- Shows percentage changes in edge positioning for daily/weekly/monthly timeframes
+- Displays actual price changes after the 5-minute interval with:
+  * Clear initial and current price display with directional arrow
+  * Absolute price change values (e.g., +123.45)
+  * Percentage price change values (e.g., +0.123%)
+  * Color-coding (green for positive, red for negative) for quick visual assessment
+
+#### Scheduled Limit Order Testing (July 2025)
+- Implemented test script for scheduled limit orders (testScheduledLimitOrder.js)
+- Creates a limit order at a specified time with configurable parameters:
+  * Scheduled execution time (exact timestamp)
+  * Custom price or market price at time of execution
+  * Configurable position size (dollar amount)
+  * Optional take profit percentage (disabled if set to 0)
+  * Optional stop loss percentage (disabled if set to 0)
+  * Trade direction  * Supports both BUY and SELL orders
+  * Order distance percentage for testing pending orders
+  * Configurable position update frequency (default: every 1000 candles in test config)
+  * Configurable simulation length (default: 1000 candles)
+- Detailed edge data metrics:
+  * Daily, weekly, and monthly position
+  * Average move calculations
+  * Dynamic updates throughout the trade lifecycle
+- Complete position tracking:
+  * Real-time PnL calculations
+  * Configurable periodic position updates
+  * Final trade outcome with result metrics
+- The simulation runs for a maximum of 1000 candles after the scheduled order time or until a TP/SL condition is met
+- Provides comprehensive edge data at each stage of the trade
+- Displays real-time position updates with current P&L
+- Fully compatible with existing edge data system
+- Enhanced visual formatting with separate lines for price data and edge data
+- Provides comprehensive logging via EdgeConsoleLogger
+- Market orders maintain required properties for compatibility with existing loggers
+- Serves as validation test for edge data inheritance and update functionality
+- Compatible with both enhanced and standard pivot data formats
 
 #### Enhanced Pivot Detection System (July 2025)
 - Completely redesigned pivot detection algorithm with improved timestamp accuracy
@@ -54,6 +115,12 @@
 - Allows for more timely limit order placement near pivot points
 
 ### Recent Fixes
+
+#### Scheduled Limit Order Test Script Fixes (July 2025)
+- **Issue**: The test script was failing with a `SyntaxError` due to a duplicated class declaration and incorrect constructor logic that ignored some configuration parameters like `simulationLength`.
+- **Fix**: The script was refactored to remove the duplicate class and the constructor was corrected to accept the entire configuration object, ensuring all parameters are properly applied.
+- **Benefit**: The test now runs reliably and accurately simulates scheduled orders based on the exact configuration provided, improving testing fidelity.
+
 
 #### Timestamp Discrepancy Fix
 - Fixed timestamp display discrepancy between console output and actual pivot data
@@ -102,7 +169,7 @@
 - Features:
   * Built-in EnhancedPivotTracker class with proper timestamp handling
   * Correctly implements confirmOnClose setting for pivot confirmation
-  * Stores complete candle data for both extreme and confirmation points
+  * The simulation runs for a maximum of 1000 candles after the scheduled order time or until a TP/SL condition is met
   * Preserves all edge calculation functionality from the original worker
   * Maintains backward compatibility with existing edge data structures
   * Adds validation data to ensure pivots match actual candle data

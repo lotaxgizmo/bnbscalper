@@ -48,6 +48,67 @@ The EnhancedPivotTracker class is designed for real-time operation with these fe
 - Proper timestamp handling for accurate pivot identification
 - Complete pivot data with price, time, and move percentage information
 - Proper handling of closing price confirmation when `confirmOnClose` is true
+
+### Market Order Edge Data Test
+
+A specialized testing tool for verifying market order edge data functionality without synthetic pivot data:
+
+```bash
+node tests/testLimitOrderEdgeData.js
+```
+
+This test script:
+- Creates a small number (5) of random market orders using real candle data
+- Intelligently spaces test orders across different weeks for varied edge data
+- Uses all available historical candles (~270,000+) to ensure proper week-based spacing
+- Calculates appropriate week spacing based on the selected interval
+- Prevents orders from sharing the same weekly average edge metrics
+- Calculates accurate edge data using the LimitOrderHandler module
+- Shows dynamic edge data updates for orders at 5-minute intervals
+- Displays clear price change information after 5 minutes with:
+  * Initial price to current price comparison with directional arrow
+  * Absolute price change values (e.g., +123.45)
+  * Percentage price change values (e.g., +0.123%)
+  * Color-coded display (green for positive, red for negative changes)
+
+### Scheduled Limit Order Test
+
+A utility tool for testing limit orders scheduled at a specific time with take profit and stop loss:
+
+```bash
+node tests/testScheduledLimitOrder.js
+```
+
+This test script:
+- Creates a limit order at a user-defined time with configurable parameters
+- Features customizable:
+  * Entry time (specific timestamp)
+  * Order price (custom price or market price at time of execution)
+  * Position size (dollar amount)
+  * Take profit percentage (0 to disable)
+  * Stop loss percentage (0 to disable)
+  * Trade direction (BUY/SELL)
+  * Position update frequency (how often to show updates)
+  * Simulation length (number of candles to simulate)
+- Simulates the complete lifecycle of the limit order:
+  * Order placement at the scheduled time
+  * Real-time price monitoring for order fill
+  * Take profit and stop loss management
+  * Periodic position updates with P&L calculations
+  * Final trade outcome reporting
+- Provides comprehensive edge data analysis throughout the trade
+- Demonstrates edge data inheritance and real-time updates
+- Provides detailed metrics on edge position changes between updates
+- Uses authentic market data rather than synthetic pivot data
+- Features visually enhanced box-style formatting with color-coded metrics
+- Color differentiation between timeframes (D/W/M) and movement directions (U/D)
+
+Requirements:
+- Candle data file in `data/historical/SYMBOL/INTERVAL.csv` format
+- Configuration in `config/config.js` (symbol and interval)
+- Node.js environment
+
+The output shows comprehensive edge data for each market order including daily, weekly, and monthly metrics with positional changes over time.
 - Storage of both extreme and confirmation candle data for validation
 
 To adapt for real-time use:
@@ -139,6 +200,22 @@ Where:
 - U/D: Direction indicator (Up when price is above period start, Down when below)
 
 This helps identify trades near significant market edges across multiple timeframes.
+
+### Advanced Limit Order Edge Data
+
+Limit orders now maintain accurate and consistent edge data throughout their lifecycle:
+
+- Orders inherit edge data directly from their parent pivots
+- Edge data updates dynamically as market conditions change
+- Consistent edge values displayed between pivots and their orders
+- Improved accuracy in trade analysis and decision-making
+- Complete edge data available in trade logs and reports
+
+The system uses a specialized LimitOrderHandler module that:
+1. Creates limit orders with proper edge inheritance
+2. Updates order edge data using historical market data from configured symbol and interval
+3. Maintains references to parent pivots for consistent tracking
+4. Handles symbol and interval configuration gracefully with proper fallback options
 
 ### Performance Mode
 - Set `performanceMode: true` in config to disable detailed console output

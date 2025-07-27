@@ -1,5 +1,145 @@
 # Issues and Solutions Log
 
+## 20. `testScheduledLimitOrder.js` Structural and Logical Errors
+
+**Issue**: The `testScheduledLimitOrder.js` script failed to execute due to a `SyntaxError: Identifier 'ScheduledLimitOrderExecutor' has already been declared`. This error was the result of several incorrect modifications made while trying to fix a bug related to the `simulationLength` configuration parameter being ignored.
+
+**Root Cause**:
+1.  **Duplicate Class Declaration**: The primary error was the accidental duplication of the `ScheduledLimitOrderExecutor` class within the file during a series of flawed edits.
+2.  **Incorrect Constructor Logic**: The constructor was not correctly assigning the entire `config` object, leading to parameters like `simulationLength` being missed.
+3.  **Invalid File Structure**: At one point, the `runTest` function was incorrectly placed inside the class definition, which is invalid JavaScript syntax.
+
+**Fix**:
+A comprehensive `replace_file_content` operation was performed to clean up the entire file.
+
+1.  The duplicated class definition was removed entirely.
+
+2.  The constructor logic was corrected to be simple and effective, ensuring all configuration is passed correctly.
+    ```javascript
+    // Before (Flawed logic that missed some config properties)
+    class ScheduledLimitOrderExecutor {
+      constructor(config) {
+        this.config = { /* Manually assigned properties, missing simulationLength */ };
+        // ...
+      }
+    }
+
+    // After (Corrected and simplified)
+    class ScheduledLimitOrderExecutor {
+      constructor(config) {
+        this.config = config; // Directly assigns the entire config object
+        this.candles = [];
+        this.order = null;
+        this.orderFilled = false;
+        this.orderCancelled = false;
+        this.takeProfitTriggered = false;
+        this.stopLossTriggered = false;
+        this.limitOrderHandler = new LimitOrderHandler();
+      }
+      // ...
+    }
+    ```
+
+3.  The `runTest` function was placed correctly in the global scope, outside the class definition.
+
+**Benefits**:
+-   Resolves the critical `SyntaxError`, allowing the script to run successfully.
+-   Ensures all parameters in the `config` object, including `simulationLength` and `updateFrequency`, are correctly utilized in the simulation.
+-   Restores the script to a clean, maintainable state.
+
+*Last Updated: July 27, 2025*
+
+## 19. Scheduled Limit Order Precise Entry Time
+
+**Issue**: When implementing testScheduledLimitOrder.js, finding the exact candle matching a user-specified timestamp can be problematic because candle timestamps may not align perfectly with user input.
+
+**Root Cause**:
+- Candle intervals (1m, 5m, etc.) create discrete time points that may not match user's requested entry time
+- Historical candle data may have gaps or irregularities in timestamp sequence
+- JavaScript Date object conversion from string can introduce time zone complications
+
+**Solution**:
+1. Implemented findClosestCandle function to locate the nearest available candle:
+```javascript
+findClosestCandle(time) {
+  if (!this.candles || this.candles.length === 0) {
+    return null;
+  }
+  
+  // Find the closest candle to the scheduled time
+  let closestCandle = null;
+  let minTimeDiff = Number.MAX_SAFE_INTEGER;
+  
+  for (const candle of this.candles) {
+    const timeDiff = Math.abs(candle.time - time);
+    if (timeDiff < minTimeDiff) {
+      minTimeDiff = timeDiff;
+      closestCandle = candle;
+    }
+  }
+  
+  return closestCandle;
+}
+```
+
+2. Added clear logging to show both requested and actual execution times:
+```javascript
+console.log(`\nFound candle at ${formatDateTime(targetCandle.time)} (closest to scheduled time: ${formatDateTime(this.config.scheduleTime)})`);
+```
+
+**Benefits**:
+- Graceful handling of timestamp discrepancies
+- Clear communication of time differences to user
+- Ensures order execution even when exact timestamp isn't available in candle data
+- Maintains testing functionality without requiring perfect time alignment
+
+## 18. Market Order Edge Data Test Price Display Issue
+
+**Issue**: In testLimitOrderEdgeData.js, after 5 minutes when displaying updated edge data, the price was not clearly showing changes. The price in the updated order box remained the same as the original price, while only showing the change in a separate EDGE CHANGES section. This made it unclear if the price actually changed or not.
+
+**Root Cause**:
+- The LimitOrderHandler correctly updated the edge data, but not the displayed price in the order information
+- The order object's price property remained unchanged after edge data update
+- The actual updated price was only shown in the EDGE CHANGES section
+
+**Fix**:
+1. Modified the code to create a display-specific order object with the updated price:
+```javascript
+// Update the displayed price to show current price from the later candle
+const orderForDisplay = {
+  ...updatedOrder,
+  originalPrice: order.price,      // Store the original order price
+  price: laterCandle.close,       // Use the current candle's closing price
+  displayCurrentPrice: true        // Flag to indicate this is displaying current price
+};
+```
+
+2. Updated the logOrder function to show both original and current prices for updated orders:
+```javascript
+// If this is displaying current price (5 minutes later), show that it's the current price
+if (order.displayCurrentPrice) {
+  const priceColor = order.price >= order.referencePrice ? colors.green : colors.red;
+  console.log(`${colors.bright}║${colors.reset} ${colors.yellow}[ORDER]${colors.reset} ${order.type.toUpperCase()} @ ${order.originalPrice.toFixed(2)} | ` +
+    `Current: ${priceColor}${order.price.toFixed(2)}${colors.reset} | ` +
+    `Reference: ${order.referencePrice.toFixed(2)} | ` +
+    `Move: ${order.movePct.toFixed(2)}% ${colors.bright}║${colors.reset}`);
+}
+```
+
+3. Enhanced the EDGE CHANGES section to show initial and current prices more clearly:
+```javascript
+// Display price change information with clear initial and current prices
+console.log(`${colors.bright}║${colors.reset} ${colors.brightCyan}Initial Price:${colors.reset} ${order.price.toFixed(2)} ${colors.bright}→${colors.reset} ${colors.brightCyan}Current:${colors.reset} ${priceColor}${laterCandle.close.toFixed(2)}${colors.reset} ${colors.bright}║${colors.reset}`);
+console.log(`${colors.bright}║${colors.reset} ${colors.brightCyan}Price Change:${colors.reset} ${priceColor}${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)} (${priceChange >= 0 ? '+' : ''}${priceChangePct.toFixed(3)}%)${colors.reset} ${colors.bright}║${colors.reset}`);
+```
+
+**Benefits**:
+- Much clearer display of price changes after the 5-minute interval
+- Visual separation between original order price and current price
+- Improved readability with dedicated lines for different data points
+- Maintains color coding for quick visual assessment of positive/negative changes
+- Ensures all price information is consistently displayed across the output
+
 ## 17. Edge Proximity Feature Not Triggering With Low Threshold
 
 **Issue**: The Edge Proximity Trading feature was not triggering alerts or actions despite being enabled with a low threshold (9%). Detailed logging showed that the feature was being properly called but no pivots were triggering the threshold condition.
@@ -846,6 +986,333 @@ Added new logging methods to `EdgeConsoleLogger` for visibility into edge proxim
 - `logSkippedTrade`: Reports when trades are skipped due to edge proximity
 
 This implementation allows for more sophisticated trading strategies that respect statistical market boundaries and can adapt behavior near price extremes.
+
+## 25. Edge Data Discrepancy Between Pivots and Orders
+
+**Issue**: The Range/Total Edge data displayed for limit orders in backtestWithEdges.js was completely different from the edge data of the pivot that generated the order. This inconsistency made it difficult to track the relationship between pivots and their resulting orders.
+
+**Example Output**:
+```
+[PIVOT] LOW  @ 109087.10 | Extreme: 6/11/2025, 1:06:00 PM | Confirm: 6/11/2025, 1:11:00 PM | Move: 0.01% | Bars:  160 |  Edges: D:-0.3%(D) W:+3.9%(U) M:-0.5%(D)
+ Average Edge D:+2.4%(U) W:+5.9%(U) M:+9.4%(U) | Range/Total Edge D:+1.9%(U) W:+9.8%(U) M:+9.4%(U)
+
+[ORDER] BUY LIMIT @ 109126.57 | Reference: 109425.00 | Move: 0.00% Edges: D:+0.5%(U) W:+0.4%(U) M:+0.3%(U)
+ Average Edge D:+0.5%(U) W:+0.9%(U) M:+1.5%(U) | Range/Total Edge D:+0.4%(U) W:+0.7%(U) M:+1.3%(U)
+```
+
+**Root Cause**:
+- In backtestEngine.js, the `handlePivotSignal` method was generating synthetic edge data for all orders instead of using the actual edge data from the pivot that triggered the order
+- This happened because of an always-true condition in the code: `if (!edgeData) {...}` that would always replace the pivot's edge data with synthetic data
+- Even though we were using enhanced pivot data with edge information, the orders were getting completely different edge values
+
+**Problem Code**:
+```javascript
+// In handlePivotSignal method of backtestEngine.js
+// Use pivot edge data or create dynamic synthetic data if none exists
+let edgeData = pivot.edges;
+
+if (!edgeData) {
+  // Create dynamic edge data based on current price action and pivot
+  // Using the current price movement to create more realistic values
+  const currentMove = Math.abs(candle.close - pivot.price) / pivot.price * 100;
+  
+  // Use more realistic variation based on the current price action
+  const dailyPos = ((candle.close - pivot.price) / pivot.price * 100 * 1.5).toFixed(1) * 1;
+  const weeklyPos = (dailyPos * 0.8).toFixed(1) * 1; // Slightly less extreme on weekly
+  const monthlyPos = (dailyPos * 0.6).toFixed(1) * 1; // Even less extreme on monthly
+  
+  // ... more synthetic edge data generation ...
+  
+  edgeData = {
+    daily: { /* synthetic values */ },
+    weekly: { /* synthetic values */ },
+    monthly: { /* synthetic values */ }
+  };
+}
+```
+
+**Initial Fix (Incomplete)**:
+```javascript
+// Always use the pivot's edge data - it should contain accurate information
+// since we're working with enhanced pivot data that includes edges
+const edgeData = pivot.edges || {};
+
+// Only create synthetic edge data if absolutely necessary (should not happen with enhanced pivots)
+if (!edgeData.daily || !edgeData.weekly || !edgeData.monthly) {
+  this.logger?.logError('Warning: Missing edge data in pivot. This should not happen with enhanced pivots.');
+  
+  // Log the pivot for debugging
+  this.tradeConfig.debugLog?.('Problematic pivot: ' + JSON.stringify(pivot, null, 2));
+}
+```
+
+**Problem with Initial Fix**: The fix removed the synthetic edge data generation completely, resulting in orders with missing edge data when running with non-enhanced pivots.
+
+**Complete Fix**:
+```javascript
+// First try to use pivot's edge data if available (preferred method)
+let edgeData = pivot.edges;
+
+// If pivot edge data is missing or incomplete, create synthetic data as fallback
+if (!edgeData || !edgeData.daily || !edgeData.weekly || !edgeData.monthly) {
+  // Log warning since this shouldn't happen with enhanced pivots
+  if (pivot.edges) {
+    this.logger?.logError('Warning: Incomplete edge data in pivot. Using synthetic data as fallback.');
+  }
+  
+  // Create synthetic edge data as fallback
+  // [synthetic edge data generation code preserved]
+  edgeData = {
+    daily: { /* synthetic values */ },
+    weekly: { /* synthetic values */ },
+    monthly: { /* synthetic values */ }
+  };
+}
+```
+
+**Benefits**:
+- Orders now correctly display the same edge data as their parent pivots
+- Edge-based trading decisions are consistent between pivot detection and order placement
+- Enhanced debugging to catch missing edge data situations
+- Improved data consistency throughout the backtesting process
+
+## 26. Static Order Edge Data Not Updating Over Time
+
+**Issue**: Limit orders were created with edge data from their parent pivots, but this data remained static as time progressed. This resulted in stale edge data that didn't reflect changing market conditions while orders were active.
+
+**Example**:
+```javascript
+// Order created with static edge data
+const order = {
+  type: isLong ? 'buy' : 'sell',
+  price: limitPrice,
+  time: pivot.time,
+  isLong,
+  pivotPrice: pivot.price,
+  edges: edgeData, // Once set, never updated
+  referencePrice: pivot.price,
+  movePct
+};
+
+// Later in handleActiveOrder:
+if (filled) {
+  this.logger?.logLimitOrderFill(order, candle);
+  
+  // Create a trade from the filled order with stale edge data
+  const trade = {
+    entry: order.price,
+    entryTime: candle.time,
+    isLong: order.isLong,
+    orderTime: order.time,
+    edges: order.edges // Using stale edge data from order creation time
+  };
+}
+```
+
+**Problem**: As the market evolves, edge data becomes outdated, leading to trade decisions based on historical conditions rather than current market state.
+
+**Solution**: Created a dedicated LimitOrderHandler module that manages the full lifecycle of limit orders including dynamic edge data updates.
+
+```javascript
+// In BacktestEngine constructor
+constructor(config, tradeConfig, logger) {
+  // ...
+  this.limitOrderHandler = new LimitOrderHandler(config, logger);
+  // ...
+}
+
+// When creating orders from pivots
+const order = this.limitOrderHandler.createOrderFromPivot(
+  pivot,
+  candle,
+  isLong,
+  limitPrice,
+  avgMove
+);
+
+// When processing active orders
+const result = this.limitOrderHandler.processOrder(order, candle);
+
+// Update order's edge data when not filled
+if (!result.cancelled && !result.filled) {
+  order.edges = result.order.edges; // Updated with fresh edge data
+}
+```
+
+**The LimitOrderHandler Implementation**:
+```javascript
+export class LimitOrderHandler {
+  // ...
+  
+  // Load historical candle data for edge calculation
+  loadHistoricalData(symbol, interval) {
+    // Loads and caches historical data from disk
+  }
+  
+  // Update edge data using same algorithms as pivot generation
+  calculateEdgeData(candles, timestamp) {
+    // Uses the same edge calculation code as generateEnhancedPivotData.js
+  }
+  
+  // Process order and update its edge data
+  processOrder(order, candle) {
+    // Update with latest edge data before checking fill conditions
+    const updatedOrder = this.updateOrderEdgeData(order, candle);
+    
+    // Check fill conditions with fresh edge data
+    // ...
+  }
+}
+```
+
+**Benefits**:
+- Orders maintain up-to-date edge data throughout their lifecycle
+- Trade decisions reflect current market conditions
+- Consistent edge data handling between pivots and orders
+- Historical data used for accurate edge calculation
+- Code reuse with the same edge calculation algorithm as pivot generation
+- Always uses original historical data for calculations
+
+## 27. Symbol Undefined Error in LimitOrderHandler
+
+**Issue**: The LimitOrderHandler was failing to load historical data due to an undefined symbol parameter, resulting in the error "Cannot read properties of undefined (reading 'toLowerCase')" when trying to access historical data files.
+
+**Example**:
+```javascript
+// In LimitOrderHandler.js
+loadHistoricalData(symbol, interval) {
+  // Error occurs here when symbol is undefined
+  const filePath = path.join(this.historicalDataPath, symbol.toLowerCase(), `${interval}.json`);
+}
+
+// Later in updateOrderEdgeData
+try {
+  // This fails when this.config.symbol is undefined
+  const historicalData = this.loadHistoricalData(this.config.symbol, this.config.interval);
+}
+```
+
+**Root Cause**: When initializing LimitOrderHandler from BacktestEngine, the config object being passed didn't explicitly include symbol and interval properties. The LimitOrderHandler was depending on these values being provided through the config parameter, but they weren't consistently available.
+
+**Problem Code**:
+```javascript
+// In backtestEngine.js
+constructor(config, tradeConfig, logger) {
+  // ...
+  this.limitOrderHandler = new LimitOrderHandler(config, logger);
+  // ...
+}
+
+// In limitOrderHandler.js
+updateOrderEdgeData(order, candle) {
+  try {
+    // This fails when this.config.symbol is undefined
+    const historicalData = this.loadHistoricalData(this.config.symbol, this.config.interval);
+    // ...
+  }
+}
+```
+
+**Solution**: Updated the LimitOrderHandler to import symbol and interval directly from the config file as fallback values, similar to how generateEnhancedPivotData.js handles it:
+
+```javascript
+// In limitOrderHandler.js
+import { symbol as configSymbol, time as configInterval } from '../../config/config.js';
+
+loadHistoricalData(symbol, interval) {
+  // Use provided values or fall back to config values
+  const useSymbol = symbol || this.config?.symbol || configSymbol;
+  const useInterval = interval || this.config?.interval || configInterval;
+  
+  if (!useSymbol) {
+    this.logger?.logError('Symbol not provided and not found in config');
+    return [];
+  }
+  
+  // Use the safe values
+  const filePath = path.join(this.historicalDataPath, useSymbol.toLowerCase(), `${useInterval}.json`);
+  // ...
+}
+```
+
+**Validation**: Created a test file (`tests/testLimitOrderEdgeData.js`) to verify that limit orders could properly load and update edge data using the correct symbol and interval values.
+
+**Benefits**:
+- More robust handling of configuration parameters with proper fallbacks
+- Elimination of "Cannot read properties of undefined" errors
+- Consistent approach with how other modules like generateEnhancedPivotData.js handle symbol and interval
+- Properly functioning dynamic edge data updates using historical data
+
+## 24. Excessive Debug Logging in BacktestEngine
+
+**Issue**: The BacktestEngine class was outputting excessive debug logging statements related to edge data, cluttering the console output and making it difficult to read important trade information. The debug logs showed full JSON structures of edge data at various points in the trading process (pivot detection, order creation, order fill).
+
+**Example**:
+```
+[DEBUG] Edge data at order fill:
+{
+  "daily": {
+    "position": 0.5,
+    "move": 0.3066390041493776,
+    "averageMove": {
+      "week": 0.42929460580912865,
+      "twoWeeks": 0.4507593360995851,
+      "month": 0.47222406639004155
+    }
+  },
+  "weekly": {
+    "position": 0.4,
+    "move": 0.6132780082987552,
+    "averageMove": 0.7972614107883819
+  },
+  "monthly": {
+    "position": 0.3,
+    "move": 1.0732365145228218,
+    "averageMove": 1.2878838174273861
+  }
+}
+```
+
+**Solution**:
+Removed all debug logging statements related to edge data in the BacktestEngine class, specifically targeting:
+
+1. In `handleActiveOrder`:
+   ```javascript
+   // Debug logging for edge data
+   const debugLog = this.tradeConfig.debugLog || console.log;
+   if (order.edges) {
+     debugLog('\n[DEBUG] Edge data at order fill:');
+     debugLog(JSON.stringify(order.edges, null, 2));
+   } else {
+     debugLog('\n[WARNING] No edge data found in order!');
+   }
+   ```
+
+2. In `checkEdgeProximity`:
+   ```javascript
+   debugLog(`\n[DEBUG] Checking edge proximity for pivot at ${new Date(pivot.time).toISOString()}:`);
+   debugLog(`  Edge proximity enabled: ${this.tradeConfig.edgeProximityEnabled}`);
+   debugLog(`  Threshold: ${this.tradeConfig.edgeProximityThreshold}%`);
+   // ... multiple other debug statements
+   ```
+
+3. In `handlePivotSignal`:
+   ```javascript
+   debugLog('\n[DEBUG] Pivot edge data check:');
+   debugLog(`  Pivot has edges: ${!!pivot.edges}`);
+   // ... more debug statements
+   debugLog(`\n[DEBUG] Order edge data:`);
+   debugLog(JSON.stringify(order.edges, null, 2));
+   ```
+
+**Benefits**:
+- Cleaner console output focused on actual trade information
+- Improved readability of important trading signals and pivot points
+- Maintained all core functionality while eliminating noise
+- No change to the underlying edge data or calculations
+- EdgeConsoleLogger still shows concise edge data summary in trade details
+
+The removal of these debug logs does not affect the functionality of edge proximity detection or any other trading logic - it only cleans up the console output.
 
 ## Edge calculation using wrong reference point
 

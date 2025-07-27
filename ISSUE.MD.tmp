@@ -1,0 +1,58 @@
+# Issues Log
+
+## Missing price change display in testLimitOrderEdgeData.js
+
+### Issue:
+In the testLimitOrderEdgeData.js script, when showing the 5-minute later update for market orders, only the edge percentage changes were being displayed, but not the actual price changes. This made it difficult to see the actual price movement that occurred during the 5-minute interval, as all orders appeared to have the same price after 5 minutes:
+
+```javascript
+// Calculate any changes in edge positioning
+const dailyChange = updatedOrder.edges?.daily?.position - order.edges?.daily?.position;
+const weeklyChange = updatedOrder.edges?.weekly?.position - order.edges?.weekly?.position;
+const monthlyChange = updatedOrder.edges?.monthly?.position - order.edges?.monthly?.position;
+
+// Display edge changes with color coding
+console.log(`${colors.bright}╔══════════════════════ EDGE CHANGES ══════════════════════╗${colors.reset}`);
+
+console.log(`${colors.bright}║${colors.reset} ${colors.yellow}Daily:${colors.reset}   ${dailyColor}${dailyChange >= 0 ? '+' : ''}${dailyChange?.toFixed(1)}%${colors.reset}  ${colors.bright}|${colors.reset} ` +
+          `${colors.cyan}Weekly:${colors.reset} ${weeklyColor}${weeklyChange >= 0 ? '+' : ''}${weeklyChange?.toFixed(1)}%${colors.reset}  ${colors.bright}|${colors.reset} ` +
+          `${colors.magenta}Monthly:${colors.reset} ${monthlyColor}${monthlyChange >= 0 ? '+' : ''}${monthlyChange?.toFixed(1)}%${colors.reset} ${colors.bright}║${colors.reset}`);
+```
+
+The output showed edge percentage changes like "Daily: +0.0% | Weekly: +0.0% | Monthly: +0.0%", but didn't display the actual price changes that occurred during the 5-minute period.
+
+### Fix:
+Added calculation and display of the price change after 5 minutes:
+
+```javascript
+// Calculate any changes in edge positioning
+const dailyChange = updatedOrder.edges?.daily?.position - order.edges?.daily?.position;
+const weeklyChange = updatedOrder.edges?.weekly?.position - order.edges?.weekly?.position;
+const monthlyChange = updatedOrder.edges?.monthly?.position - order.edges?.monthly?.position;
+
+// Calculate price change after 5 minutes
+const priceChange = laterCandle.close - order.price;
+const priceChangePct = (priceChange / order.price) * 100;
+
+// Display edge changes with color coding
+console.log(`${colors.bright}╔══════════════════════ EDGE CHANGES ══════════════════════╗${colors.reset}`);
+
+const dailyColor = dailyChange >= 0 ? colors.green : colors.red;
+const weeklyColor = weeklyChange >= 0 ? colors.green : colors.red;
+const monthlyColor = monthlyChange >= 0 ? colors.green : colors.red;
+const priceColor = priceChange >= 0 ? colors.green : colors.red;
+
+console.log(`${colors.bright}║${colors.reset} ${colors.yellow}Daily:${colors.reset}   ${dailyColor}${dailyChange >= 0 ? '+' : ''}${dailyChange?.toFixed(1)}%${colors.reset}  ${colors.bright}|${colors.reset} ` +
+          `${colors.cyan}Weekly:${colors.reset} ${weeklyColor}${weeklyChange >= 0 ? '+' : ''}${weeklyChange?.toFixed(1)}%${colors.reset}  ${colors.bright}|${colors.reset} ` +
+          `${colors.magenta}Monthly:${colors.reset} ${monthlyColor}${monthlyChange >= 0 ? '+' : ''}${monthlyChange?.toFixed(1)}%${colors.reset} ${colors.bright}║${colors.reset}`);
+
+// Display price change information
+console.log(`${colors.bright}║${colors.reset} ${colors.brightCyan}Price:${colors.reset}   ${priceColor}${laterCandle.close.toFixed(2)}${colors.reset} (${priceColor}${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)} / ${priceChange >= 0 ? '+' : ''}${priceChangePct.toFixed(3)}%${colors.reset}) ${colors.bright}║${colors.reset}`);
+```
+
+This change now displays:
+1. The updated price value after 5 minutes
+2. The absolute price change (e.g., +123.45)
+3. The percentage price change (e.g., +0.123%)
+
+All with appropriate color coding (green for positive changes, red for negative), making it much easier to see the actual price movements that occurred during the test period.
