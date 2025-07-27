@@ -313,6 +313,13 @@ The console logging system has been modularized into a dedicated ConsoleLogger c
 
 ## Backtesting System
 
+### Sequential Trade Execution (July 2025)
+- **Logic**: The backtesting system is designed to execute trades strictly in sequence, ensuring that a new trade is only initiated after the previous one has been fully resolved (i.e., closed, cancelled, or expired).
+- **Implementation**: This is enforced by a two-level architecture:
+  - **`BacktestController`**: Orchestrates the overall backtest. It iterates through each pivot signal in a `for...of` loop and uses `await` when calling the `TradeExecutor`. This `await` keyword is crucial as it pauses the loop, preventing it from processing the next pivot until the current trade simulation is complete.
+  - **`TradeExecutor`**: Manages the lifecycle of a single trade. Its `run` method simulates the trade from order creation, through fill monitoring, to final closure (via take-profit, stop-loss, or expiration). It only returns control to the `BacktestController` once the trade is concluded.
+- **Guarantee**: This design guarantees that there are no concurrent or overlapping trades in the backtest, providing a clear and realistic simulation of a single-position trading strategy.
+
 ## Parallel Processing
 
 ### Backtesting Optimization

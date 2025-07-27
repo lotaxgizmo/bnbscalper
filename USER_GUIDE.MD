@@ -125,6 +125,14 @@ To adapt for real-time use:
 2. Process incoming candles through the EnhancedPivotTracker.update() method
 3. Add signal handling code to act on pivot detections
 
+## Backtesting Behavior
+
+### Sequential Trading: One Trade at a Time
+
+The backtesting engine is designed to simulate trading realistically by handling only **one trade at a time**. It will not open a new position if another one is already active.
+
+A trade must be fully completed (either by hitting its take-profit, stop-loss, or being cancelled) before the system will look for the next trading opportunity. This ensures the backtest results accurately reflect a strategy that doesn't manage multiple concurrent positions.
+
 ## Console Output
 
 The application provides detailed console output during backtesting:

@@ -17,6 +17,14 @@ export class BacktestController {
         this.logger.logPivot(pivot, pivotCandle);
       }
 
+      // Determine potential trade side from pivot and check if it's allowed by config
+      const potentialSide = pivot.type === 'high' ? 'SELL' : 'BUY';
+      const allowedDirection = (this.config.direction || 'both').toLowerCase();
+
+      if (allowedDirection !== 'both' && allowedDirection !== potentialSide.toLowerCase()) {
+        continue; // Skip this pivot if the direction is not allowed
+      }
+
       const tradeConfigForPivot = this.createTradeConfigForPivot(pivot);
       const executor = new TradeExecutor(tradeConfigForPivot, this.candles, pivot);
       const tradeResult = await executor.run();
