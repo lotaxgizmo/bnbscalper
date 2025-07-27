@@ -179,8 +179,10 @@ When `showLimits` is enabled in config:
 - Date range and elapsed time
 - Total trade count and win rate
 - Overall P&L statistics
-- Capital growth analysis
-- Excursion analysis
+- **Excursion Analysis**:
+  - **Favorable Excursion (MFE)**: This shows the maximum *potential* profit a trade reached while it was open. For example, if a trade closed with a 1.2% profit, but at one point was up by 2.5%, the favorable excursion is +2.5%. This helps you see if your take-profit targets are too tight.
+  - **Adverse Excursion (MAE)**: This shows the maximum amount a trade went *against* you before it was closed. For example, a winning trade might have been in a -0.5% loss before turning profitable. This helps you analyze if your stop-loss levels are appropriate.
+- Trade Durations (now correctly formatted in days, hours, and minutes)
 
 ### Edge-Enhanced Backtesting
 
@@ -234,9 +236,7 @@ The system uses a specialized LimitOrderHandler module that:
   * Green dots: Long entries
   * Red dots: Short entries
   
-- **Capital Chart**: Displays account balance over time
-  * Shows cumulative profit/loss
-  * Tracks capital growth
+
 
 - **Statistics Panel**:
   * Trade count and win rate
@@ -244,9 +244,6 @@ The system uses a specialized LimitOrderHandler module that:
   * Average trade duration
 
 - **Performance Metrics**:
-  * Starting and final capital
-  * Total return percentage
-  * Maximum drawdown
   * Sharpe ratio
 
 ### Troubleshooting

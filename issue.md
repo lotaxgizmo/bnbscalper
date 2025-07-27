@@ -1,5 +1,135 @@
 # Issues Log
 
+## Excursion Calculations Resulting in NaN Due to Incorrect Price Property
+
+### Issue:
+Even after implementing excursion tracking, backtest diagnostics showed that excursion calculations were resulting in `NaN` (Not a Number). This was because the entry price being used for the calculation was `undefined`.
+
+```
+[Excursion Update] Side: BUY, Entry: undefined, High: 117246.8, Low: 117191.2, Favorable: NaN%, Adverse: NaN%
+```
+
+### Root Cause:
+A typo was identified in `utils/backtest/tradeExecutor.js` within the `updateExcursions` method. The code was attempting to access `this.order.entryPrice`, a property that was never set. The correct property, which holds the price at which the order was filled, is `this.order.fillPrice`.
+
+### Fix:
+The property reference was corrected in `updateExcursions` to use `this.order.fillPrice`. This provided the correct entry price for the calculation, resolving the `NaN` issue and enabling accurate excursion tracking.
+
+**Before:**
+```javascript
+// In utils/backtest/tradeExecutor.js
+updateExcursions(candle) {
+  if (!this.orderFilled) return;
+
+  const entryPrice = this.order.entryPrice; // Incorrect property
+  // ... calculation logic
+}
+```
+
+**After:**
+```javascript
+// In utils/backtest/tradeExecutor.js
+updateExcursions(candle) {
+  if (!this.orderFilled) return;
+
+  const entryPrice = this.order.fillPrice; // Correct property
+  let favorableMove, adverseMove;
+
+  if (this.order.side === 'buy') {
+    favorableMove = ((candle.high - entryPrice) / entryPrice) * 100;
+    adverseMove = ((entryPrice - candle.low) / entryPrice) * 100;
+  } else { // 'sell'
+    favorableMove = ((entryPrice - candle.low) / entryPrice) * 100;
+    adverseMove = ((candle.high - entryPrice) / entryPrice) * 100;
+  }
+
+  if (favorableMove > this.maxFavorableExcursion) {
+    this.maxFavorableExcursion = favorableMove;
+  }
+  if (adverseMove > this.maxAdverseExcursion) {
+    this.maxAdverseExcursion = adverseMove;
+  }
+}
+```
+
+This change, combined with earlier refinements to the simulation loop, ensures that excursion data is now calculated correctly and reliably for all trades.
+
+
+## Backtest summary showing NaN% for excursions and incorrect durations
+
+### Issue:
+The backtest final summary was displaying `NaN%` for all Favorable and Adverse Excursion statistics. Additionally, trade durations were not being calculated or formatted correctly, often showing '0 minutes' for trades that lasted hours or days.
+
+### Root Cause:
+1.  **Excursion `NaN%`**: The `TradeExecutor` class was responsible for simulating the trade, but it did not track the maximum price movements for or against the position (`maxFavorableExcursion` and `maxAdverseExcursion`). Consequently, the final trade objects passed to the `BacktestStats` module lacked these properties, causing the statistical calculations to result in `NaN`.
+2.  **Incorrect Duration**: The `formatDuration` utility in `utils/formatters.js` was written to expect an input in minutes, but the duration passed from the `TradeExecutor` was in milliseconds. This mismatch led to incorrect formatting.
+
+### Fix:
+1.  **Implement Excursion Tracking**: The `TradeExecutor` was enhanced to track excursions. An `updateExcursions` method was added, and it is called for every candle after the trade is filled. The final excursion values are attached to the trade result.
+
+    ```javascript
+    // In TradeExecutor.js
+    updateExcursions(currentCandle) {
+      if (!this.orderFilled) return;
+
+      let price = currentCandle.close;
+      if (this.order.side === 'buy') {
+        const favorableExcursion = ((price - this.order.entryPrice) / this.order.entryPrice) * 100;
+        const adverseExcursion = ((this.order.entryPrice - price) / this.order.entryPrice) * 100;
+        this.maxFavorableExcursion = Math.max(this.maxFavorableExcursion, favorableExcursion);
+        this.maxAdverseExcursion = Math.max(this.maxAdverseExcursion, adverseExcursion); // Stays positive
+      } else { // sell
+        const favorableExcursion = ((this.order.entryPrice - price) / this.order.entryPrice) * 100;
+        const adverseExcursion = ((price - this.order.entryPrice) / this.order.entryPrice) * 100;
+        this.maxFavorableExcursion = Math.max(this.maxFavorableExcursion, favorableExcursion);
+        this.maxAdverseExcursion = Math.max(this.maxAdverseExcursion, adverseExcursion);
+      }
+    }
+    ```
+
+2.  **Correct Duration Formatting**: The `formatDuration` function was rewritten to correctly process milliseconds and convert them into a human-readable string of days, hours, and minutes.
+
+    ```javascript
+    // In utils/formatters.js
+    function formatDuration(ms) {
+      if (ms < 0) ms = 0;
+      const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+
+      let parts = [];
+      if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
+      if (hours > 0) parts.push(`${hours} hour${hours > 1 ? 's' : ''}`);
+      if (minutes > 0 || parts.length === 0) parts.push(`${minutes} minute${minutes > 1 ? 's' : ''}`);
+
+      return parts.join(', ');
+    }
+    ```
+
+3.  **Integrate into Backtest Loop**: The main backtest loop in `backtestWithExecutor.js` was updated to correctly pull the excursion data from the `tradeResult` and place it into the trade object used for statistical analysis.
+
+    ```javascript
+    // In backtestWithExecutor.js
+    allTrades.push({
+      entryTime: tradeResult.order.fillTime,
+      entryPrice: tradeResult.order.fillPrice,
+      exitTime: tradeResult.order.exitTime,
+      exitPrice: tradeResult.order.exitPrice,
+      side: tradeResult.order.side,
+      pnl: pnlPercentage,
+      duration: tradeResult.duration, // ms
+      maxFavorableExcursion: tradeResult.maxFavorableExcursion,
+      maxAdverseExcursion: tradeResult.maxAdverseExcursion,
+      edges: pivot.edges, // Carry over the edge data from the pivot
+      capitalBefore,
+      capitalAfter,
+      result: pnlAmount >= 0 ? 'WIN' : 'LOSS'
+    });
+    ```
+This series of fixes ensures the backtest summary is now fully accurate.
+
+
+
 ## Edge calculation using wrong reference point
 
 ### Issue:

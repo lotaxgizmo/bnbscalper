@@ -4,6 +4,13 @@
 
 ### Recent Updates
 
+#### Backtest Refactoring (July 2025)
+- **Capital Tracking Removed**: The backtesting scripts (`backtestWithExecutor.js`) and statistics calculation (`utils/backtest/backtestStats.js`) have been refactored to remove all capital tracking logic.
+  - The backtest no longer simulates portfolio growth or tracks initial/final capital.
+  - The focus is now solely on individual trade performance metrics like P&L percentage, win rate, and excursions.
+  - `backtestStats.js` no longer calculates or returns `finalCapital`, `totalReturn`, or `maxDrawdown`.
+  - The console logger (`utils/backtest/consoleLogger.js` and `utils/backtest/edgeConsoleLogger.js`) has been updated to remove all capital-related output.
+
 #### Edge Proximity Trading System (July 2025)
 - Added intelligent edge proximity detection system for safer trading
 - Configurable threshold for proximity to average daily edge (default 90%)
@@ -318,8 +325,16 @@ The system tracks various performance metrics including:
 - P&L calculations with leverage and fees
   * Highest and lowest winning trade P&L values
   * Highest and lowest losing trade P&L values
-- Capital changes and returns
 - Favorable and adverse price excursions
+  - The `TradeExecutor` now tracks the maximum favorable and adverse price movements for each trade.
+  - This data is passed to `BacktestStats` for accurate excursion analysis in the final summary.
+
+#### Excursion Calculation Fix (July 2025)
+- **Issue**: The backtest summary consistently reported Favorable and Adverse Excursion values as 0.00% or NaN.
+- **Root Cause**: A typo in `utils/backtest/tradeExecutor.js` within the `updateExcursions` method. The calculation was attempting to use `this.order.entryPrice`, which was `undefined`. The correct property, set when an order is filled, is `this.order.fillPrice`.
+- **Fix**: The property reference was corrected from `this.order.entryPrice` to `this.order.fillPrice`. This ensures that the excursion calculations are performed using the actual fill price of the trade, resulting in accurate, non-zero excursion statistics.
+- **Simulation Loop Correction**: The simulation loop in `TradeExecutor.run()` was also refined to ensure `updateExcursions()` is called for every candle a trade is active, from the fill candle to the exit candle, guaranteeing data is captured even for trades that open and close on the same candle.
 - Trade durations and timing
+  - Durations are now correctly calculated in milliseconds and formatted into a human-readable `days, hours, minutes` string.
 - Data exported to JSON and displayed in console output
 - Helps identify trade performance extremes

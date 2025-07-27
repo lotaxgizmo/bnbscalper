@@ -54,7 +54,6 @@ export class ConsoleLogger {
         `Exit: ${trade.exit.toFixed(2)} | ` +
         `Move: ${rawPriceMove.toFixed(2)}% | ` +
         `P&L: ${trade.pnl.toFixed(2)}% | ` +
-        `Capital: $${trade.capitalBefore.toFixed(2)} → $${trade.capitalAfter.toFixed(2)} | ` +
         `${trade.result}` + COLOR_RESET
       );
 
@@ -142,14 +141,22 @@ export class ConsoleLogger {
 
     console.log('\n' + '-'.repeat(42));
     console.log(COLOR_YELLOW + '— Final Summary —' + COLOR_RESET);
+
+    if (!trades || trades.length === 0) {
+      console.log('\nNo trades were executed.');
+      console.log('-'.repeat(80) + '\n');
+      return;
+    }
     
     // Date range
     const firstTrade = trades[0];
     const lastTrade = trades[trades.length - 1];
-    const elapsedMinutes = Math.floor((lastTrade.exitTime - firstTrade.orderTime) / (60 * 1000));
-    
-    console.log(`\nDate Range:\n${formatDateTime(firstTrade.orderTime)} → ${formatDateTime(lastTrade.exitTime)}`);
-    console.log(`\nElapsed Time: ${formatDuration(elapsedMinutes)}`);
+    const startTime = firstTrade.orderTime || firstTrade.entryTime;
+    const endTime = lastTrade.exitTime;
+    const elapsedMs = endTime - startTime;
+
+    console.log(`\nDate Range:\n${formatDateTime(startTime)} → ${formatDateTime(endTime)}`);
+    console.log(`\nElapsed Time: ${formatDuration(elapsedMs)}`);
     
     console.log('\n' + '-'.repeat(80) + '\n');
     console.log(COLOR_CYAN + `Total Trades: ${trades.length}` + COLOR_RESET + '\n');
@@ -188,11 +195,7 @@ export class ConsoleLogger {
 
     console.log('-'.repeat(80) + '\n');
     
-    // Capital Analysis
-    console.log(COLOR_CYAN + `Starting Capital: $${statistics.capital.initialCapital.toFixed(2)}` + COLOR_RESET);
-    console.log(COLOR_CYAN + `Final Capital: $${statistics.capital.finalCapital.toFixed(2)}` + COLOR_RESET);
-    const growthColor = statistics.capital.totalReturn >= 0 ? COLOR_GREEN : COLOR_RED;
-    console.log(growthColor + `Total Return: ${statistics.capital.totalReturn.toFixed(2)}%` + COLOR_RESET);
+
   }
 
   logExportStatus() {

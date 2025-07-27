@@ -11,14 +11,14 @@ export const symbol = 'BTCUSDT';
 
 // candle limit below
 
-const weeklimit = 8;
+const weeklimit = 1;
 const daylimit = weeklimit * 7;
 // const daylimit = 7;
 const hourlimit = daylimit * 24;
 const minlimit = hourlimit * 60;
 
-export const limit = minlimit;
-// export const limit = 144000;
+// export const limit = minlimit;
+export const limit = 1400;
 
 // delay below
 // Limit being 49.1 months

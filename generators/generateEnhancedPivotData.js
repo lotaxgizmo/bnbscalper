@@ -258,13 +258,9 @@ async function generateEnhancedPivotData() {
 
     // 1. Get candles
     console.log('Reading candles from local data...');
-    const candlesPerDay = 24 * 60; // 1440 candles per day
-    const daysNeeded = 31; // Need a month of data for edge calculations
-    const neededCandles = Math.max(limit, candlesPerDay * daysNeeded);
-    
-    const candles = await fetchCandles(symbol, interval, neededCandles, api, delay);
+    const candles = await fetchCandles(symbol, interval, limit, api, delay);
     candles.sort((a, b) => a.time - b.time);
-    console.log(`Processing ${candles.length} candles from ${neededCandles} total`);
+    console.log(`Processing ${candles.length} candles from ${limit} requested`);
 
     // Show data range
     const startDate = new Date(candles[0].time).toLocaleString();

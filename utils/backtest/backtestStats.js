@@ -9,8 +9,7 @@ export class BacktestStats {
     return {
       basic: this.calculateBasicStats(),
       advanced: this.calculateAdvancedStats(),
-      excursions: this.calculateExcursions(),
-      capital: this.calculateCapitalStats()
+      excursions: this.calculateExcursions()
     };
   }
 
@@ -83,25 +82,5 @@ export class BacktestStats {
     };
   }
 
-  calculateCapitalStats() {
-    const initialCapital = this.trades[0].capitalBefore;
-    const finalCapital = this.trades[this.trades.length - 1].capitalAfter;
-    const totalReturn = ((finalCapital/initialCapital - 1)*100);
 
-    // Calculate max drawdown
-    let peak = initialCapital;
-    let maxDrawdown = 0;
-    this.trades.forEach(trade => {
-      if (trade.capitalAfter > peak) peak = trade.capitalAfter;
-      const drawdown = (peak - trade.capitalAfter) / peak * 100;
-      if (drawdown > maxDrawdown) maxDrawdown = drawdown;
-    });
-
-    return {
-      initialCapital: Number(initialCapital.toFixed(2)),
-      finalCapital: Number(finalCapital.toFixed(2)),
-      totalReturn: Number(totalReturn.toFixed(2)),
-      maxDrawdown: Number(maxDrawdown.toFixed(2))
-    };
-  }
 }

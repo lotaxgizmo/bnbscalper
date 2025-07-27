@@ -115,6 +115,7 @@ export class EdgeConsoleLogger extends ConsoleLogger {
   }
 
   logLimitOrder(order, candle, cancelReason) {
+    if (this.performanceMode || !this.showLimits) return;
     // Call original logLimitOrder without edge data
     if (!order.edges) {
       super.logLimitOrder(order, candle, cancelReason);
@@ -138,9 +139,10 @@ export class EdgeConsoleLogger extends ConsoleLogger {
   logLimitOrderCreation(order, pivot, avgMove) {
     if (this.performanceMode || !this.showLimits) return;
 
-    const line = `[ORDER] ${order.type.toUpperCase()} LIMIT @ ${order.price.toFixed(2)} | ` +
-      `Reference: ${order.referencePrice.toFixed(2)} | ` +
-      `Move: ${order.movePct.toFixed(2)}%` +
+    const orderType = order.type ? order.type.toUpperCase() : 'N/A';
+    const line = `[ORDER] ${orderType} LIMIT @ ${order.price.toFixed(2)} | ` +
+      `Reference: ${(order.referencePrice || pivot.price).toFixed(2)} | ` +
+      `Move: ${typeof order.movePct === 'number' ? order.movePct.toFixed(2) : 'N/A'}%` +
       this.formatEdges(order.edges);
 
     console.log(line);
@@ -194,49 +196,30 @@ export class EdgeConsoleLogger extends ConsoleLogger {
   }
 
   logTradeDetails(trade, index) {
-    if (!this.performanceMode) {
-      console.log('\n' + '-'.repeat(80));
+    if (this.performanceMode) return;
 
-      const color = trade.result === 'WIN' ? COLOR_GREEN : COLOR_RED;
-      const rawPriceMove = trade.isLong
-        ? ((trade.exit - trade.entry) / trade.entry * 100)
-        : ((trade.entry - trade.exit) / trade.entry * 100);
+    const result = trade.pnl >= 0 ? 'WIN' : 'LOSS';
+    const color = result === 'WIN' ? COLOR_GREEN : COLOR_RED;
+    const side = trade.side === 'BUY' ? 'LONG' : 'SHORT';
 
-      // Trade header
-      console.log(color + `[TRADE ${index+1}] ${trade.isLong ? 'LONG' : 'SHORT'} | ` +
-        `Entry: ${trade.entry.toFixed(2)} | ` +
-        `Exit: ${trade.exit.toFixed(2)} | ` +
-        `Move: ${rawPriceMove.toFixed(2)}% | ` +
-        `P&L: ${trade.pnl.toFixed(2)}% | ` +
-        `Capital: $${trade.capitalBefore.toFixed(2)} → $${trade.capitalAfter.toFixed(2)} | ` +
-        `${trade.result}` +
-        COLOR_RESET
-      );
+    console.log('\n' + '-'.repeat(80));
+    console.log(color + `[TRADE ${index + 1}] ${side} | P&L: ${trade.pnl.toFixed(2)}% | ${result}` + COLOR_RESET);
 
-      // Edge data (if available)
-      if (trade.edges) {
-        console.log('\nEdges: ' + this.formatCurrentEdges(trade.edges));
-        console.log('Average Edge ' + this.formatAverageEdges(trade.edges) + 
-                  ' | Range/Total Edge ' + this.formatTotalEdges(trade.edges) + '\n');
-      }
-
-      // Excursion analysis
-      console.log(COLOR_YELLOW +
-        `  Max Favorable: +${trade.maxFavorableExcursion.toFixed(2)}%\n` +
-        `  Max Adverse:   -${trade.maxAdverseExcursion.toFixed(2)}%` +
-        COLOR_RESET
-      );
-
-      // Timing details
-      console.log(COLOR_CYAN +
-        `  Order Time: ${formatDateTime(trade.orderTime)}\n` +
-        `  Entry Time: ${formatDateTime(trade.entryTime)}\n` +
-        `  Exit Time:  ${formatDateTime(trade.exitTime)}\n` +
-        `  Duration:   ${formatDuration(Math.floor((trade.exitTime - trade.entryTime) / (60 * 1000)))}` +
-        COLOR_RESET
-      );
-      console.log('-'.repeat(80));
+    // Edge data (if available)
+    if (trade.edges) {
+      console.log('\nEdges: ' + this.formatCurrentEdges(trade.edges));
+      console.log('Average Edge ' + this.formatAverageEdges(trade.edges) + 
+                ' | Range/Total Edge ' + this.formatTotalEdges(trade.edges) + '\n');
     }
+
+    // Timing and price details
+    console.log(COLOR_CYAN +
+      `  Entry: ${formatDateTime(trade.entryTime)} at $${trade.entryPrice.toFixed(4)}\n` +
+      `  Exit:  ${formatDateTime(trade.exitTime)} at $${trade.exitPrice.toFixed(4)}\n` +
+      `  Duration: ${formatDuration(trade.duration)}` +
+      COLOR_RESET
+    );
+    console.log('-'.repeat(80));
   }
 
   // Helper methods for formatting different parts of edge data

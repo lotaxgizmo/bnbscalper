@@ -46,8 +46,7 @@ export class BacktestExporter {
       })),
       stats: {
         ...stats.basic,
-        ...stats.advanced,
-        ...stats.capital
+        ...stats.advanced
       }
     };
 
@@ -56,23 +55,21 @@ export class BacktestExporter {
   }
 
   async saveToCsv(results, stats) {
-    const { basic, advanced, excursions, capital } = stats;
+    const { basic, advanced, excursions } = stats;
     const csvPath = path.join(this.options.outputDir, 'backtest_summary.csv');
     
+    const csvHeader = 'take_profit,stop_loss,total_trades,win_rate,failed_trades,total_pnl,avg_pnl,' +
+                     'highest_win_pnl,lowest_win_pnl,highest_loss_pnl,lowest_loss_pnl,' +
+                     'avg_favorable_excursion,highest_favorable,lowest_favorable,' +
+                     'avg_adverse_excursion,highest_adverse,lowest_adverse\n';
+
     // For single backtest
     if (!Array.isArray(results)) {
-      const csvHeader = 'take_profit,stop_loss,total_trades,win_rate,failed_trades,total_pnl,avg_pnl,' +
-                       'highest_win_pnl,lowest_win_pnl,highest_loss_pnl,lowest_loss_pnl,' +
-                       'avg_favorable_excursion,highest_favorable,lowest_favorable,' +
-                       'avg_adverse_excursion,highest_adverse,lowest_adverse,' +
-                       'final_capital,total_return\n';
-
       const csvData = `${this.config?.takeProfit || ''},${this.config?.stopLoss || ''},` +
                      `${basic.totalTrades},${basic.winRate},${basic.losses},${basic.totalPnL},${basic.avgPnL},` +
                      `${advanced.highestWinPnL},${advanced.lowestWinPnL},${advanced.highestLossPnL},${advanced.lowestLossPnL},` +
                      `${excursions.avgFavorable},${excursions.highestFavorable},${excursions.lowestFavorable},` +
-                     `${excursions.avgAdverse},${excursions.highestAdverse},${excursions.lowestAdverse},` +
-                     `${capital.finalCapital},${capital.totalReturn}\n`;
+                     `${excursions.avgAdverse},${excursions.highestAdverse},${excursions.lowestAdverse}\n`;
 
       await fs.writeFileSync(csvPath, csvHeader + csvData);
     } 
@@ -87,8 +84,7 @@ export class BacktestExporter {
                `${stats.advanced.highestLossPnL},${stats.advanced.lowestLossPnL},` +
                `${stats.excursions.avgFavorable},${stats.excursions.highestFavorable},` +
                `${stats.excursions.lowestFavorable},${stats.excursions.avgAdverse},` +
-               `${stats.excursions.highestAdverse},${stats.excursions.lowestAdverse},` +
-               `${stats.capital.finalCapital},${stats.capital.totalReturn}`;
+               `${stats.excursions.highestAdverse},${stats.excursions.lowestAdverse}`;
       }).join('\n');
 
       await fs.writeFileSync(csvPath, csvHeader + csvRows);
