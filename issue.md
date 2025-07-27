@@ -98,6 +98,22 @@ The issue was resolved with a three-step correction:
 
     ```javascript
     // In utils/backtest/consoleLogger.js constructor
+
+## Paper Trader Fails to Connect Due to DNS Error
+
+### Issue:
+When running `paperTrader.js`, the script fails to establish a WebSocket connection and immediately exits after printing a DNS-related error.
+
+### Root Cause:
+The script is unable to resolve the Bybit WebSocket hostname (`stream.bybit.com`) into an IP address. The error message `getaddrinfo EAI_AGAIN` indicates a DNS lookup failure. This is not a bug in the application's code but rather an external, network-level problem. It can be caused by temporary internet issues, local DNS server problems, or a firewall.
+
+### Fix:
+This is an environmental issue, not a code issue. The primary solution is to **wait and retry the connection later**. If the problem persists, the user should check their internet connection and DNS settings. The application's error handling correctly catches this exception and prevents a crash, which is the desired behavior.
+
+**Error Snippet:**
+```
+WebSocket error: Error: getaddrinfo EAI_AGAIN stream.bybit.com
+```
     this.showTradeDetails = config.showTradeDetails || false;
     ```
 
