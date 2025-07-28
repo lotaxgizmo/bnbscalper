@@ -1,11 +1,11 @@
 // Trade configuration for backtesting
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell')
-    direction: 'both',
+    direction: 'sell',
 
     // Profit and loss settings (in %)
     takeProfit: 0.5,    // Take profit at 0.2%
-    stopLoss: 10,      // Stop loss at 0.1%
+    stopLoss: 1,      // Stop loss at 0.1%
 
     // Leverage multiplier
     leverage: 8,        // 1x leverage (spot trading)
@@ -24,7 +24,7 @@ export const tradeConfig = {
     // Display settings
     showPivot: true,
     showLimits: true,
-    showTradeDetails: false,
+    showTradeDetails: true,
     
     // Export settings
     saveToFile: true,  // Set to false to disable JSON and CSV exports

@@ -17,8 +17,8 @@ const daylimit = weeklimit * 7;
 const hourlimit = daylimit * 24;
 const minlimit = hourlimit * 60;
  
-export const limit = minlimit;
-// export const limit = 1400;
+// export const limit = minlimit;
+export const limit = 500;
 
 // delay below
 // Limit being 49.1 months
@@ -57,13 +57,14 @@ export const longWindow     = 50;    // number of swings for background volatili
 export const confirmOnClose = true;  // only confirm pivots on candle-close
 
 // New setting: ignore any pivot that took fewer than this many candles
-export const minLegBars = 4;     // e.g. require at least 3 candles per swing
+export const minLegBars = 1;     // e.g. require at least 3 candles per swing
 
 // Percentage of average swing size to use as threshold (100 = use exact average)
 export const averageSwingThresholdPct = 100;   // e.g. 50 = half of average, 200 = double
 
 // Whether to show detailed information about trades that pass the threshold
-export const showThresholdTrades = false;    // set to false to hide threshold trade details
+export const showThresholdTrades = true;
+export const logCandlesInStreamer = true; // Toggle to show/hide individual candle logs in the historical streamer
 
 // Edge proximity settings
 export const edgeProximityEnabled = false;  // Enable/disable edge proximity check

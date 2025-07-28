@@ -78,3 +78,16 @@ export const printSummary = ({
   console.log(`Time Window: ${colors.magenta}${durationStr}${colors.reset}`);
   console.log(separator + '\n');
 };
+
+export const displayCandleInfo = (candle) => {
+  const formattedTime = new Date(candle.time).toLocaleString();
+  const o = candle.open.toFixed(2);
+  const h = candle.high.toFixed(2);
+  const l = candle.low.toFixed(2);
+  const c = candle.close.toFixed(2);
+  const cColor = c >= o ? colors.green : colors.red;
+
+  console.log(
+    `🕯️  ${formattedTime}  | O: ${o} H: ${h} L: ${l} C: ${cColor}${c}${colors.reset}`
+  );
+};

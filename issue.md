@@ -1,5 +1,73 @@
 # Issues Log
 
+## Unresolved Trades at End of Historical Simulation
+
+### Issue:
+The `historicalStreamer.js` simulation would end with an "UNRESOLVED trade" status if a trade was still active when the historical candle data concluded. This provided an incomplete picture of the strategy's performance, as the final trade's outcome was never determined.
+
+### Root Cause:
+The simulation loop would simply finish, and the logic only reported that a trade was still active. There was no mechanism to resolve the trade based on the end-of-data state.
+
+### Fix:
+A `forceClose` mechanism was implemented to ensure all trades are resolved.
+
+1.  **New `forceClose` Method**: A new method, `forceClose(candle)`, was added to `utils/live/paperTradeManager.js`. It takes the last candle of the dataset, closes the trade at that candle's closing price, and calculates the final P&L.
+
+    ```javascript
+    // In utils/live/paperTradeManager.js
+    forceClose(candle) {
+        if (!this.tradeActive || this.order.status !== 'FILLED') return;
+
+        this.order.status = 'CLOSED';
+        this.order.exitTime = candle.time;
+        this.order.exitPrice = candle.close; // Close at the candle's closing price
+
+        if (this.order.side === 'BUY') {
+            this.order.result = this.order.exitPrice >= this.order.fillPrice ? 'WIN' : 'LOSS';
+        } else { // SELL
+            this.order.result = this.order.exitPrice <= this.order.fillPrice ? 'WIN' : 'LOSS';
+        }
+
+        this.tradeActive = false;
+    }
+    ```
+
+2.  **Updated Simulation Logic**: The `historicalStreamer.js` script was modified to use this new method. After the loop, it checks for an active trade and, if found, force-closes it.
+
+    **Before:**
+    ```javascript
+    // In historicalStreamer.js
+    if (activeTrade && activeTrade.isActive()) {
+        const order = activeTrade.order; 
+        console.log('\n----------------------------------------');
+        console.log('Simulation finished with an UNRESOLVED trade:');
+        console.log('Order Details:', JSON.stringify(order, null, 2));
+        console.log('This trade did not close by the end of the historical data.');
+        console.log('----------------------------------------');
+    }
+    ```
+
+    **After:**
+    ```javascript
+    // In historicalStreamer.js
+    if (activeTrade && activeTrade.isActive()) {
+        const lastCandle = candles[candles.length - 1];
+        activeTrade.forceClose(lastCandle);
+        const result = activeTrade.getResult();
+
+        console.log('\n----------------------------------------');
+        console.log('Simulation finished. An open trade was FORCE-CLOSED at the end of the data:');
+        console.log('Result:', {
+            ...result,
+            fillTime: result.fillTime ? new Date(result.fillTime).toLocaleString() : 'N/A',
+            exitTime: result.exitTime ? new Date(result.exitTime).toLocaleString() : 'N/A'
+        });
+        console.log('----------------------------------------');
+    }
+    ```
+
+
+
 ## Strategy Unprofitable Due to Trading Fees
 
 ### Issue:

@@ -4,6 +4,15 @@
 
 ### Recent Updates
 
+#### Handling of Unresolved Trades in Historical Simulation (July 2025)
+- **Issue**: The `historicalStreamer.js` script would finish with an "UNRESOLVED trade" message if a trade was still active when the historical data ran out. This left the backtest result incomplete, as the final P&L for the open trade was not calculated.
+- **Fix**: A mechanism was implemented to automatically close any open trade at the end of the simulation.
+- **Implementation**:
+  - A new `forceClose(candle)` method was added to the `PaperTradeManager` class (`utils/live/paperTradeManager.js`). This method closes an active, filled trade using the provided candle's closing price and determines the result (WIN/LOSS).
+  - The `historicalStreamer.js` script was updated to check for an active trade after its main loop concludes. If a trade is open, it calls the new `forceClose()` method using the very last candle from the dataset.
+  - The console output was updated to clearly indicate when a trade has been `FORCE-CLOSED`, ensuring transparency in the backtest results.
+- **Benefit**: This change ensures that all trades are resolved, providing a more complete and accurate performance picture for every backtest run.
+
 #### Trading Fee Implementation and Profitability Tuning (July 2025)
 - **Issue**: After implementing leveraged profit calculations, the backtest was still not providing a realistic simulation because trading fees were not being deducted. This led to an overestimation of the strategy's profitability.
 - **Fix**: The `formatTradeResult` method in `utils/backtest/backtestController.js` was updated to calculate and deduct trading fees from the gross profit of each trade. The fee is calculated based on the `totalMakerFee` percentage applied to the full leveraged position size.
@@ -384,6 +393,7 @@ The system tracks various performance metrics including:
 ### Historical Streamer (`historicalStreamer.js`)
 
 - **Purpose**: To simulate a live WebSocket data feed using historical candle data. This provides a hybrid front-testing/backtesting environment, allowing for the evaluation of live trading logic (`paperTrader.js`) against a complete historical dataset.
+- **Configuration Display**: At startup, the streamer now displays a summary of the current trade settings from `config/tradeconfig.js` for immediate verification.
 - **Mechanism**:
   - The script loads the entire historical candle dataset for a given symbol and interval from local CSV files.
   - It then iterates through the candles chronologically, feeding each candle into the `PivotTracker` and `PaperTradeManager` instances.
@@ -392,6 +402,11 @@ The system tracks various performance metrics including:
   - Utilizes the same configuration files (`config/config.js`, `config/tradeconfig.js`) as the live paper trader.
   - Leverages the `getCandles` function from `apis/bybit.js`, using both the `limit` and `time` settings from `config.js` to load the precise historical window for the simulation.
 - **Benefit**: This tool enables rigorous, realistic testing of the live trading and pivot detection logic without needing to wait for a live market. It combines the real-time, event-driven nature of front-testing with the speed and comprehensiveness of a full historical backtest.
-- **Output Enhancements**:
-  - The streamer now logs which candle interval (e.g., '1m', '5m') from `config.js` it is using.
-  - Each detected pivot is sequentially numbered (e.g., `HISTORICAL PIVOT #1 DETECTED:`), making it easier to track the total count.
+- **Output Formatting**:
+  - All major events (Pivots, Trades, Closures) are logged in a clean, single-line, color-coded format to prevent output scrambling and enhance readability.
+  - **`[PIVOT]`**: Green for `HIGH`, Red for `LOW`. Displays pivot number, type, price, confirmation time, percentage move, and bars.
+    - *Example*: `1.[PIVOT] LOW @ 118478.00 | Confirm: 7/21/2025, 3:12:00 PM | Move: 0.35% | Bars: 28`
+  - **`[TRADE]`**: Green for `WIN`, Red for `LOSS`. Displays result, side, PnL percentage, entry, and exit price.
+    - *Example*: `[TRADE] WIN | Side: BUY | PnL: 0.5000% | Entry: 118478 | Exit: 119070.39`
+  - **`[CLOSED]`**: Cyan for `WIN`, Magenta for `LOSS`. Used for trades that are force-closed at the end of the simulation data.
+    - *Example*: `[CLOSED] WIN | Side: SELL | PnL: 0.0432% | Entry: 119460.3 | Exit: 119408.7`

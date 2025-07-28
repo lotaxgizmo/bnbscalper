@@ -49,10 +49,13 @@ node historicalStreamer.js
 ```
 
 This script will:
+- Display the current trade settings from `config/tradeconfig.js` at the very top of its output, so you can easily verify the configuration for the run.
 - Load a specific number of historical candles based on the `limit` setting in `config/config.js`.
 - Process them one-by-one, simulating a live market feed.
 - Use your existing `PivotTracker` and `PaperTradeManager` to detect pivots and execute trades based on your live strategy configuration.
 - The console will now confirm which candle timeframe is being used and assign a sequential number to each pivot for easy tracking.
+- **Color-Coded Pivots**: To make the output easier to read, pivots are now color-coded. `high` pivots will appear in green, and `low` pivots will appear in red.
+- **Unresolved Trade Handling**: If a trade is still open when the historical data runs out, the simulation will now automatically close it using the price from the last available candle. The final output will clearly state that the trade was `FORCE-CLOSED`, ensuring you always get a complete performance result.
 
 ### Backtest Output Readability
 

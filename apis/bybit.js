@@ -6,9 +6,15 @@ const axiosInstance = (typeof window !== 'undefined') ? window.axios : (await im
 let fs, path, fileURLToPath;
 const isNode = typeof window === 'undefined';
 if (isNode) {
-    fs = await import('fs');
-    path = await import('path');
-    ({ fileURLToPath } = await import('url'));
+    try {
+        fs = await import('fs');
+        path = await import('path');
+        ({ fileURLToPath } = await import('url'));
+    } catch (err) {
+        console.error('Failed to load Node.js modules:', err);
+        // Exit or handle the error appropriately if modules are critical
+        process.exit(1);
+    }
 }
 
 import { useLocalData } from '../config/config.js';
@@ -25,6 +31,8 @@ const BASE_URL = 'https://api.bybit.com/v5';
  */
 // Read candles from local CSV file
 async function readLocalCandles(symbol, interval, limit = 100, customEndTime = null) {
+  // Standardize interval format for file naming (e.g., '1' -> '1m', '1h' -> '1h')
+  const fileInterval = interval.endsWith('m') || interval.endsWith('h') || ['D', 'W', 'M'].includes(interval) ? interval : `${interval}m`;
   if (!isNode) {
     console.warn('Local data reading is not supported in browser environment');
     return [];
@@ -32,10 +40,10 @@ async function readLocalCandles(symbol, interval, limit = 100, customEndTime = n
 
   try {
                 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-        const filePath = path.join(__dirname, '..', 'data', 'historical', symbol, `${interval}.csv`);
+        const filePath = path.join(__dirname, '..', 'data', 'historical', symbol, `${fileInterval}.csv`);
     
     if (!fs.existsSync(filePath)) {
-      console.error(`No local data found for ${symbol} - ${interval}`);
+      console.error(`No local data found for ${symbol} - ${fileInterval}`);
       return [];
     }
 
@@ -91,12 +99,9 @@ export function isUsingLocalData() {
 getCandles.isUsingLocalData = isUsingLocalData;
 
 export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100, customEndTime = null, forceLocal = false) {
-  // Convert interval to format used in CSV files (e.g., '1' to '1m')
-  const csvInterval = interval.endsWith('m') ? interval : `${interval}m`;
-
   // If using local data or forced to use local, only use local CSV
   if (forceLocal || isUsingLocalData()) {
-    return await readLocalCandles(symbol, csvInterval, limit, customEndTime);
+    return await readLocalCandles(symbol, interval, limit, customEndTime);
   }
 
   // Fallback to API if local data is not available or not used

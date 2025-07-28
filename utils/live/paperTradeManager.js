@@ -2,30 +2,32 @@
 // Manages the lifecycle of a single simulated trade using live data.
 
 export class PaperTradeManager {
-    constructor(tradeConfig, pivot) {
+    constructor(tradeConfig, pivot, confirmationCandle) {
         this.config = tradeConfig;
         this.pivot = pivot;
         this.tradeActive = true;
 
+        // Market Order Logic: Fill immediately at the close of the confirmation candle
+        const fillPrice = confirmationCandle.close;
+
         this.order = {
-            price: pivot.price,
+            price: pivot.price, // The pivot price that triggered the trade
             side: pivot.type === 'high' ? 'SELL' : 'BUY',
-            status: 'PENDING', // PENDING -> FILLED -> CLOSED
+            status: 'FILLED', // Immediately filled
             takeProfit: 0,
             stopLoss: 0,
-            fillTime: null,
-            fillPrice: null,
+            fillTime: confirmationCandle.time, // Fill time is the confirmation candle's time
+            fillPrice: fillPrice, // Fill price is the confirmation candle's close
             exitTime: null,
             exitPrice: null,
             pnl: 0,
             result: null // WIN/LOSS
         };
 
-        this.initializeOrder();
+        this.initializeOrder(fillPrice);
     }
 
-    initializeOrder() {
-        const price = this.order.price;
+    initializeOrder(price) {
         if (this.order.side === 'BUY') {
             this.order.takeProfit = price * (1 + this.config.takeProfit / 100);
             this.order.stopLoss = price * (1 - this.config.stopLoss / 100);
@@ -40,19 +42,7 @@ export class PaperTradeManager {
         if (!this.tradeActive) return;
 
         try {
-            // 1. Check for order fill if it's pending
-            if (this.order.status === 'PENDING') {
-                const filled = (this.order.side === 'BUY' && candle.low <= this.order.price) ||
-                               (this.order.side === 'SELL' && candle.high >= this.order.price);
-
-                if (filled) {
-                    this.order.status = 'FILLED';
-                    this.order.fillTime = candle.time;
-                    this.order.fillPrice = this.order.price; // Assume exact fill for simulation
-                }
-            }
-
-            // 2. If filled, check for TP/SL
+            // If filled, check for TP/SL
             if (this.order.status === 'FILLED') {
                 let closed = false;
                 if (this.order.side === 'BUY') {
@@ -99,5 +89,21 @@ export class PaperTradeManager {
 
     isActive() {
         return this.tradeActive;
+    }
+
+    forceClose(candle) {
+        if (!this.tradeActive || this.order.status !== 'FILLED') return;
+
+        this.order.status = 'CLOSED';
+        this.order.exitTime = candle.time;
+        this.order.exitPrice = candle.close; // Close at the candle's closing price
+
+        if (this.order.side === 'BUY') {
+            this.order.result = this.order.exitPrice >= this.order.fillPrice ? 'WIN' : 'LOSS';
+        } else { // SELL
+            this.order.result = this.order.exitPrice <= this.order.fillPrice ? 'WIN' : 'LOSS';
+        }
+
+        this.tradeActive = false;
     }
 }
