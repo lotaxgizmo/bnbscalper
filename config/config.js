@@ -23,7 +23,7 @@ export const limit = 500;
 // delay below
 // Limit being 49.1 months
 const month = 0;
-const day = 7;
+const day = 0;
 const hour =0;
 const minute = 0;
 

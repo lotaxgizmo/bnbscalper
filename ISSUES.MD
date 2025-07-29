@@ -1,5 +1,38 @@
 # Issues and Solutions Log
 
+## 22. Pivot Confirmation Lag in Historical Simulation
+
+**Issue**: When running `historicalStreamer.js`, a significant delay was observed between the formation of a pivot point (a price high or low) and the confirmation of that pivot. This lag, often lasting several minutes (multiple candles), resulted in delayed trade entries and missed opportunities, which is detrimental to a high-frequency scalping strategy.
+
+**Root Cause**: The `update` method in `utils/pivotTracker.js` strictly adhered to the `confirmOnClose` configuration parameter. When set to `true`, the system would wait for a subsequent candle to *close* beyond the `minSwingPct` threshold before confirming the pivot. This "wait-for-close" approach was the direct cause of the confirmation delay.
+
+**Fix**: The logic in `utils/pivotTracker.js` was modified to prioritize confirmation speed by always using the intra-candle high or low, effectively bypassing the `confirmOnClose` setting for confirmation purposes.
+
+```javascript
+// Before (Confirmation logic dependent on confirmOnClose)
+// For a high pivot
+if (this.config.confirmOnClose) {
+    if (candle.close < this.pivot.price * (1 - this.config.minSwingPct / 100)) {
+        this.confirmPivot(candle);
+    }
+} else {
+    if (candle.low < this.pivot.price * (1 - this.config.minSwingPct / 100)) {
+        this.confirmPivot(candle);
+    }
+}
+
+// After (Confirmation is always immediate)
+// For a high pivot
+if (candle.low < this.pivot.price * (1 - this.config.minSwingPct / 100)) {
+    this.confirmPivot(candle);
+}
+```
+
+**Benefits**:
+- **Immediate Confirmation**: Pivots are now confirmed almost instantly once the price retraces, without waiting for a candle to close.
+- **Reduced Lag**: The delay between pivot formation and trade signal is reduced from minutes to seconds.
+- **Improved Entry Prices**: Faster confirmation allows for trade entries that are much closer to the actual pivot price, improving the effectiveness of the scalping strategy.
+
 ## 21. `historicalStreamer.js` Local Data Path Resolution Failure
 
 **Issue**: The `historicalStreamer.js` script, designed to simulate a live feed from local historical data, was unable to locate the candle data CSV files. This resulted in an empty dataset and prevented the simulation from running.

@@ -4,6 +4,12 @@
 
 ### Recent Updates
 
+#### Immediate Pivot Confirmation for Faster Trading (July 2025)
+- **Issue**: The previous pivot detection logic, when `confirmOnClose` was enabled, introduced significant delays between a price peak/trough and the actual trade signal. This lag, sometimes lasting many minutes, is unacceptable for a high-frequency scalping strategy as it results in missed opportunities and poor entry prices.
+- **Fix**: The `PivotTracker`'s `update` method has been modified to prioritize speed by effectively bypassing the `confirmOnClose` setting.
+- **Implementation**: The logic now **always** uses a candle's `low` to confirm a high pivot and a candle's `high` to confirm a low pivot. A pivot is now confirmed as soon as the price makes a significant move in the opposite direction, even intra-candle, rather than waiting for a candle to close.
+- **Benefit**: This change drastically reduces confirmation lag, enabling much faster trade entries that are closer to the actual pivot point. This is critical for the effectiveness of the scalping strategy.
+
 #### Handling of Unresolved Trades in Historical Simulation (July 2025)
 - **Issue**: The `historicalStreamer.js` script would finish with an "UNRESOLVED trade" message if a trade was still active when the historical data ran out. This left the backtest result incomplete, as the final P&L for the open trade was not calculated.
 - **Fix**: A mechanism was implemented to automatically close any open trade at the end of the simulation.
@@ -389,6 +395,15 @@ The system tracks various performance metrics including:
 - Helps identify trade performance extremes
 
 ## Simulation Tools
+
+### Instant Pivot Test (`tests/instantPivotTest.js`)
+
+- **Purpose**: A lightweight, dependency-free script for rapid prototyping and testing of real-time logic against historical data. It was created specifically to develop and validate a near-instantaneous pivot detection system.
+- **Mechanism**:
+  - The script is entirely self-contained, with necessary helper functions (like `displayCandleInfo`) embedded directly to eliminate external dependencies and ensure isolated testing.
+  - It loads a configured number of historical candles from local CSV files.
+  - It then iterates through them as fast as possible, printing each one to the console without any artificial delay. This provides a simple, synchronous-like simulation of a data stream.
+- **Benefit**: This tool allows developers to focus purely on the logic being tested, free from the complexities of the larger backtesting or live trading frameworks. Its speed and simplicity make it ideal for iterative development and debugging of time-sensitive algorithms.
 
 ### Historical Streamer (`historicalStreamer.js`)
 

@@ -81,7 +81,9 @@ async function readLocalCandles(symbol, interval, limit = 100, customEndTime = n
     // Apply the limit to return only the most recent candles
     const limitedCandles = allCandles.slice(-limit);
 
-    console.log(`Loaded ${limitedCandles.length} of ${allCandles.length} available local candles (limit: ${limit}).`);
+    if (limit !== null) {
+      console.log(`Loaded ${limitedCandles.length} of ${allCandles.length} available local candles (limit: ${limit}).`);
+    }
     return limitedCandles;
 
   } catch (error) {

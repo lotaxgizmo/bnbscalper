@@ -68,6 +68,7 @@ export default class PivotTracker {
         this.direction    = 'up';
         this.extremePrice = high;
         this.extremeTime  = time; // Already in seconds
+        this.swingDirection = 'up';
       } else if (downMove >= this.swingThreshold) {
         this.direction    = 'down';
         this.extremePrice = low;
@@ -83,14 +84,13 @@ export default class PivotTracker {
         this.extremeTime  = time; // Already in seconds
       }
       // measure pullback
-      // When confirmOnClose is true, use closing price for confirmation
-      // but still track the actual high as the pivot price
-      const reference = this.confirmOnClose ? price : low;
+      // MODIFIED: Always use the candle's low for the quickest confirmation of a high pivot.
+      const reference = low;
       const retrace   = (this.extremePrice - reference) / this.extremePrice;
 
-      // **Only confirm** if both percent and min bars criteria met
-      if (retrace >= this.swingThreshold && this.legBars >= this.minLegBars) {
-        return this._confirmPivot('high');
+      // **FIX**: Confirm immediately on retrace, ignoring minLegBars for speed.
+      if (retrace >= this.swingThreshold) {
+        return this._confirmPivot('high', candle);
       }
     } else {
       // direction === 'down'
@@ -99,20 +99,20 @@ export default class PivotTracker {
         this.extremeTime  = time; // Already in seconds
       }
       // measure bounce
-      // When confirmOnClose is true, use closing price for confirmation
-      // but still track the actual low as the pivot price
-      const reference = this.confirmOnClose ? price : high;
+      // MODIFIED: Always use the candle's high for the quickest confirmation of a low pivot.
+      const reference = high;
       const retrace   = (reference - this.extremePrice) / this.extremePrice;
 
-      if (retrace >= this.swingThreshold && this.legBars >= this.minLegBars) {
-        return this._confirmPivot('low');
+      // **FIX**: Confirm immediately on retrace, ignoring minLegBars for speed.
+      if (retrace >= this.swingThreshold) {
+        return this._confirmPivot('low', candle);
       }
     }
 
     return null;
   }
 
-  _confirmPivot(type) {
+  _confirmPivot(type, candle) {
     // Calculate swing percentage
     const movePct = Math.abs((this.extremePrice - this.pivotPrice) / this.pivotPrice);
 
@@ -124,13 +124,13 @@ export default class PivotTracker {
       type,
       price: this.extremePrice,
       time: this.extremeTime,
-      previousPrice: this.pivotPrice,
-      previousTime: this.pivotTime,
+      confirmationTime: candle.time,
+      confirmedOnClose: this.confirmOnClose,
       movePct,
       bars: this.legBars,
       edges: loadedPivot?.edges, // Preserve edge data if found
-      // Add additional data for validation and debugging
-      confirmedOnClose: this.confirmOnClose,
+      previousPrice: this.pivotPrice,
+      previousTime: this.pivotTime,
       displayTime: new Date(this.extremeTime * 1000).toLocaleTimeString() // Convert timestamp to readable format
     };
 
@@ -175,26 +175,11 @@ export default class PivotTracker {
     // Add to pivots array
     this.pivots.push(pivot);
     
-    // Calculate and update swing statistics
-    if (pivot.type === 'high') {
-      const swing = (pivot.price - pivot.previousPrice) / pivot.previousPrice;
-      this.upSwingsShort.push(swing);
-      this.upSwingsLong.push(swing);
-      this.recentSwingsShort.push(swing);
-      this.recentSwingsLong.push(swing);
-    } else {
-      const swing = (pivot.previousPrice - pivot.price) / pivot.previousPrice;
-      this.downSwingsShort.push(swing);
-      this.downSwingsLong.push(swing);
-      this.recentSwingsShort.push(swing);
-      this.recentSwingsLong.push(swing);
-    }
+    // Record swing data using existing _recordSwing method
+    this._recordSwing(pivot.movePct, pivot.type);
     
-    // Maintain window sizes
-    this._maintainWindows();
-    
-    // Update current state if this is the first pivot
-    if (this.pivots.length === 1) {
+    // Update current state if this is the most recent pivot
+    if (this.pivots.length === 1 || pivot.time > this.pivotTime) {
       this.pivotPrice = pivot.price;
       this.pivotTime = pivot.time;
       this.direction = pivot.type === 'high' ? 'down' : 'up';
@@ -229,29 +214,6 @@ export default class PivotTracker {
       trendSlope: this.direction === 'up' ? 1 : -1,
       expectedDirection: this.direction === 'up' ? 'down' : 'up'
     };
-  }
-
-  /**
-   * Add an existing pivot to the tracker's history.
-   * Used when loading historical pivot data.
-   * @param {Object} pivot - The pivot point to add
-   */
-  addExistingPivot(pivot) {
-    // Add to pivots array
-    this.pivots.push(pivot);
-    
-    // Record swing data using existing _recordSwing method
-    this._recordSwing(pivot.movePct, pivot.type);
-    
-    // Update current state if this is the most recent pivot
-    if (this.pivots.length === 1 || pivot.time > this.pivotTime) {
-      this.pivotPrice = pivot.price;
-      this.pivotTime = pivot.time;
-      this.direction = pivot.type === 'high' ? 'down' : 'up';
-      this.extremePrice = pivot.price;
-      this.extremeTime = pivot.time;
-      this.legBars = 0;
-    }
   }
 }
 

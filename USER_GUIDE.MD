@@ -1,5 +1,14 @@
 # User Guide
 
+## Core Trading Logic
+
+### High-Speed Pivot Confirmation
+
+To maximize effectiveness for scalping, the pivot detection logic has been optimized for **speed**.
+
+- **Immediate Confirmation**: The system no longer waits for a candle to close to confirm a pivot. Instead, a pivot is confirmed the moment the price moves significantly against the trend, even within the same candle.
+- **Why this matters**: This change eliminates confirmation lag, allowing for much faster trade entries at prices closer to the actual pivot point. This is crucial for capturing small, rapid price movements.
+
 ## Testing Tools
 
 ### Enhanced Pivot Detection System
@@ -39,6 +48,19 @@ Requirements:
 - Node.js environment
 
 The output will show detailed information about pivot timestamps, prices, and any discrepancies found.
+
+### Instantaneous Pivot Test
+
+For rapid development and testing of time-sensitive logic (e.g., near-instant pivot detection), a dedicated test script is available.
+
+```bash
+node tests/instantPivotTest.js
+```
+
+This script is designed to be fully self-contained and dependency-free. It:
+- Loads the entire historical candle dataset into memory at once.
+- Immediately prints all candles to the console in a numbered sequence, simulating an instantaneous data stream.
+- Serves as a clean foundation for building and verifying new real-time analysis logic without the overhead of the full backtesting or streaming frameworks.
 
 ### Historical Data Streamer
 

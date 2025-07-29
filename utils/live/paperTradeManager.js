@@ -2,22 +2,22 @@
 // Manages the lifecycle of a single simulated trade using live data.
 
 export class PaperTradeManager {
-    constructor(tradeConfig, pivot, confirmationCandle) {
+    constructor(tradeConfig, pivot, executionCandle) {
         this.config = tradeConfig;
         this.pivot = pivot;
         this.tradeActive = true;
 
-        // Market Order Logic: Fill immediately at the close of the confirmation candle
-        const fillPrice = confirmationCandle.close;
+        // Market Order Logic: Fill at the opening price of the next available candle.
+        const fillPrice = executionCandle.open;
 
         this.order = {
             price: pivot.price, // The pivot price that triggered the trade
             side: pivot.type === 'high' ? 'SELL' : 'BUY',
-            status: 'FILLED', // Immediately filled
+            status: 'FILLED',
             takeProfit: 0,
             stopLoss: 0,
-            fillTime: confirmationCandle.time, // Fill time is the confirmation candle's time
-            fillPrice: fillPrice, // Fill price is the confirmation candle's close
+            fillTime: executionCandle.time, // The time the order was filled.
+            fillPrice: fillPrice, // The price at which the order was filled.
             exitTime: null,
             exitPrice: null,
             pnl: 0,
