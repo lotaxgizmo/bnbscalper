@@ -4,10 +4,10 @@
 
 ### Recent Updates
 
-#### Configurable Instant Pivot Detection (July 2025)
-- **Enhancement**: A highly configurable, multi-step pivot detection system has been implemented and tested in `tests/instantPivotTest.js` to allow for more precise tuning of pivot sensitivity and confirmation speed.
-- **Three-Step Confirmation Logic**:
-  1. **Candle Pattern (`pivotLookback`)**: The pivot candle must be a local high or low, confirmed by being higher (for highs) or lower (for lows) than a specified number of candles on both its left and right sides. This lookback period is controlled by the `pivotLookback` parameter in `config/config.js`.
+#### Realistic Instant Pivot Detection (No Lookahead) (July 2025)
+- **Enhancement**: The pivot detection system in `tests/instantPivotTest.js` has been updated to remove all lookahead bias, providing a realistic simulation of a live trading strategy. It allows for precise tuning of pivot sensitivity and confirmation speed.
+- **Two-Step Confirmation Logic (No Lookahead)**:
+  1. **Candle Pattern (`pivotLookback`)**: To eliminate lookahead bias, a pivot is now confirmed if its high is strictly greater than the highs of the `pivotLookback` preceding candles (or its low is strictly lower for a low pivot). The check no longer uses future candles, making the test a true simulation of live performance.
   2. **Price Swing (`minSwingPct`)**: The move from the last pivot to the new pivot must meet the minimum percentage swing threshold defined by `minSwingPct`.
   3. **Time Between Pivots (`minLegBars`)**: A minimum number of candles, defined by `minLegBars`, must pass between consecutive pivots to reduce noise from rapid market fluctuations.
 - **Refactored Test Output**: The `instantPivotTest.js` script's output has been redesigned to provide a clean, analytical summary for each pivot, including a sequential count, type, price, timestamp, percentage move, and the number of bars in the swing.

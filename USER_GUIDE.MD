@@ -49,16 +49,16 @@ Requirements:
 
 The output will show detailed information about pivot timestamps, prices, and any discrepancies found.
 
-### Configurable Pivot Detection Test
+### Realistic Pivot Detection Test (No Lookahead)
 
-To test and fine-tune the core pivot detection logic, a dedicated script is available. This is the best tool for seeing how changes to your pivot settings affect the strategy's signals.
+To test and fine-tune the core pivot detection logic, a dedicated script is available. This is the best tool for seeing how changes to your pivot settings affect the strategy's signals in a realistic, live-trading simulation.
 
 ```bash
 node tests/instantPivotTest.js
 ```
 
-This script tests a powerful **three-step confirmation logic**:
-1.  **Pivot Shape (`pivotLookback`)**: Defines how many candles on each side of a pivot must be lower (for a high) or higher (for a low). A lookback of `1` creates a classic 3-candle pivot pattern.
+This script tests a powerful **two-step confirmation logic without lookahead bias**:
+1.  **Pivot Shape (`pivotLookback`)**: A candle's high must be strictly greater than the highs of the previous `pivotLookback` candles (or its low must be strictly lower for a low pivot). This confirms a pivot based *only* on past data, as it would happen in a live environment.
 2.  **Minimum Swing (`minSwingPct`)**: The price move between pivots must be significant enough to be considered.
 3.  **Minimum Time (`minLegBars`)**: A certain number of candles must pass between pivots to prevent noise.
 

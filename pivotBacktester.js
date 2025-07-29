@@ -1,4 +1,4 @@
-// tests/instantPivotTest.js
+// pivotBacktester.js
 // Self-sufficient test file for instant pivot detection using the user's two-step logic.
 
 import {
@@ -8,9 +8,9 @@ import {
     minSwingPct,
     pivotLookback,
     minLegBars
-} from '../config/config.js';
-import { getCandles } from '../apis/bybit.js';
-import { tradeConfig } from '../config/tradeconfig.js';
+} from './config/config.js';
+import { getCandles } from './apis/bybit.js';
+import { tradeConfig } from './config/tradeconfig.js';
 
 const colors = {
     reset: '\x1b[0m',
@@ -38,7 +38,7 @@ const displayCandleInfo = (candle, candleNumber, pivotType = null) => {
     console.log(`  ${(candleNumber).toString().padStart(5, ' ')} | ${pivotIndicator} | ${formattedTime} | O: ${o} H: ${h} L: ${l} C: ${cColor}${c}${colors.reset}`);
 };
 
-console.log(`${colors.cyan}--- Instant Pivot Detection Test (No Lookahead) ---${colors.reset}`);
+console.log(`${colors.cyan}--- Instant Pivot Detection Test (Two-Step Logic) ---${colors.reset}`);
 
 async function runTest() {
     const allLocalCandles = await getCandles(symbol, interval, null, null, true);
@@ -57,14 +57,14 @@ async function runTest() {
     let lowPivotCount = 0;
 
     // Iterate, leaving enough space for lookback on either side
-        for (let i = pivotLookback; i < candles.length; i++) {
+    for (let i = pivotLookback; i < candles.length - pivotLookback; i++) {
         const currentCandle = candles[i];
         let pivotType = null;
 
         // --- High Pivot Logic ---
         let isHighPivot = true;
         for (let j = 1; j <= pivotLookback; j++) {
-            if (currentCandle.high <= candles[i - j].high) {
+            if (currentCandle.high <= candles[i - j].high || currentCandle.high <= candles[i + j].high) {
                 isHighPivot = false;
                 break;
             }
@@ -90,7 +90,7 @@ async function runTest() {
         // --- Low Pivot Logic ---
         let isLowPivot = true;
         for (let j = 1; j <= pivotLookback; j++) {
-            if (currentCandle.low >= candles[i - j].low) {
+            if (currentCandle.low >= candles[i - j].low || currentCandle.low >= candles[i + j].low) {
                 isLowPivot = false;
                 break;
             }
@@ -158,11 +158,4 @@ async function runTest() {
     console.log(`\n${colors.cyan}--- Test Complete ---${colors.reset}`);
 }
 
-(async () => {
-    try {
-        await runTest();
-    } catch (err) {
-        console.error('\nAn error occurred during the test:', err);
-        process.exit(1);
-    }
-})();
+runTest();
