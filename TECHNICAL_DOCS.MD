@@ -453,8 +453,9 @@ The system tracks various performance metrics including:
   - `initialCapital` / `riskPerTrade`: For position sizing and capital management.
 - **Automatic Trade Closure at End of Backtest**: To ensure complete and accurate results, the backtester now automatically closes any open trades at the end of the simulation.
   - **Mechanism**: If an `activeTrade` object exists after all candles are processed, the trade is formally closed using the `close` price of the final candle in the dataset.
-  - **Trade Record**: The closed trade is added to the trades array with a result of 'EOB' (End Of Backtest), ensuring it's included in all statistics.
-  - **Complete PnL Calculation**: Fees are properly calculated and deducted, and the final capital is updated accordingly.
+  - **Trade Record**: The closed trade is added to the trades array with a result of 'EOB' (End Of Backtest).
+  - **Complete PnL Calculation**: Fees are properly calculated and deducted.
+  - **Statistics Exclusion**: EOB trades are excluded from performance statistics (win rate, PnL) to prevent skewing results with incomplete trades.
 - **Enhanced Trade Details Display**: The backtester now provides a comprehensive, color-coded breakdown of each trade before the summary statistics.
   - **Trade Header**: The first line of each trade is color-coded based on profitability (green for profitable trades, red for losing trades).
     - Shows trade number, direction (LONG/SHORT), P&L percentage, outcome (WIN/LOSS), and result type (TP, SL, EOB).

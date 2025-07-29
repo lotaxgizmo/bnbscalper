@@ -266,17 +266,7 @@ async function runTest() {
         }
     }
     
-    if (candles.length > 0) {
-        const firstCandleTime = candles[0].time;
-        const lastCandleTime = candles[candles.length - 1].time;
-        const elapsedMs = lastCandleTime - firstCandleTime;
-
-        const days = Math.floor(elapsedMs / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((elapsedMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
-        
-        console.log(`\nData Time Elapsed: ${days} days, ${hours} hours, ${minutes} minutes.`);
-    }
+  
 
     // --- Final Summary Calculation ---
     const firstPrice = candles[0].open;
@@ -366,24 +356,48 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
         });
         
         console.log(`\n${colors.cyan}--- Trade Summary ---${colors.reset}`);
-        const closedTrades = trades.length;
-        const wins = trades.filter(t => t.pnl >= 0).length;
-        const losses = trades.filter(t => t.pnl < 0).length;
+        
+        // Filter out EOB trades for statistics
+        const regularTrades = trades.filter(t => t.result !== 'EOB');
+        const eobTrades = trades.filter(t => t.result === 'EOB');
+        
+        // Calculate statistics excluding EOB trades
+        const closedTrades = regularTrades.length;
+        const totalTrades = trades.length;
+        const wins = regularTrades.filter(t => t.pnl >= 0).length;
+        const losses = regularTrades.filter(t => t.pnl < 0).length;
         const winRate = closedTrades > 0 ? (wins / closedTrades * 100).toFixed(2) : 'N/A';
-        const totalRealizedPnl = trades.reduce((acc, t) => acc + t.pnl, 0);
-        const totalFees = trades.reduce((acc, t) => acc + t.fee, 0);
-
-        console.log(`Total Closed Trades: ${closedTrades}`);
+        const totalRealizedPnl = regularTrades.reduce((acc, t) => acc + t.pnl, 0);
+        const totalFees = regularTrades.reduce((acc, t) => acc + t.fee, 0);
+        
+        // Display trade counts with EOB note if applicable
+        if (eobTrades.length > 0) {
+            console.log(`Total Closed Trades: ${closedTrades} (excluding ${eobTrades.length} EOB trade${eobTrades.length > 1 ? 's' : ''})`);
+        } else {
+            console.log(`Total Closed Trades: ${closedTrades}`);
+        }
+        
         if(closedTrades > 0) {
             console.log(`Wins: ${colors.green}${wins}${colors.reset} | Losses: ${colors.red}${losses}${colors.reset}`);
             console.log(`Win Rate: ${colors.yellow}${winRate}%${colors.reset}`);
         }
+        
         console.log(`Total PnL: ${(totalRealizedPnl > 0 ? colors.green : colors.red)}${totalRealizedPnl.toFixed(2)}${colors.reset} (after ${totalFees.toFixed(2)} in fees)`);
+        
+        // Calculate capital excluding EOB trades
+        const eobPnl = eobTrades.reduce((acc, t) => acc + t.pnl, 0);
+        const adjustedFinalCapital = finalCapital - eobPnl;
+        
         console.log(`Initial Capital: ${tradeConfig.initialCapital.toFixed(2)}`);
-        console.log(`Final Capital: ${colors.yellow}${finalCapital.toFixed(2)}${colors.reset}`);
-
-        const profit = ((finalCapital - tradeConfig.initialCapital) / tradeConfig.initialCapital) * 100;
-        console.log(`Overall Profit: ${(profit > 0 ? colors.green : colors.red)}${profit.toFixed(2)}%${colors.reset}`);
+        
+        if (eobTrades.length > 0) {
+            console.log(`Final Capital: ${colors.yellow}${adjustedFinalCapital.toFixed(2)}${colors.reset} (excluding EOB trades)`);
+        } else {
+            console.log(`Final Capital: ${colors.yellow}${finalCapital.toFixed(2)}${colors.reset}`);
+        }
+        
+        const profit = ((adjustedFinalCapital - tradeConfig.initialCapital) / tradeConfig.initialCapital) * 100;
+        console.log(`Overall Profit: ${(profit > 0 ? colors.green : colors.red)}${profit.toFixed(2)}%${colors.reset}${eobTrades.length > 0 ? ' (excluding EOB trades)' : ''}`);
     }
 
 
@@ -403,7 +417,17 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
     console.log(`Max Downward Move: ${colors.red}${totalDownwardChange.toFixed(2)}%${colors.reset} (from start to ATL)`);
     console.log(`Net Price Range: ${colors.yellow}${netPriceRange.toFixed(2)}%${colors.reset} (from ATL to ATH)`);
 
-   
+    if (candles.length > 0) {
+        const firstCandleTime = candles[0].time;
+        const lastCandleTime = candles[candles.length - 1].time;
+        const elapsedMs = lastCandleTime - firstCandleTime;
+
+        const days = Math.floor(elapsedMs / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((elapsedMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+        
+        console.log(`\nData Time Elapsed: ${days} days, ${hours} hours, ${minutes} minutes.`);
+    }
 
     console.log(`\n${colors.cyan}--- Test Complete ---${colors.reset}`);
 }

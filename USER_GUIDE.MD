@@ -302,9 +302,15 @@ When `showLimits` is enabled in config:
     - Entry and exit dates with day of week for better context
     - Trade duration in hours and minutes
     - Raw price movement in both percentage and absolute terms
+- **EOB Trade Handling**:
+  - Trades still open at the end of the backtest are automatically closed using the last candle's closing price
+  - These trades are marked with 'EOB' (End Of Backtest) in the result field
+  - EOB trades are **excluded** from performance statistics (win rate, PnL calculations)
+  - The summary clearly indicates when EOB trades have been excluded with notes next to affected metrics
+  - This prevents skewing your strategy's performance with incomplete trades that didn't reach their natural conclusion
 - Date range and elapsed time
-- Total trade count and win rate
-- Overall P&L statistics
+- Total trade count and win rate (excluding EOB trades)
+- Overall P&L statistics (excluding EOB trades)
 - **Excursion Analysis**:
   - **Favorable Excursion (MFE)**: This shows the maximum *potential* profit a trade reached while it was open. For example, if a trade closed with a 1.2% profit, but at one point was up by 2.5%, the favorable excursion is +2.5%. This helps you see if your take-profit targets are too tight.
   - **Adverse Excursion (MAE)**: This shows the maximum amount a trade went *against* you before it was closed. For example, a winning trade might have been in a -0.5% loss before turning profitable. This helps you analyze if your stop-loss levels are appropriate.
