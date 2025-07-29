@@ -35,7 +35,7 @@ export const tradeConfig = {
     // Display settings
 
     showCandle: false,
-    showPivot: false,
+    showPivot: true,
     showLimits: false,
     showTradeDetails: true,
     

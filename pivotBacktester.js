@@ -1,5 +1,5 @@
 // tests/instantPivotTest.js
-// Self-sufficient test file for instant pivot detection using the user's two-step logic.
+// Self-sufficient test file for instant pivot detection using the user's two-step logic with edge detection.
 
 import {
     symbol,
@@ -18,6 +18,17 @@ const colors = {
     green: '\x1b[32m',
     yellow: '\x1b[33m',
     cyan: '\x1b[36m',
+    magenta: '\x1b[35m',
+    blue: '\x1b[34m',
+    white: '\x1b[37m',
+    brightRed: '\x1b[91m',
+    brightGreen: '\x1b[92m',
+    brightYellow: '\x1b[93m',
+    brightBlue: '\x1b[94m',
+    brightMagenta: '\x1b[95m',
+    brightCyan: '\x1b[96m',
+    brightWhite: '\x1b[97m',
+    bold: '\x1b[1m'
 };
 
 const displayCandleInfo = (candle, candleNumber, pivotType = null) => {
@@ -38,7 +49,7 @@ const displayCandleInfo = (candle, candleNumber, pivotType = null) => {
     console.log(`  ${(candleNumber).toString().padStart(5, ' ')} | ${pivotIndicator} | ${formattedTime} | O: ${o} H: ${h} L: ${l} C: ${cColor}${c}${colors.reset}`);
 };
 
-console.log(`${colors.cyan}--- Instant Pivot Detection Test (No Lookahead) ---${colors.reset}`);
+console.log(`${colors.cyan}--- Instant Pivot Detection Test with Edge Analysis (No Lookahead) ---${colors.reset}`);
 
 // Display trade configuration at the top
 console.log(`${colors.cyan}--- Trade Configuration ---${colors.reset}`);
@@ -51,6 +62,115 @@ console.log(`Initial Capital: ${colors.yellow}${tradeConfig.initialCapital} USDT
 console.log(`Risk Per Trade: ${colors.yellow}${tradeConfig.riskPerTrade}%${colors.reset}`);
 
 
+// Function to calculate edge data for price movements
+const calculateEdges = (candles, timeframes) => {
+    const edges = {};
+    
+    // Initialize edges for each timeframe
+    timeframes.forEach(tf => {
+        edges[tf] = {
+            upEdges: [],
+            downEdges: []
+        };
+    });
+    
+    // Calculate edges for each timeframe
+    timeframes.forEach(tf => {
+        // Calculate the number of candles to include for this timeframe
+        let tfCandles;
+        switch(tf) {
+            case 'daily':
+                tfCandles = 24; // Assuming 1-hour candles, 24 = 1 day
+                break;
+            case 'weekly':
+                tfCandles = 24 * 7; // 1 week
+                break;
+            case 'biweekly':
+                tfCandles = 24 * 14; // 2 weeks
+                break;
+            case 'monthly':
+                tfCandles = 24 * 30; // ~1 month
+                break;
+            default:
+                tfCandles = 24; // Default to daily
+        }
+        
+        // Ensure we have enough candles
+        if (candles.length < tfCandles) {
+            console.warn(`Not enough candles for ${tf} edge calculation. Need at least ${tfCandles} candles.`);
+            return;
+        }
+        
+        // Calculate max up and down moves for each window
+        for (let i = tfCandles; i < candles.length; i++) {
+            const windowCandles = candles.slice(i - tfCandles, i);
+            
+            // Find max and min prices in the window
+            const maxPrice = Math.max(...windowCandles.map(c => c.high));
+            const minPrice = Math.min(...windowCandles.map(c => c.low));
+            const lastPrice = windowCandles[windowCandles.length - 1].close;
+            
+            // Calculate percentage moves
+            const upMove = ((maxPrice - lastPrice) / lastPrice) * 100;
+            const downMove = ((lastPrice - minPrice) / lastPrice) * 100;
+            
+            // Store the edges
+            edges[tf].upEdges.push({
+                time: candles[i].time,
+                price: lastPrice,
+                edgePrice: maxPrice,
+                percentToEdge: upMove
+            });
+            
+            edges[tf].downEdges.push({
+                time: candles[i].time,
+                price: lastPrice,
+                edgePrice: minPrice,
+                percentToEdge: downMove
+            });
+        }
+    });
+    
+    return edges;
+};
+
+// Function to get current edge data for a specific price
+const getCurrentEdgeData = (price, edges, timeframes) => {
+    const edgeData = {};
+    
+    timeframes.forEach(tf => {
+        if (!edges[tf] || edges[tf].upEdges.length === 0 || edges[tf].downEdges.length === 0) {
+            return;
+        }
+        
+        // Get the latest edge data for this timeframe
+        const latestUpEdge = edges[tf].upEdges[edges[tf].upEdges.length - 1];
+        const latestDownEdge = edges[tf].downEdges[edges[tf].downEdges.length - 1];
+        
+        // Calculate current position relative to edges
+        const upPercentToEdge = ((latestUpEdge.edgePrice - price) / price) * 100;
+        const downPercentToEdge = ((price - latestDownEdge.edgePrice) / price) * 100;
+        
+        edgeData[tf] = {
+            upEdge: {
+                price: latestUpEdge.edgePrice,
+                percentToEdge: upPercentToEdge,
+                direction: 'up'
+            },
+            downEdge: {
+                price: latestDownEdge.edgePrice,
+                percentToEdge: downPercentToEdge,
+                direction: 'down'
+            },
+            closestEdge: upPercentToEdge < downPercentToEdge ? 
+                { direction: 'up', percentToEdge: upPercentToEdge, price: latestUpEdge.edgePrice } : 
+                { direction: 'down', percentToEdge: downPercentToEdge, price: latestDownEdge.edgePrice }
+        };
+    });
+    
+    return edgeData;
+};
+
 async function runTest() {
     const allLocalCandles = await getCandles(symbol, interval, null, null, true);
     // Ensure there are enough candles for the lookback on both sides
@@ -60,6 +180,13 @@ async function runTest() {
     }
     const candles = allLocalCandles.slice(-limit);
     console.log(`Loaded ${candles.length} of ${allLocalCandles.length} available '${interval}' local candles.\n`);
+    
+    // Define timeframes for edge detection
+    const timeframes = ['daily', 'weekly', 'biweekly', 'monthly'];
+    
+    // Calculate edges for all timeframes
+    const edges = calculateEdges(candles, timeframes);
+    console.log(`${colors.cyan}Calculated edge data for timeframes: ${timeframes.join(', ')}${colors.reset}\n`);
 
     let lastPivot = { type: null, price: null, time: null, index: 0 };
     const swingThreshold = minSwingPct / 100;
@@ -192,6 +319,9 @@ async function runTest() {
                 const movePct = swingPct * 100;
                 const formattedTime = new Date(currentCandle.time).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' });
 
+                // Get edge data for this pivot
+                const pivotEdgeData = getCurrentEdgeData(currentCandle.high, edges, timeframes);
+                
                 let output = `${colors.green}${pivotCounter}.[PIVOT] HIGH @ ${currentCandle.high.toFixed(2)} | Time: ${formattedTime} | Move: +${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`;
 
                 if (lastPivot.price) {
@@ -210,9 +340,62 @@ async function runTest() {
                 // Only log pivot information if showPivot is enabled
                 if (tradeConfig.showPivot) {
                     console.log(output);
+                    
+                    // Add edge data in the specified format
+                    if (pivotEdgeData) {
+                        // First line: closest edges for each timeframe
+                        let edgeStr = ` Edges: `;
+                        timeframes.forEach(tf => {
+                            if (pivotEdgeData[tf]) {
+                                const closestEdge = pivotEdgeData[tf].closestEdge;
+                                const direction = closestEdge.direction === 'up' ? 'U' : 'D';
+                                const color = direction === 'U' ? colors.green : colors.red;
+                                const tfShort = tf === 'daily' ? 'D' : tf === 'weekly' ? 'W' : tf === 'biweekly' ? 'B' : 'M';
+                                edgeStr += `${tfShort}:${color}${closestEdge.percentToEdge.toFixed(1)}%(${direction})${colors.reset} `;
+                            }
+                        });
+                        console.log(edgeStr);
+                        
+                        // Second line: average edge percentages
+                        let avgEdgeStr = ` Average Edge `;
+                        timeframes.forEach(tf => {
+                            if (pivotEdgeData[tf]) {
+                                const upEdge = pivotEdgeData[tf].upEdge;
+                                const downEdge = pivotEdgeData[tf].downEdge;
+                                const avgEdge = (upEdge.percentToEdge + downEdge.percentToEdge) / 2;
+                                const direction = avgEdge > 0 ? 'U' : 'D';
+                                const color = direction === 'U' ? colors.green : colors.red;
+                                const tfShort = tf === 'daily' ? 'D' : tf === 'weekly' ? 'W' : tf === 'biweekly' ? 'B' : 'M';
+                                avgEdgeStr += `${tfShort}:${color}${Math.abs(avgEdge).toFixed(1)}%(${direction})${colors.reset} `;
+                            }
+                        });
+                        console.log(avgEdgeStr);
+                        
+                        // Third line: range/total edge
+                        let rangeEdgeStr = ` Range/Total Edge `;
+                        timeframes.forEach(tf => {
+                            if (pivotEdgeData[tf]) {
+                                const upEdge = pivotEdgeData[tf].upEdge;
+                                const downEdge = pivotEdgeData[tf].downEdge;
+                                const totalRange = upEdge.percentToEdge + Math.abs(downEdge.percentToEdge);
+                                const direction = upEdge.percentToEdge > Math.abs(downEdge.percentToEdge) ? 'U' : 'D';
+                                const color = direction === 'U' ? colors.green : colors.red;
+                                const tfShort = tf === 'daily' ? 'D' : tf === 'weekly' ? 'W' : tf === 'biweekly' ? 'B' : 'M';
+                                rangeEdgeStr += `${tfShort}:${color}${totalRange.toFixed(1)}%(${direction})${colors.reset} `;
+                            }
+                        });
+                        console.log(rangeEdgeStr);
+                    }
                 }
 
-                lastPivot = { type: 'high', price: currentCandle.high, time: currentCandle.time, index: i };
+                // Store edge data with the pivot
+                lastPivot = { 
+                    type: 'high', 
+                    price: currentCandle.high, 
+                    time: currentCandle.time, 
+                    index: i,
+                    edges: pivotEdgeData
+                };
 
                 // --- Open Short Trade ---
                 if (!isFirstPivot && !activeTrade && (tradeConfig.direction === 'sell' || tradeConfig.direction === 'both')) {
@@ -263,6 +446,9 @@ async function runTest() {
                 const movePct = swingPct * 100;
                 const formattedTime = new Date(currentCandle.time).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' });
 
+                // Get edge data for this pivot
+                const pivotEdgeData = getCurrentEdgeData(currentCandle.low, edges, timeframes);
+                
                 let output = `${colors.red}${pivotCounter}.[PIVOT] LOW  @ ${currentCandle.low.toFixed(2)} | Time: ${formattedTime} | Move: ${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`;
 
                 if (lastPivot.price) {
@@ -281,9 +467,62 @@ async function runTest() {
                 // Only log pivot information if showPivot is enabled
                 if (tradeConfig.showPivot) {
                     console.log(output);
+                    
+                    // Add edge data in the specified format
+                    if (pivotEdgeData) {
+                        // First line: closest edges for each timeframe
+                        let edgeStr = ` Edges: `;
+                        timeframes.forEach(tf => {
+                            if (pivotEdgeData[tf]) {
+                                const closestEdge = pivotEdgeData[tf].closestEdge;
+                                const direction = closestEdge.direction === 'up' ? 'U' : 'D';
+                                const color = direction === 'U' ? colors.green : colors.red;
+                                const tfShort = tf === 'daily' ? 'D' : tf === 'weekly' ? 'W' : tf === 'biweekly' ? 'B' : 'M';
+                                edgeStr += `${tfShort}:${color}${closestEdge.percentToEdge.toFixed(1)}%(${direction})${colors.reset} `;
+                            }
+                        });
+                        console.log(edgeStr);
+                        
+                        // Second line: average edge percentages
+                        let avgEdgeStr = ` Average Edge `;
+                        timeframes.forEach(tf => {
+                            if (pivotEdgeData[tf]) {
+                                const upEdge = pivotEdgeData[tf].upEdge;
+                                const downEdge = pivotEdgeData[tf].downEdge;
+                                const avgEdge = (upEdge.percentToEdge + downEdge.percentToEdge) / 2;
+                                const direction = avgEdge > 0 ? 'U' : 'D';
+                                const color = direction === 'U' ? colors.green : colors.red;
+                                const tfShort = tf === 'daily' ? 'D' : tf === 'weekly' ? 'W' : tf === 'biweekly' ? 'B' : 'M';
+                                avgEdgeStr += `${tfShort}:${color}${Math.abs(avgEdge).toFixed(1)}%(${direction})${colors.reset} `;
+                            }
+                        });
+                        console.log(avgEdgeStr);
+                        
+                        // Third line: range/total edge
+                        let rangeEdgeStr = ` Range/Total Edge `;
+                        timeframes.forEach(tf => {
+                            if (pivotEdgeData[tf]) {
+                                const upEdge = pivotEdgeData[tf].upEdge;
+                                const downEdge = pivotEdgeData[tf].downEdge;
+                                const totalRange = upEdge.percentToEdge + Math.abs(downEdge.percentToEdge);
+                                const direction = upEdge.percentToEdge > Math.abs(downEdge.percentToEdge) ? 'U' : 'D';
+                                const color = direction === 'U' ? colors.green : colors.red;
+                                const tfShort = tf === 'daily' ? 'D' : tf === 'weekly' ? 'W' : tf === 'biweekly' ? 'B' : 'M';
+                                rangeEdgeStr += `${tfShort}:${color}${totalRange.toFixed(1)}%(${direction})${colors.reset} `;
+                            }
+                        });
+                        console.log(rangeEdgeStr);
+                    }
                 }
                 
-                lastPivot = { type: 'low', price: currentCandle.low, time: currentCandle.time, index: i };
+                // Store edge data with the pivot
+                lastPivot = { 
+                    type: 'low', 
+                    price: currentCandle.low, 
+                    time: currentCandle.time, 
+                    index: i,
+                    edges: pivotEdgeData
+                };
 
                 // --- Open Long Trade ---
                 if (!isFirstPivot && !activeTrade && (tradeConfig.direction === 'buy' || tradeConfig.direction === 'both')) {
@@ -467,6 +706,105 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
         console.log(`${colors.green}High Pivots: ${highPivotCount.toString().padStart(2)} (${highPct}%)${colors.reset}`);
         console.log(`${colors.red}Low Pivots:  ${lowPivotCount.toString().padStart(2)} (${lowPct}%)${colors.reset}`);
         console.log(`Total Pivots: ${totalPivots}`);
+    }
+
+    // Edge data statistics
+    if (totalPivots > 0) {
+        // Collect edge data from all pivots
+        const edgeStats = {};
+        timeframes.forEach(tf => {
+            edgeStats[tf] = {
+                upEdges: [],
+                downEdges: []
+            };
+        });
+        
+        // Process all high and low pivots with edge data
+        let pivotsWithEdges = 0;
+        for (let i = pivotLookback; i < candles.length; i++) {
+            const currentCandle = candles[i];
+            
+            // Check for high pivot with edge data
+            let isHighPivot = true;
+            for (let j = 1; j <= pivotLookback; j++) {
+                if (currentCandle.high <= candles[i - j].high) {
+                    isHighPivot = false;
+                    break;
+                }
+            }
+            
+            if (isHighPivot) {
+                const swingPct = lastPivot.price ? (currentCandle.high - lastPivot.price) / lastPivot.price : 0;
+                const isFirstPivot = lastPivot.type === null;
+                
+                if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
+                    // This is a valid high pivot, get its edge data
+                    const pivotEdgeData = getCurrentEdgeData(currentCandle.high, edges, timeframes);
+                    
+                    // Add edge data to statistics
+                    timeframes.forEach(tf => {
+                        if (pivotEdgeData[tf]) {
+                            edgeStats[tf].upEdges.push(pivotEdgeData[tf].upEdge.percentToEdge);
+                            edgeStats[tf].downEdges.push(pivotEdgeData[tf].downEdge.percentToEdge);
+                        }
+                    });
+                    
+                    pivotsWithEdges++;
+                }
+            }
+            
+            // Check for low pivot with edge data
+            let isLowPivot = true;
+            for (let j = 1; j <= pivotLookback; j++) {
+                if (currentCandle.low >= candles[i - j].low) {
+                    isLowPivot = false;
+                    break;
+                }
+            }
+            
+            if (isLowPivot) {
+                const swingPct = lastPivot.price ? (currentCandle.low - lastPivot.price) / lastPivot.price : 0;
+                const isFirstPivot = lastPivot.type === null;
+                
+                if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
+                    // This is a valid low pivot, get its edge data
+                    const pivotEdgeData = getCurrentEdgeData(currentCandle.low, edges, timeframes);
+                    
+                    // Add edge data to statistics
+                    timeframes.forEach(tf => {
+                        if (pivotEdgeData[tf]) {
+                            edgeStats[tf].upEdges.push(pivotEdgeData[tf].upEdge.percentToEdge);
+                            edgeStats[tf].downEdges.push(pivotEdgeData[tf].downEdge.percentToEdge);
+                        }
+                    });
+                    
+                    pivotsWithEdges++;
+                }
+            }
+        }
+        
+        // Calculate and display edge statistics
+        if (pivotsWithEdges > 0) {
+            console.log(`\n${colors.cyan}--- Edge Proximity Statistics ---${colors.reset}`);
+            
+            timeframes.forEach(tf => {
+                const upEdges = edgeStats[tf].upEdges.filter(val => !isNaN(val));
+                const downEdges = edgeStats[tf].downEdges.filter(val => !isNaN(val));
+                
+                if (upEdges.length > 0 && downEdges.length > 0) {
+                    const avgUpEdge = upEdges.reduce((sum, val) => sum + val, 0) / upEdges.length;
+                    const avgDownEdge = downEdges.reduce((sum, val) => sum + val, 0) / downEdges.length;
+                    const maxUpEdge = Math.max(...upEdges);
+                    const maxDownEdge = Math.max(...downEdges);
+                    
+                    console.log(`${tf.charAt(0).toUpperCase() + tf.slice(1)} Timeframe:`);
+                    console.log(`  ${colors.green}Avg Up Edge:   ${avgUpEdge.toFixed(2)}%${colors.reset}`);
+                    console.log(`  ${colors.red}Avg Down Edge: ${avgDownEdge.toFixed(2)}%${colors.reset}`);
+                    console.log(`  ${colors.green}Max Up Edge:   ${maxUpEdge.toFixed(2)}%${colors.reset}`);
+                    console.log(`  ${colors.red}Max Down Edge: ${maxDownEdge.toFixed(2)}%${colors.reset}`);
+                }
+            });
+        }
     }
 
    
