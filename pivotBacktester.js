@@ -71,6 +71,8 @@ async function runTest() {
     let capital = tradeConfig.initialCapital;
     const trades = [];
     let activeTrade = null;
+    let tradeMaxDrawdown = 0;
+    let tradeMaxProfit = 0;
 
     // Iterate, leaving enough space for lookback on either side
     for (let i = pivotLookback; i < candles.length; i++) {
@@ -82,26 +84,57 @@ async function runTest() {
             let tradeClosed = false;
             let exitPrice = null;
             let result = '';
-
+            
+            // Track maximum favorable and unfavorable price movements
             if (activeTrade.type === 'long') {
-                if (currentCandle.high >= activeTrade.takeProfitPrice) {
-                    tradeClosed = true;
-                    exitPrice = activeTrade.takeProfitPrice;
-                    result = 'TP';
-                } else if (currentCandle.low <= activeTrade.stopLossPrice) {
-                    tradeClosed = true;
-                    exitPrice = activeTrade.stopLossPrice;
-                    result = 'SL';
-                }
+                // For long trades: favorable = price goes up, unfavorable = price goes down
+                const currentFavorable = (currentCandle.high - activeTrade.entryPrice) / activeTrade.entryPrice * 100;
+                const currentUnfavorable = (currentCandle.low - activeTrade.entryPrice) / activeTrade.entryPrice * 100;
+                
+                activeTrade.maxFavorable = Math.max(activeTrade.maxFavorable, currentFavorable);
+                activeTrade.maxUnfavorable = Math.min(activeTrade.maxUnfavorable, currentUnfavorable);
             } else { // short
-                if (currentCandle.low <= activeTrade.takeProfitPrice) {
+                // For short trades: favorable = price goes down, unfavorable = price goes up
+                const currentFavorable = (activeTrade.entryPrice - currentCandle.low) / activeTrade.entryPrice * 100;
+                const currentUnfavorable = (activeTrade.entryPrice - currentCandle.high) / activeTrade.entryPrice * 100;
+                
+                activeTrade.maxFavorable = Math.max(activeTrade.maxFavorable, currentFavorable);
+                activeTrade.maxUnfavorable = Math.min(activeTrade.maxUnfavorable, currentUnfavorable);
+            }
+
+            // Check for trade timeout if maxTradeTimeMinutes is enabled (greater than 0)
+            if (tradeConfig.maxTradeTimeMinutes > 0) {
+                const tradeTimeMs = currentCandle.time - activeTrade.entryTime;
+                const tradeTimeMinutes = tradeTimeMs / (1000 * 60);
+                
+                if (tradeTimeMinutes >= tradeConfig.maxTradeTimeMinutes) {
                     tradeClosed = true;
-                    exitPrice = activeTrade.takeProfitPrice;
-                    result = 'TP';
-                } else if (currentCandle.high >= activeTrade.stopLossPrice) {
-                    tradeClosed = true;
-                    exitPrice = activeTrade.stopLossPrice;
-                    result = 'SL';
+                    exitPrice = currentCandle.close; // Use current candle close price for timeout exits
+                    result = 'TIMEOUT';
+                }
+            }
+
+            if (!tradeClosed) { // Only check TP/SL if not already closed due to timeout
+                if (activeTrade.type === 'long') {
+                    if (currentCandle.high >= activeTrade.takeProfitPrice) {
+                        tradeClosed = true;
+                        exitPrice = activeTrade.takeProfitPrice;
+                        result = 'TP';
+                    } else if (currentCandle.low <= activeTrade.stopLossPrice) {
+                        tradeClosed = true;
+                        exitPrice = activeTrade.stopLossPrice;
+                        result = 'SL';
+                    }
+                } else { // short
+                    if (currentCandle.low <= activeTrade.takeProfitPrice) {
+                        tradeClosed = true;
+                        exitPrice = activeTrade.takeProfitPrice;
+                        result = 'TP';
+                    } else if (currentCandle.high >= activeTrade.stopLossPrice) {
+                        tradeClosed = true;
+                        exitPrice = activeTrade.stopLossPrice;
+                        result = 'SL';
+                    }
                 }
             }
 
@@ -116,7 +149,10 @@ async function runTest() {
                 const resultColor = result === 'TP' ? colors.green : colors.red;
                 const tradeType = activeTrade.type.toUpperCase();
                 const pnlText = `${resultColor}${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}${colors.reset}`;
-                console.log(`  ${resultColor}└─> [${result}] ${tradeType} trade closed @ ${exitPrice.toFixed(2)}. PnL: ${pnlText}${colors.reset}`);
+                // Only log trade details if showTradeDetails is enabled
+                if (tradeConfig.showTradeDetails) {
+                    console.log(`  \x1b[35;1m└─> [${result}] ${tradeType} trade closed @ ${exitPrice.toFixed(2)}. PnL: ${pnlText}${colors.reset}`);
+                }
 
                 trades.push({
                     ...activeTrade,
@@ -170,7 +206,11 @@ async function runTest() {
                     const swingHighText = `${colors.green}${swingATH.toFixed(2)} (${swingHighPct.toFixed(2)}%)${colors.reset}`;
                     output += ` | ${colors.cyan}Swing Low:${colors.reset} ${swingLowText} | ${colors.cyan}Swing High:${colors.reset} ${swingHighText}`;
                 }
-                console.log(output);
+                
+                // Only log pivot information if showPivot is enabled
+                if (tradeConfig.showPivot) {
+                    console.log(output);
+                }
 
                 lastPivot = { type: 'high', price: currentCandle.high, time: currentCandle.time, index: i };
 
@@ -190,9 +230,14 @@ async function runTest() {
                         status: 'open',
                         takeProfitPrice,
                         stopLossPrice,
-                        pivot: { ...lastPivot }
+                        pivot: { ...lastPivot },
+                        maxFavorable: 0,  // Track maximum favorable price movement
+                        maxUnfavorable: 0  // Track maximum unfavorable price movement
                     };
-                    console.log(`  ${colors.yellow}└─> [SHORT] Entry: ${entryPrice.toFixed(2)} | Size: ${size.toFixed(2)} | TP: ${takeProfitPrice.toFixed(2)} | SL: ${stopLossPrice.toFixed(2)}${colors.reset}`);
+                    // Only log limit order information if showLimits is enabled
+                    if (tradeConfig.showLimits) {
+                        console.log(`  ${colors.yellow}└─> [SHORT] Entry: ${entryPrice.toFixed(2)} | Size: ${size.toFixed(2)} | TP: ${takeProfitPrice.toFixed(2)} | SL: ${stopLossPrice.toFixed(2)}${colors.reset}`);
+                    }
                 }
             }
         }
@@ -233,7 +278,10 @@ async function runTest() {
                     output += ` | ${colors.cyan}Swing Low:${colors.reset} ${swingLowText} | ${colors.cyan}Swing High:${colors.reset} ${swingHighText}`;
                 }
 
-                console.log(output);
+                // Only log pivot information if showPivot is enabled
+                if (tradeConfig.showPivot) {
+                    console.log(output);
+                }
                 
                 lastPivot = { type: 'low', price: currentCandle.low, time: currentCandle.time, index: i };
 
@@ -253,9 +301,14 @@ async function runTest() {
                         status: 'open',
                         takeProfitPrice,
                         stopLossPrice,
-                        pivot: { ...lastPivot }
+                        pivot: { ...lastPivot },
+                        maxFavorable: 0,  // Track maximum favorable price movement
+                        maxUnfavorable: 0  // Track maximum unfavorable price movement
                     };
-                    console.log(`  ${colors.yellow}└─> [LONG]  Entry: ${entryPrice.toFixed(2)} | Size: ${size.toFixed(2)} | TP: ${takeProfitPrice.toFixed(2)} | SL: ${stopLossPrice.toFixed(2)}${colors.reset}`);
+                    // Only log limit order information if showLimits is enabled
+                    if (tradeConfig.showLimits) {
+                        console.log(`  ${colors.yellow}└─> [LONG]  Entry: ${entryPrice.toFixed(2)} | Size: ${size.toFixed(2)} | TP: ${takeProfitPrice.toFixed(2)} | SL: ${stopLossPrice.toFixed(2)}${colors.reset}`);
+                    }
                 }
             }
         }
@@ -293,9 +346,12 @@ async function runTest() {
         capital += pnl;
         finalCapital = capital;
         
+        // Always show EOB trade closing message, but only show details if showTradeDetails is enabled
         console.log(`
 ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
-        console.log(`  └─> [EOB] ${activeTrade.type.toUpperCase()} trade closed @ ${endPrice.toFixed(2)}. PnL: ${(pnl >= 0 ? colors.green : colors.red)}${pnl.toFixed(2)}${colors.reset}`);
+        if (tradeConfig.showTradeDetails) {
+            console.log(`  └─> [EOB] ${activeTrade.type.toUpperCase()} trade closed @ ${endPrice.toFixed(2)}. PnL: ${(pnl >= 0 ? colors.green : colors.red)}${pnl.toFixed(2)}${colors.reset}`);
+        }
         
         // Add the closed trade to the trades array
         trades.push({
@@ -314,7 +370,12 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
         activeTrade = null;
     }
 
-    if (trades.length > 0 || activeTrade) {
+    // Define regularTrades and eobTrades at the top level
+    const regularTrades = trades.filter(t => t.result !== 'EOB');
+    const eobTrades = trades.filter(t => t.result === 'EOB');
+    
+    // Only display trade details if showTradeDetails is enabled
+    if ((trades.length > 0 || activeTrade) && tradeConfig.showTradeDetails) {
         // Display detailed trade information
         console.log(`\n${colors.cyan}--- Trade Details ---${colors.reset}`);
         console.log('--------------------------------------------------------------------------------');
@@ -328,9 +389,17 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
             
             // Calculate duration
             const durationMs = trade.exitTime - trade.entryTime;
-            const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
+            const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+            const durationHours = Math.floor((durationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
-            const durationStr = `${durationHours} hours, ${durationMinutes} minutes`;
+            
+            // Format duration string to include days when applicable
+            let durationStr = '';
+            if (durationDays > 0) {
+                durationStr = `${durationDays} days, ${durationHours} hours, ${durationMinutes} minutes`;
+            } else {
+                durationStr = `${durationHours} hours, ${durationMinutes} minutes`;
+            }
             
             // Determine if win or loss
             const resultColor = trade.pnl >= 0 ? colors.green : colors.red;
@@ -347,6 +416,12 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
             console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${trade.exitPrice.toFixed(4)}${colors.reset}`);
             console.log(`${colors.cyan}  Duration: ${durationStr}${colors.reset}`);
             
+            // Display maximum favorable and unfavorable movements
+            const favorableColor = trade.maxFavorable >= 0 ? colors.green : colors.red;
+            const unfavorableColor = trade.maxUnfavorable >= 0 ? colors.green : colors.red;
+            console.log(`  Max Favorable Movement: ${favorableColor}${trade.maxFavorable.toFixed(4)}%${colors.reset}`);
+            console.log(`  Max Unfavorable Movement: ${unfavorableColor}${trade.maxUnfavorable.toFixed(4)}%${colors.reset}`);
+            
             // Add price movement information
             const priceDiff = trade.exitPrice - trade.entryPrice;
             const priceDiffPct = (priceDiff / trade.entryPrice * 100).toFixed(4);
@@ -354,50 +429,32 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
             console.log(`  Price Movement: ${priceColor}${priceDiff > 0 ? '+' : ''}${priceDiffPct}%${colors.reset} (${priceColor}$${priceDiff.toFixed(4)}${colors.reset})`);
             console.log('--------------------------------------------------------------------------------');
         });
+    }
+    
+      
+    // Calculate price movement statistics
+    if (regularTrades.length > 0) {
+        const favorableMovements = regularTrades.map(t => t.maxFavorable);
+        const unfavorableMovements = regularTrades.map(t => t.maxUnfavorable);
         
-        console.log(`\n${colors.cyan}--- Trade Summary ---${colors.reset}`);
+        const maxFavorable = Math.max(...favorableMovements);
+        const minFavorable = Math.min(...favorableMovements);
+        const avgFavorable = favorableMovements.reduce((sum, val) => sum + val, 0) / favorableMovements.length;
         
-        // Filter out EOB trades for statistics
-        const regularTrades = trades.filter(t => t.result !== 'EOB');
-        const eobTrades = trades.filter(t => t.result === 'EOB');
+        const maxUnfavorable = Math.max(...unfavorableMovements);
+        const minUnfavorable = Math.min(...unfavorableMovements);
+        const avgUnfavorable = unfavorableMovements.reduce((sum, val) => sum + val, 0) / unfavorableMovements.length;
         
-        // Calculate statistics excluding EOB trades
-        const closedTrades = regularTrades.length;
-        const totalTrades = trades.length;
-        const wins = regularTrades.filter(t => t.pnl >= 0).length;
-        const losses = regularTrades.filter(t => t.pnl < 0).length;
-        const winRate = closedTrades > 0 ? (wins / closedTrades * 100).toFixed(2) : 'N/A';
-        const totalRealizedPnl = regularTrades.reduce((acc, t) => acc + t.pnl, 0);
-        const totalFees = regularTrades.reduce((acc, t) => acc + t.fee, 0);
+        console.log(`\n${colors.cyan}--- Price Movement Statistics ---${colors.reset}`);
+        console.log(`Favorable Movements (Higher is better):`);
+        console.log(`  Highest: ${colors.green}${maxFavorable.toFixed(4)}%${colors.reset}`);
+        console.log(`  Lowest:  ${colors.yellow}${minFavorable.toFixed(4)}%${colors.reset}`);
+        console.log(`  Average: ${colors.cyan}${avgFavorable.toFixed(4)}%${colors.reset}`);
         
-        // Display trade counts with EOB note if applicable
-        if (eobTrades.length > 0) {
-            console.log(`Total Closed Trades: ${closedTrades} (excluding ${eobTrades.length} EOB trade${eobTrades.length > 1 ? 's' : ''})`);
-        } else {
-            console.log(`Total Closed Trades: ${closedTrades}`);
-        }
-        
-        if(closedTrades > 0) {
-            console.log(`Wins: ${colors.green}${wins}${colors.reset} | Losses: ${colors.red}${losses}${colors.reset}`);
-            console.log(`Win Rate: ${colors.yellow}${winRate}%${colors.reset}`);
-        }
-        
-        console.log(`Total PnL: ${(totalRealizedPnl > 0 ? colors.green : colors.red)}${totalRealizedPnl.toFixed(2)}${colors.reset} (after ${totalFees.toFixed(2)} in fees)`);
-        
-        // Calculate capital excluding EOB trades
-        const eobPnl = eobTrades.reduce((acc, t) => acc + t.pnl, 0);
-        const adjustedFinalCapital = finalCapital - eobPnl;
-        
-        console.log(`Initial Capital: ${tradeConfig.initialCapital.toFixed(2)}`);
-        
-        if (eobTrades.length > 0) {
-            console.log(`Final Capital: ${colors.yellow}${adjustedFinalCapital.toFixed(2)}${colors.reset} (excluding EOB trades)`);
-        } else {
-            console.log(`Final Capital: ${colors.yellow}${finalCapital.toFixed(2)}${colors.reset}`);
-        }
-        
-        const profit = ((adjustedFinalCapital - tradeConfig.initialCapital) / tradeConfig.initialCapital) * 100;
-        console.log(`Overall Profit: ${(profit > 0 ? colors.green : colors.red)}${profit.toFixed(2)}%${colors.reset}${eobTrades.length > 0 ? ' (excluding EOB trades)' : ''}`);
+        console.log(`Unfavorable Movements (Higher is better):`);
+        console.log(`  Highest: ${colors.green}${maxUnfavorable.toFixed(4)}%${colors.reset}`);
+        console.log(`  Lowest:  ${colors.red}${minUnfavorable.toFixed(4)}%${colors.reset}`);
+        console.log(`  Average: ${colors.cyan}${avgUnfavorable.toFixed(4)}%${colors.reset}`);
     }
 
 
@@ -412,10 +469,96 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
         console.log(`Total Pivots: ${totalPivots}`);
     }
 
+   
     console.log(`\n${colors.cyan}--- Market Movement Summary ---${colors.reset}`);
     console.log(`Max Upward Move: ${colors.green}+${totalUpwardChange.toFixed(2)}%${colors.reset} (from start to ATH)`);
     console.log(`Max Downward Move: ${colors.red}${totalDownwardChange.toFixed(2)}%${colors.reset} (from start to ATL)`);
     console.log(`Net Price Range: ${colors.yellow}${netPriceRange.toFixed(2)}%${colors.reset} (from ATL to ATH)`);
+
+
+
+    console.log(`\n \n ${colors.yellow}--- TRADE SUMMARY ---${colors.reset}`);
+    
+    // Calculate statistics excluding EOB trades
+    const closedTrades = regularTrades.length;
+    const totalTrades = trades.length;
+    const wins = regularTrades.filter(t => t.pnl >= 0).length;
+    const losses = regularTrades.filter(t => t.pnl < 0).length;
+    const timeoutTrades = regularTrades.filter(t => t.result === 'TIMEOUT').length;
+    const tpTrades = regularTrades.filter(t => t.result === 'TP').length;
+    const slTrades = regularTrades.filter(t => t.result === 'SL').length;
+    const winRate = closedTrades > 0 ? (wins / closedTrades * 100).toFixed(2) : 'N/A';
+    const totalRealizedPnl = regularTrades.reduce((acc, t) => acc + t.pnl, 0);
+    const totalFees = regularTrades.reduce((acc, t) => acc + t.fee, 0);
+    
+    // Display trade counts with EOB note if applicable
+    if (eobTrades.length > 0) {
+        console.log(`Total Closed Trades: ${closedTrades} (excluding ${eobTrades.length} EOB trade${eobTrades.length > 1 ? 's' : ''})`);
+    } else {
+        console.log(`Total Closed Trades: ${closedTrades}`);
+    }
+    
+    // Display trade result breakdown
+    if (closedTrades > 0) {
+        console.log(`Trade Results: ${colors.green}TP: ${tpTrades}${colors.reset} | ${colors.red}SL: ${slTrades}${colors.reset} | ${colors.yellow}TIMEOUT: ${timeoutTrades}${colors.reset}`);
+    }
+    
+    if(closedTrades > 0) {
+        console.log(`Wins: ${colors.green}${wins}${colors.reset} | Losses: ${colors.red}${losses}${colors.reset}`);
+        console.log(`Win Rate: ${colors.yellow}${winRate}%${colors.reset}`);
+    }
+    
+    console.log(`Total PnL: ${(totalRealizedPnl > 0 ? colors.green : colors.red)}${totalRealizedPnl.toFixed(2)}${colors.reset} (after ${totalFees.toFixed(2)} in fees)`);
+    
+    // Calculate capital excluding EOB trades
+    const eobPnl = eobTrades.reduce((acc, t) => acc + t.pnl, 0);
+    const adjustedFinalCapital = finalCapital - eobPnl;
+    
+    console.log(`Initial Capital: ${tradeConfig.initialCapital.toFixed(2)}`);
+    
+    if (eobTrades.length > 0) {
+        console.log(`Final Capital: ${colors.yellow}${adjustedFinalCapital.toFixed(2)}${colors.reset} (excluding EOB trades)`);
+    } else {
+        console.log(`Final Capital: ${colors.yellow}${finalCapital.toFixed(2)}${colors.reset}`);
+    }
+    
+    const profit = ((adjustedFinalCapital - tradeConfig.initialCapital) / tradeConfig.initialCapital) * 100;
+    console.log(`Overall Profit: ${(profit > 0 ? colors.green : colors.red)}${profit.toFixed(2)}%${colors.reset}${eobTrades.length > 0 ? ' (excluding EOB trades)' : ''}`);
+      
+
+    // Calculate trade duration statistics if there are regular trades
+    if (regularTrades.length > 0) {
+        // Get durations in milliseconds for each trade
+        const tradeDurations = regularTrades.map(trade => trade.exitTime - trade.entryTime);
+        
+        // Find min, max, and average durations
+        const minDurationMs = Math.min(...tradeDurations);
+        const maxDurationMs = Math.max(...tradeDurations);
+        const avgDurationMs = tradeDurations.reduce((sum, duration) => sum + duration, 0) / tradeDurations.length;
+        
+        // Format duration strings
+        const formatDuration = (ms) => {
+            const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+            
+            if (days > 0) {
+                return `${days} days, ${hours} hours, ${minutes} minutes`;
+            } else {
+                return `${hours} hours, ${minutes} minutes`;
+            }
+        };
+
+
+        
+        console.log(`\n${colors.cyan}--- Trade Duration Statistics ---${colors.reset}`);
+        console.log(`Shortest Trade: ${colors.yellow}${formatDuration(minDurationMs)}${colors.reset}`);
+        console.log(`Longest Trade:  ${colors.yellow}${formatDuration(maxDurationMs)}${colors.reset}`);
+        console.log(`Average Trade:  ${colors.cyan}${formatDuration(avgDurationMs)}${colors.reset}`);
+    }
+    
+
+
 
     if (candles.length > 0) {
         const firstCandleTime = candles[0].time;

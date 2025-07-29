@@ -207,16 +207,39 @@ For a complete evaluation of your trading strategy, including profitability with
 node pivotBacktester.js
 ```
 
-This script goes beyond simple pivot detection and runs a full trading simulation:
-- **Trades on Pivots**: It automatically places `long` trades on low pivots and `short` trades on high pivots.
-- **Uses Trade Config**: All trading parameters (leverage, take profit, stop loss, etc.) are taken from `config/tradeconfig.js`.
-- **Outputs a Full Summary**: At the end of the test, it provides a detailed trade summary, including:
-  - **Win Rate**: The percentage of winning trades.
-  - **Total PnL**: The net profit or loss from all trades, after deducting fees.
-  - **Automatic Trade Closure**: Any open trades at the end of the backtest are automatically closed at the last candle's closing price and marked as 'EOB' (End Of Backtest).
-  - **Final Capital**: The final value of your account after all trades are closed.
+This tool:
+- Loads historical candle data
+- Detects pivots in real-time (no lookahead)
+- Simulates trades based on pivot signals
+- Calculates detailed statistics
+- Provides a complete trade-by-trade breakdown
+- Shows summary metrics including:
+  - **Win Rate**: The percentage of trades that were profitable.
+  - **Total PnL**: Your total profit or loss after all fees.
   - **Overall Profit**: Your final percentage profit/loss after accounting for all trades and fees.
   - **Overall Profit %**: The percentage return on your initial capital.
+
+#### Display Settings
+
+You can control the verbosity of the backtester output using the following toggles in `config/tradeconfig.js`:
+
+```javascript
+// Trade management settings
+maxTradeTimeMinutes: 60, // Close trade after this many minutes (0 to disable)
+
+// Display settings
+showPivot: false,      // Show pivot detection logs
+showLimits: false,     // Show market order details
+showTradeDetails: false // Show detailed trade information
+```
+
+- **showPivot**: When enabled, displays all pivot detection logs including high and low pivots, swing analysis, and pivot confirmations. Useful for understanding the pivot detection process but can generate substantial output.
+
+- **showLimits**: When enabled, displays market order details including entry price, size, take profit, and stop loss levels. Helpful for tracking order execution but adds moderate output volume.
+
+- **showTradeDetails**: When enabled, displays comprehensive trade closure information including individual trade entries, exits, durations, PnL, and maximum favorable/unfavorable price movements. Essential for detailed trade analysis but produces the most verbose output.
+
+These toggles allow you to customize the console output based on your analysis needs - from minimal output showing only summary statistics to full detailed output for in-depth trade analysis.
 
 This is the primary tool for validating whether your pivot strategy is profitable from end to end.
 
@@ -298,10 +321,19 @@ When `showLimits` is enabled in config:
   - **Comprehensive Information**:
     - Trade number and direction (LONG/SHORT)
     - P&L percentage and outcome (WIN/LOSS)
-    - Result type (TP = Take Profit, SL = Stop Loss, EOB = End of Backtest)
+    - Result type (TP = Take Profit, SL = Stop Loss, TIMEOUT = Trade Timeout, EOB = End of Backtest)
     - Entry and exit dates with day of week for better context
     - Trade duration in hours and minutes
     - Raw price movement in both percentage and absolute terms
+- **Trade Timeout Feature**:
+  - Trades can now be automatically closed after a specified time period has elapsed
+  - Configure with `maxTradeTimeMinutes` in `config/tradeconfig.js` (default: 60 minutes)
+  - Set to 0 to disable the timeout feature
+  - Trades closed by timeout are marked with 'TIMEOUT' in the result field
+  - Timeout trades are included in performance statistics but categorized separately
+  - The trade summary shows a breakdown of trades by result type (TP, SL, TIMEOUT)
+  - This prevents capital from being tied up in stagnant positions for too long
+
 - **EOB Trade Handling**:
   - Trades still open at the end of the backtest are automatically closed using the last candle's closing price
   - These trades are marked with 'EOB' (End Of Backtest) in the result field
@@ -311,9 +343,20 @@ When `showLimits` is enabled in config:
 - Date range and elapsed time
 - Total trade count and win rate (excluding EOB trades)
 - Overall P&L statistics (excluding EOB trades)
-- **Excursion Analysis**:
-  - **Favorable Excursion (MFE)**: This shows the maximum *potential* profit a trade reached while it was open. For example, if a trade closed with a 1.2% profit, but at one point was up by 2.5%, the favorable excursion is +2.5%. This helps you see if your take-profit targets are too tight.
-  - **Adverse Excursion (MAE)**: This shows the maximum amount a trade went *against* you before it was closed. For example, a winning trade might have been in a -0.5% loss before turning profitable. This helps you analyze if your stop-loss levels are appropriate.
+- **Price Movement Analysis**:
+  - **Maximum Favorable Movement**: Shows the highest percentage a trade moved in your favor during its lifetime. For example, if a trade closed with a 1.2% profit, but at one point was up by 2.5%, the maximum favorable movement is +2.5%. This helps you determine if your take-profit targets are optimally set.
+  - **Maximum Unfavorable Movement**: Shows the worst percentage a trade moved against you before it was closed. For example, a winning trade might have been down -0.5% before turning profitable. This helps you analyze if your stop-loss levels are appropriate.
+  - **Movement Statistics Summary**: At the end of the backtest, you'll see comprehensive statistics about price movements across all trades:
+    - Highest, lowest, and average favorable movements
+    - Highest, lowest, and average unfavorable movements
+    - These statistics are crucial for fine-tuning your 0.08% target profit and 0.21% stop loss levels based on actual market behavior.
+- **Trade Duration Analysis**:
+  - **Individual Trade Duration**: Each trade now displays its duration in days, hours, and minutes, providing clear insight into how long positions were held.
+  - **Duration Statistics Summary**: At the end of the backtest, you'll see a comprehensive breakdown of trade durations:
+    - Shortest trade duration
+    - Longest trade duration
+    - Average trade duration
+    - These metrics help you understand your typical holding periods and optimize your trading frequency strategy.
 - Trade Durations (now correctly formatted in days, hours, and minutes)
 
 ### Edge-Enhanced Backtesting

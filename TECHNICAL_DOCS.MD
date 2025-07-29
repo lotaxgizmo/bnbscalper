@@ -46,6 +46,14 @@
   - **Root Cause Fix**: The core issue was resolved by ensuring the `showTradeDetails` configuration from `tradeconfig.js` is correctly initialized in the base `ConsoleLogger` constructor.
   - **New Summary Section**: The `EdgeConsoleLogger` now includes an overridden `logFinalSummary` method. When `showTradeDetails` is `true`, this method appends a new "Trade Details" section to the end of the backtest report. This section contains a full, detailed breakdown of every trade executed during the run, keeping the real-time log clean while providing comprehensive data in the final summary.
 
+#### Display Settings Integration in pivotBacktester.js (July 2025)
+- **Configurable Output**: The `pivotBacktester.js` has been updated to respect the display settings from `tradeconfig.js`.
+  - **Pivot Display Control**: The `showPivot` setting now controls the visibility of pivot detection logs, including high and low pivot information and swing analysis.
+  - **Market Orders Display**: The `showLimits` setting now toggles the display of market order (limit) information, including entry price, size, take profit, and stop loss levels.
+  - **Trade Details Visibility**: The `showTradeDetails` setting now determines whether trade closure details (TP/SL hits, PnL) are displayed in the console output.
+- **Implementation**: Conditional logging statements have been added throughout the backtester to check these configuration flags before outputting information.
+- **Benefit**: This enhancement allows users to customize the verbosity of the backtest output based on their needs, reducing noise when only summary statistics are required or providing full detail for in-depth analysis.
+
 #### Robust Logging for Unfilled Trades (July 2025)
 - **Issue**: The backtesting script would crash with a `TypeError` if it attempted to log the details of a trade that was never filled (e.g., a cancelled limit order).
 - **Fix**: The `EdgeConsoleLogger.logTradeDetails` method was updated to handle these cases gracefully.
@@ -446,11 +454,18 @@ The system tracks various performance metrics including:
     - **Long Trades**: Initiated on `low` pivots.
     - **Short Trades**: Initiated on `high` pivots.
   - **Trade Management**: Each trade is managed with a pre-defined `takeProfit` and `stopLoss` percentage. The simulation tracks one active trade at a time, closing it when either the take profit or stop loss level is hit by subsequent candles.
-- **Configuration**: All trading parameters are controlled via `config/tradeconfig.js`, including:
-  - `direction`: (`buy`, `sell`, or `both`)
-  - `takeProfit` / `stopLoss`: Exit points for trades.
-  - `leverage`: Multiplier for PnL and fees.
-  - `initialCapital` / `riskPerTrade`: For position sizing and capital management.
+- **Trade Configuration**
+
+The `tradeconfig.js` file contains settings for trade execution:
+
+- Direction: Controls which pivot types trigger trades ('buy', 'sell', or 'both')
+- Take Profit: Percentage move for profit target
+- Stop Loss: Percentage move for stop loss
+- Leverage: Multiplier for position sizing
+- Fees: Trading fees for maker orders
+- Capital: Initial capital and risk per trade settings
+- Order Settings: Distance and cancellation thresholds
+- Trade Timeout: Maximum time in minutes a trade can remain open before automatic closure management.
 - **Automatic Trade Closure at End of Backtest**: To ensure complete and accurate results, the backtester now automatically closes any open trades at the end of the simulation.
   - **Mechanism**: If an `activeTrade` object exists after all candles are processed, the trade is formally closed using the `close` price of the final candle in the dataset.
   - **Trade Record**: The closed trade is added to the trades array with a result of 'EOB' (End Of Backtest).
@@ -461,8 +476,9 @@ The system tracks various performance metrics including:
     - Shows trade number, direction (LONG/SHORT), P&L percentage, outcome (WIN/LOSS), and result type (TP, SL, EOB).
   - **Trade Details**: Entry, exit, and duration information is displayed in blue for improved readability.
   - **Price Movement**: Shows the raw price movement in both percentage and absolute terms, color-coded (green for price increases, red for decreases).
+  - **Maximum Price Movements**: For each trade, displays the maximum favorable and unfavorable price movements that occurred during the trade's lifetime, providing valuable data for optimizing take profit and stop loss levels.
   - **Date Formatting**: Includes day of week alongside date and time for better context.
-  - **Duration Calculation**: Shows trade duration in hours and minutes for quick analysis of holding periods.
+  - **Duration Calculation**: Shows trade duration in days, hours, and minutes for comprehensive analysis of holding periods.
 - **Output**:
   - The script first outputs the standard pivot detection log for each identified pivot.
   - At the end of the simulation, it appends a detailed **Trade Summary**:
@@ -471,5 +487,14 @@ The system tracks various performance metrics including:
       - **Gross PnL**: Total profit or loss *before* deducting trading fees.
       - **Net PnL**: The final profit or loss *after* all leveraged trading fees have been deducted.
     - **Capital**: Initial and final capital, and the overall percentage return on capital.
+    - **Price Movement Statistics**: Detailed statistics on the maximum favorable and unfavorable price movements across all trades, including:
+      - **Highest/Lowest/Average Favorable Movement**: The maximum, minimum, and average of the most favorable price movements across all trades.
+      - **Highest/Lowest/Average Unfavorable Movement**: The maximum, minimum, and average of the most unfavorable price movements across all trades.
+      - These statistics are crucial for optimizing take profit and stop loss levels based on actual market behavior.
+    - **Trade Duration Statistics**: Comprehensive analysis of trade holding periods:
+      - **Shortest Trade**: The duration of the quickest trade from entry to exit.
+      - **Longest Trade**: The duration of the most extended trade from entry to exit.
+      - **Average Trade**: The mean duration across all completed trades.
+      - These metrics help optimize trading frequency and holding period strategies.
 
 This tool is essential for validating the end-to-end profitability of a pivot-based trading strategy, including the critical impact of leverage and fees.

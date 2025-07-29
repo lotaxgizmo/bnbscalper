@@ -11,14 +11,14 @@ export const symbol = 'BTCUSDT';
 
 // candle limit below
 
-const weeklimit = 1;
+const weeklimit = 8;
 const daylimit = weeklimit * 7;
 // const daylimit = 7;
 const hourlimit = daylimit * 24;
 const minlimit = hourlimit * 60;
  
 // export const limit = minlimit;
-export const limit = 14400;
+export const limit = 1440;
 
 // delay below
 // Limit being 49.1 months
@@ -51,7 +51,7 @@ export const pricePercentile = 0;
 
     
 
-export const minSwingPct    = 0.3;   // minimum % move to mark a pivot
+export const minSwingPct    = 0.2;   // minimum % move to mark a pivot
 export const shortWindow    = 6;     // number of recent swings to average
 export const longWindow     = 50;    // number of swings for background volatility
 export const confirmOnClose = true;  // only confirm pivots on candle-close

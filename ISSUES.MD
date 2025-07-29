@@ -1,5 +1,224 @@
 # Issues and Solutions Log
 
+## 28. Indentation Issues in pivotBacktester.js
+
+**Date:** August 2, 2025
+
+**Problem:** The pivotBacktester.js script had inconsistent indentation throughout the trade summary and statistics sections, causing a syntax error with an unexpected closing brace. This prevented the script from running successfully.
+
+**Root Cause:** Multiple sections of the code had incorrect indentation levels, particularly in the trade summary section and trade duration statistics calculation. This led to mismatched braces and a syntax error at line 545.
+
+**Fix:** Standardized the indentation throughout the file, particularly in the trade summary and statistics sections, to ensure consistent 4-space indentation and proper brace matching.
+
+**Code Changes:**
+
+```javascript
+// Before: Inconsistent indentation in trade summary section
+console.log(`\n${colors.cyan}--- Trade Summary ---${colors.reset}`);
+        
+        // Calculate statistics excluding EOB trades
+        const closedTrades = regularTrades.length;
+        const totalTrades = trades.length;
+        // ... more incorrectly indented code
+
+// After: Consistent indentation in trade summary section
+console.log(`\n${colors.cyan}--- Trade Summary ---${colors.reset}`);
+    
+    // Calculate statistics excluding EOB trades
+    const closedTrades = regularTrades.length;
+    const totalTrades = trades.length;
+    // ... properly indented code
+```
+
+Additional fixes were made to the price movement statistics section and trade duration statistics section to maintain consistent indentation throughout the file.
+
+**Benefits:**
+- Resolved the syntax error that prevented the script from running
+- Improved code readability with consistent indentation style
+- Made the code structure clearer and easier to maintain
+- Ensured proper nesting of code blocks and matching braces
+
+## 27. ReferenceError in Trade Duration Statistics Calculation
+
+**Date:** July 29, 2025
+
+**Problem:** The pivotBacktester.js script was throwing a ReferenceError: `regularTrades is not defined` when attempting to calculate trade duration statistics.
+
+**Root Cause:** The `regularTrades` variable was defined inside the trade summary block but was being accessed outside of its scope in the trade duration statistics calculation section.
+
+**Fix:** Moved the definition of `regularTrades` and `eobTrades` to the top level of the function to ensure they're available throughout the entire function.
+
+**Code Change:**
+
+```javascript
+// Before: Variables defined inside the trade summary block
+if (trades.length > 0 || activeTrade) {
+    // ...trade details code...
+    
+    console.log(`\n${colors.cyan}--- Trade Summary ---${colors.reset}`);
+        
+    // Filter out EOB trades for statistics
+    const regularTrades = trades.filter(t => t.result !== 'EOB');
+    const eobTrades = trades.filter(t => t.result === 'EOB');
+    
+    // Calculate statistics excluding EOB trades
+    // ...
+}
+
+// After: Variables defined at the top level
+// Define regularTrades and eobTrades at the top level
+const regularTrades = trades.filter(t => t.result !== 'EOB');
+const eobTrades = trades.filter(t => t.result === 'EOB');
+
+if (trades.length > 0 || activeTrade) {
+    // ...trade details code...
+    
+    console.log(`\n${colors.cyan}--- Trade Summary ---${colors.reset}`);
+    
+    // Calculate statistics excluding EOB trades
+    // ...
+}
+```
+
+**Benefits:**
+- Fixes the runtime error that was preventing the backtester from completing successfully
+- Ensures trade duration statistics are properly calculated and displayed
+- Maintains consistent variable scope throughout the function
+
+## 26. Inadequate Trade Duration Display and Analysis
+
+**Issue**: The pivotBacktester.js script displayed trade durations only in hours and minutes, which made longer trades difficult to interpret at a glance. Additionally, there were no summary statistics for trade durations to help analyze typical holding periods across the backtest.
+
+**Root Cause**: The duration calculation logic was limited to hours and minutes, without accounting for days. The summary section also lacked trade duration statistics that could provide insights into trading frequency patterns.
+
+**Fix**: Enhanced the trade duration display and added comprehensive duration statistics to the summary section.
+
+```javascript
+// 1. Updated the individual trade duration calculation to include days
+const durationMs = trade.exitTime - trade.entryTime;
+const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+const durationHours = Math.floor((durationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+
+// Format duration string to include days when applicable
+let durationStr = '';
+if (durationDays > 0) {
+    durationStr = `${durationDays} days, ${durationHours} hours, ${durationMinutes} minutes`;
+} else {
+    durationStr = `${durationHours} hours, ${durationMinutes} minutes`;
+}
+
+// 2. Added trade duration statistics to the summary section
+if (regularTrades.length > 0) {
+    // Get durations in milliseconds for each trade
+    const tradeDurations = regularTrades.map(trade => trade.exitTime - trade.entryTime);
+    
+    // Find min, max, and average durations
+    const minDurationMs = Math.min(...tradeDurations);
+    const maxDurationMs = Math.max(...tradeDurations);
+    const avgDurationMs = tradeDurations.reduce((sum, duration) => sum + duration, 0) / tradeDurations.length;
+    
+    // Format duration strings using the same helper function
+    const formatDuration = (ms) => {
+        const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+        
+        if (days > 0) {
+            return `${days} days, ${hours} hours, ${minutes} minutes`;
+        } else {
+            return `${hours} hours, ${minutes} minutes`;
+        }
+    };
+    
+    console.log(`\n${colors.cyan}--- Trade Duration Statistics ---${colors.reset}`);
+    console.log(`Shortest Trade: ${colors.yellow}${formatDuration(minDurationMs)}${colors.reset}`);
+    console.log(`Longest Trade:  ${colors.yellow}${formatDuration(maxDurationMs)}${colors.reset}`);
+    console.log(`Average Trade:  ${colors.cyan}${formatDuration(avgDurationMs)}${colors.reset}`);
+}
+```
+
+**Benefits**:
+- **Improved Readability**: Trade durations are now displayed in a more intuitive format that includes days for longer trades.
+- **Better Duration Analysis**: The addition of trade duration statistics helps identify patterns in holding periods.
+- **Strategy Optimization**: Understanding typical trade durations can help refine entry and exit timing strategies.
+- **Trading Frequency Insights**: Knowing the shortest, longest, and average trade durations provides valuable context for trading frequency decisions.
+- **Enhanced Decision Making**: These statistics complement the price movement data to provide a more complete picture of trading performance.
+
+## 25. Insufficient Price Movement Data for Take Profit and Stop Loss Optimization
+
+**Issue**: The pivotBacktester.js script did not track or display the maximum favorable and unfavorable price movements during each trade's lifetime. This made it difficult to optimize take profit and stop loss levels based on actual market behavior, particularly for the 0.08% target profit and 0.21% stop loss strategy.
+
+**Root Cause**: The trade tracking system only recorded entry and exit prices without monitoring the price extremes that occurred during the trade. This limited the ability to analyze whether trades were being closed too early (leaving money on the table) or if stop losses were set too tight/loose.
+
+**Fix**: Enhanced the pivotBacktester.js to track and display maximum price movements in both favorable and unfavorable directions during each trade's lifetime, plus added summary statistics.
+
+```javascript
+// 1. Added tracking variables to the trade object
+activeTrade = {
+    type: 'long',  // or 'short'
+    entryPrice,
+    entryTime: currentCandle.time,
+    // other properties...
+    maxFavorable: 0,  // Track maximum favorable price movement
+    maxUnfavorable: 0  // Track maximum unfavorable price movement
+};
+
+// 2. Added code to track price movements during each candle
+if (activeTrade) {
+    // Track maximum favorable and unfavorable price movements
+    if (activeTrade.type === 'long') {
+        // For long trades: favorable = price goes up, unfavorable = price goes down
+        const currentFavorable = (currentCandle.high - activeTrade.entryPrice) / activeTrade.entryPrice * 100;
+        const currentUnfavorable = (currentCandle.low - activeTrade.entryPrice) / activeTrade.entryPrice * 100;
+        
+        activeTrade.maxFavorable = Math.max(activeTrade.maxFavorable, currentFavorable);
+        activeTrade.maxUnfavorable = Math.min(activeTrade.maxUnfavorable, currentUnfavorable);
+    } else { // short
+        // For short trades: favorable = price goes down, unfavorable = price goes up
+        const currentFavorable = (activeTrade.entryPrice - currentCandle.low) / activeTrade.entryPrice * 100;
+        const currentUnfavorable = (activeTrade.entryPrice - currentCandle.high) / activeTrade.entryPrice * 100;
+        
+        activeTrade.maxFavorable = Math.max(activeTrade.maxFavorable, currentFavorable);
+        activeTrade.maxUnfavorable = Math.min(activeTrade.maxUnfavorable, currentUnfavorable);
+    }
+    // Rest of trade management code...
+}
+
+// 3. Added display of max movements to trade details
+const favorableColor = trade.maxFavorable >= 0 ? colors.green : colors.red;
+const unfavorableColor = trade.maxUnfavorable >= 0 ? colors.green : colors.red;
+console.log(`  Max Favorable Movement: ${favorableColor}${trade.maxFavorable.toFixed(4)}%${colors.reset}`);
+console.log(`  Max Unfavorable Movement: ${unfavorableColor}${trade.maxUnfavorable.toFixed(4)}%${colors.reset}`);
+
+// 4. Added summary statistics at the end of the backtest
+const maxFavorable = Math.max(...regularTrades.map(t => t.maxFavorable));
+const minFavorable = Math.min(...regularTrades.map(t => t.maxFavorable));
+const avgFavorable = regularTrades.reduce((sum, t) => sum + t.maxFavorable, 0) / regularTrades.length;
+
+const maxUnfavorable = Math.max(...regularTrades.map(t => t.maxUnfavorable));
+const minUnfavorable = Math.min(...regularTrades.map(t => t.maxUnfavorable));
+const avgUnfavorable = regularTrades.reduce((sum, t) => sum + t.maxUnfavorable, 0) / regularTrades.length;
+
+console.log(`\n${colors.cyan}--- Price Movement Statistics ---${colors.reset}`);
+console.log(`Favorable Movements (Higher is better):`);
+console.log(`  Highest: ${colors.green}${maxFavorable.toFixed(4)}%${colors.reset}`);
+console.log(`  Lowest:  ${colors.yellow}${minFavorable.toFixed(4)}%${colors.reset}`);
+console.log(`  Average: ${colors.cyan}${avgFavorable.toFixed(4)}%${colors.reset}`);
+
+console.log(`Unfavorable Movements (Higher is better):`);
+console.log(`  Highest: ${colors.green}${maxUnfavorable.toFixed(4)}%${colors.reset}`);
+console.log(`  Lowest:  ${colors.red}${minUnfavorable.toFixed(4)}%${colors.reset}`);
+console.log(`  Average: ${colors.cyan}${avgUnfavorable.toFixed(4)}%${colors.reset}`);
+```
+
+**Benefits**:
+- **Optimized Take Profit Levels**: By seeing the maximum favorable movement, you can determine if the current 0.08% take profit level is optimal or if it's closing trades too early, leaving potential profits on the table.
+- **Optimized Stop Loss Levels**: By analyzing the maximum unfavorable movements, you can validate if the 0.21% stop loss level is appropriate or if it needs adjustment.
+- **Risk Management Insights**: The summary statistics provide clear data on the typical price movements during trades, helping refine the 3x safety margin requirement.
+- **Strategy Validation**: The data helps validate whether the Down→Up reversal strategy with 50x leverage is capturing the expected price movements effectively.
+- **Enhanced Decision Making**: Provides quantitative data for fine-tuning trading parameters instead of relying on intuition alone.
+
 ## 24. Trade Details Display Needed Enhancement
 
 **Issue**: The trade details section in `pivotBacktester.js` lacked visual clarity and organization, making it difficult to quickly distinguish between profitable and losing trades. Entry, exit, and duration information wasn't visually separated from other data.
