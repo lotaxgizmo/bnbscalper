@@ -49,18 +49,47 @@ Requirements:
 
 The output will show detailed information about pivot timestamps, prices, and any discrepancies found.
 
-### Instantaneous Pivot Test
+### Configurable Pivot Detection Test
 
-For rapid development and testing of time-sensitive logic (e.g., near-instant pivot detection), a dedicated test script is available.
+To test and fine-tune the core pivot detection logic, a dedicated script is available. This is the best tool for seeing how changes to your pivot settings affect the strategy's signals.
 
 ```bash
 node tests/instantPivotTest.js
 ```
 
-This script is designed to be fully self-contained and dependency-free. It:
-- Loads the entire historical candle dataset into memory at once.
-- Immediately prints all candles to the console in a numbered sequence, simulating an instantaneous data stream.
-- Serves as a clean foundation for building and verifying new real-time analysis logic without the overhead of the full backtesting or streaming frameworks.
+This script tests a powerful **three-step confirmation logic**:
+1.  **Pivot Shape (`pivotLookback`)**: Defines how many candles on each side of a pivot must be lower (for a high) or higher (for a low). A lookback of `1` creates a classic 3-candle pivot pattern.
+2.  **Minimum Swing (`minSwingPct`)**: The price move between pivots must be significant enough to be considered.
+3.  **Minimum Time (`minLegBars`)**: A certain number of candles must pass between pivots to prevent noise.
+
+You can tune these three parameters in `config/config.js` to balance sensitivity and signal quality.
+
+#### Test Output
+
+The script produces a clean, analytical summary for each pivot detected:
+
+```
+1.[PIVOT] LOW  @ 116691.20 | Time: Tuesday, July 22, 2025 at 5:54:00 AM | Move: 0.00% | Bars: 6
+2.[PIVOT] HIGH @ 117274.00 | Time: Tuesday, July 22, 2025 at 6:14:00 AM | Move: +0.50% | Bars: 20
+```
+
+At the end, it will also show the total time period covered by the test data:
+
+```
+Data Time Elapsed: 0 days, 8 hours, 19 minutes.
+```
+
+Finally, the test provides a `Market Movement Summary` that shows the true volatility of the period, independent of your pivot settings:
+
+```
+--- Market Movement Summary ---
+Max Upward Move: +2.29% (from start to ATH)
+Max Downward Move: -0.25% (from start to ATL)
+Net Price Range: 2.55% (from ATL to ATH)
+```
+
+- **Max Upward/Downward Move**: The biggest percentage change from the starting price to the highest high (All-Time High) and lowest low (All-Time Low) of the test period.
+- **Net Price Range**: The total volatility from the absolute bottom to the absolute top.
 
 ### Historical Data Streamer
 

@@ -57,7 +57,10 @@ export const longWindow     = 50;    // number of swings for background volatili
 export const confirmOnClose = true;  // only confirm pivots on candle-close
 
 // New setting: ignore any pivot that took fewer than this many candles
-export const minLegBars = 1;     // e.g. require at least 3 candles per swing
+export const minLegBars = 3;     // e.g. require at least 3 candles per swing
+
+// New setting: number of candles to look back on each side for pivot confirmation
+export const pivotLookback = 1;  // 1 = 3-candle pattern, 2 = 5-candle pattern
 
 // Percentage of average swing size to use as threshold (100 = use exact average)
 export const averageSwingThresholdPct = 100;   // e.g. 50 = half of average, 200 = double

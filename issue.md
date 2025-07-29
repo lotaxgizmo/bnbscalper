@@ -1,5 +1,36 @@
 # Issues Log
 
+## Issues During Instant Pivot Test Development
+
+### Issue:
+During the development of the configurable pivot detection test (`tests/instantPivotTest.js`), two separate issues were introduced that caused the script to fail or produce no output.
+
+1.  **`ReferenceError: displayCandleInfo is not defined`**: After refactoring the output to a new analytical format, the `displayCandleInfo` function was deleted, but an orphaned call to it remained at the end of the script, causing a crash.
+2.  **No Pivot Output**: A logical flaw was introduced where the first pivot in a dataset could never be confirmed. The logic required every pivot to be a minimum percentage move away from the *previous* pivot. Since the first pivot has no predecessor, this check always failed, preventing any pivots from being logged.
+
+### Fix:
+Both issues were resolved within the `instantPivotTest.js` script.
+
+1.  **ReferenceError**: The final, unnecessary call to `displayCandleInfo(candles[candles.length - 1], candles.length);` was removed from the script.
+
+2.  **Initial Pivot Logic**: The conditional check for confirming a pivot was modified to bypass the `swingThreshold` check if it is the very first pivot being detected (`lastPivot.type === null`). This allows the first valid pivot pattern to be confirmed, which correctly seeds the process for all subsequent pivots.
+
+    **Before:**
+    ```javascript
+    if (Math.abs(swingPct) >= swingThreshold && (i - lastPivot.index) >= minLegBars) {
+        // ... confirm pivot
+    }
+    ```
+
+    **After:**
+    ```javascript
+    // For the first pivot, we don't check swingPct. For subsequent pivots, we do.
+    if ((lastPivot.type === null || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
+        // ... confirm pivot
+    }
+    ```
+
+
 ## Unresolved Trades at End of Historical Simulation
 
 ### Issue:

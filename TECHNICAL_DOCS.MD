@@ -4,6 +4,16 @@
 
 ### Recent Updates
 
+#### Configurable Instant Pivot Detection (July 2025)
+- **Enhancement**: A highly configurable, multi-step pivot detection system has been implemented and tested in `tests/instantPivotTest.js` to allow for more precise tuning of pivot sensitivity and confirmation speed.
+- **Three-Step Confirmation Logic**:
+  1. **Candle Pattern (`pivotLookback`)**: The pivot candle must be a local high or low, confirmed by being higher (for highs) or lower (for lows) than a specified number of candles on both its left and right sides. This lookback period is controlled by the `pivotLookback` parameter in `config/config.js`.
+  2. **Price Swing (`minSwingPct`)**: The move from the last pivot to the new pivot must meet the minimum percentage swing threshold defined by `minSwingPct`.
+  3. **Time Between Pivots (`minLegBars`)**: A minimum number of candles, defined by `minLegBars`, must pass between consecutive pivots to reduce noise from rapid market fluctuations.
+- **Refactored Test Output**: The `instantPivotTest.js` script's output has been redesigned to provide a clean, analytical summary for each pivot, including a sequential count, type, price, timestamp, percentage move, and the number of bars in the swing.
+- **Time Elapsed Summary**: The test now concludes with a summary of the total time period covered by the loaded candle data, providing better context for the analysis.
+- **Market Movement Summary**: The test concludes with a summary of the absolute market movement, independent of pivot detection settings. It calculates the maximum upward and downward move from the starting price to the period's highest high and lowest low, respectively, and also shows the total price range from the absolute low to the absolute high. This provides a stable and accurate measure of the market's true volatility over the tested period.
+
 #### Immediate Pivot Confirmation for Faster Trading (July 2025)
 - **Issue**: The previous pivot detection logic, when `confirmOnClose` was enabled, introduced significant delays between a price peak/trough and the actual trade signal. This lag, sometimes lasting many minutes, is unacceptable for a high-frequency scalping strategy as it results in missed opportunities and poor entry prices.
 - **Fix**: The `PivotTracker`'s `update` method has been modified to prioritize speed by effectively bypassing the `confirmOnClose` setting.
@@ -398,12 +408,12 @@ The system tracks various performance metrics including:
 
 ### Instant Pivot Test (`tests/instantPivotTest.js`)
 
-- **Purpose**: A lightweight, dependency-free script for rapid prototyping and testing of real-time logic against historical data. It was created specifically to develop and validate a near-instantaneous pivot detection system.
+- **Purpose**: A lightweight, dependency-free script for rapid prototyping and testing of the configurable, multi-step pivot detection logic. It allows for quick validation of the `pivotLookback`, `minSwingPct`, and `minLegBars` parameters.
 - **Mechanism**:
-  - The script is entirely self-contained, with necessary helper functions (like `displayCandleInfo`) embedded directly to eliminate external dependencies and ensure isolated testing.
-  - It loads a configured number of historical candles from local CSV files.
-  - It then iterates through them as fast as possible, printing each one to the console without any artificial delay. This provides a simple, synchronous-like simulation of a data stream.
-- **Benefit**: This tool allows developers to focus purely on the logic being tested, free from the complexities of the larger backtesting or live trading frameworks. Its speed and simplicity make it ideal for iterative development and debugging of time-sensitive algorithms.
+  - The script is self-contained and loads historical candle data to simulate a data stream.
+  - It applies the three-step pivot confirmation logic and prints a detailed, analytical summary for each confirmed pivot.
+  - It concludes by reporting the total time elapsed in the dataset, providing context for the pivot frequency.
+- **Benefit**: This tool enables rapid, iterative tuning of the core pivot detection parameters in an isolated environment, free from the complexities of the full trading framework. It is the primary tool for validating changes to the pivot detection strategy.
 
 ### Historical Streamer (`historicalStreamer.js`)
 
