@@ -10,7 +10,8 @@
   1. **Candle Pattern (`pivotLookback`)**: To eliminate lookahead bias, a pivot is now confirmed if its high is strictly greater than the highs of the `pivotLookback` preceding candles (or its low is strictly lower for a low pivot). The check no longer uses future candles, making the test a true simulation of live performance.
   2. **Price Swing (`minSwingPct`)**: The move from the last pivot to the new pivot must meet the minimum percentage swing threshold defined by `minSwingPct`.
   3. **Time Between Pivots (`minLegBars`)**: A minimum number of candles, defined by `minLegBars`, must pass between consecutive pivots to reduce noise from rapid market fluctuations.
-- **Refactored Test Output**: The `instantPivotTest.js` script's output has been redesigned to provide a clean, analytical summary for each pivot, including a sequential count, type, price, timestamp, percentage move, and the number of bars in the swing.
+- **Detailed Swing Analysis**: The test now calculates and displays the absolute highest high (ATH) and lowest low (ATL) for the candles between each pivot. This is presented in a new indented line showing the `Swing Low` and `Swing High` with their percentage change from the start of the swing, offering a granular view of intra-swing volatility.
+- **Refactored Test Output**: The `instantPivotTest.js` script's output has been refactored into a compact, single-line format. All data, including the pivot summary and the detailed swing analysis, is now presented on one line with color-coded labels for improved readability and data density.
 - **Time Elapsed Summary**: The test now concludes with a summary of the total time period covered by the loaded candle data, providing better context for the analysis.
 - **Market Movement Summary**: The test concludes with a summary of the absolute market movement, independent of pivot detection settings. It calculates the maximum upward and downward move from the starting price to the period's highest high and lowest low, respectively, and also shows the total price range from the absolute low to the absolute high. This provides a stable and accurate measure of the market's true volatility over the tested period.
 
@@ -65,7 +66,7 @@
 #### Backtest Refactoring (July 2025)
 - **Capital Tracking Removed**: The backtesting scripts (`backtestWithExecutor.js`) and statistics calculation (`utils/backtest/backtestStats.js`) have been refactored to remove all capital tracking logic.
   - The backtest no longer simulates portfolio growth or tracks initial/final capital.
-  - The focus is now solely on individual trade performance metrics like P&L percentage, win rate, and excursions.
+  - The script outputs a summary of pivot detection and detailed trade performance statistics, including Gross PnL (before fees) and Net PnL (after fees). like P&L percentage, win rate, and excursions.
   - `backtestStats.js` no longer calculates or returns `finalCapital`, `totalReturn`, or `maxDrawdown`.
   - The console logger (`utils/backtest/consoleLogger.js` and `utils/backtest/edgeConsoleLogger.js`) has been updated to remove all capital-related output.
 
@@ -421,7 +422,7 @@ The system tracks various performance metrics including:
 - **Configuration Display**: At startup, the streamer now displays a summary of the current trade settings from `config/tradeconfig.js` for immediate verification.
 - **Mechanism**:
   - The script loads the entire historical candle dataset for a given symbol and interval from local CSV files.
-  - It then iterates through the candles chronologically, feeding each candle into the `PivotTracker` and `PaperTradeManager` instances.
+  - It then iterates through the candles chronologically, feeding each candle into the `PivotTracker` and `pivotBacktester.js` instances.
   - This process mimics the behavior of the WebSocket connection in `paperTrader.js`, where candles are processed as they are received.
 - **Integration**:
   - Utilizes the same configuration files (`config/config.js`, `config/tradeconfig.js`) as the live paper trader.
@@ -435,3 +436,39 @@ The system tracks various performance metrics including:
     - *Example*: `[TRADE] WIN | Side: BUY | PnL: 0.5000% | Entry: 118478 | Exit: 119070.39`
   - **`[CLOSED]`**: Cyan for `WIN`, Magenta for `LOSS`. Used for trades that are force-closed at the end of the simulation data.
     - *Example*: `[CLOSED] WIN | Side: SELL | PnL: 0.0432% | Entry: 119460.3 | Exit: 119408.7`
+
+### Pivot Backtester (`pivotBacktester.js`)
+
+- **Purpose**: To provide a comprehensive backtest of a trading strategy based on pivot points. Unlike `instantPivotTest.js` which only validates pivot signals, `pivotBacktester.js` simulates actual trades based on these pivots, providing a full performance report.
+- **Core Logic**:
+  - The script loads historical candle data and applies the same pivot detection logic as other tools.
+  - When a pivot is detected, it simulates a trade based on the settings in `config/tradeconfig.js`.
+    - **Long Trades**: Initiated on `low` pivots.
+    - **Short Trades**: Initiated on `high` pivots.
+  - **Trade Management**: Each trade is managed with a pre-defined `takeProfit` and `stopLoss` percentage. The simulation tracks one active trade at a time, closing it when either the take profit or stop loss level is hit by subsequent candles.
+- **Configuration**: All trading parameters are controlled via `config/tradeconfig.js`, including:
+  - `direction`: (`buy`, `sell`, or `both`)
+  - `takeProfit` / `stopLoss`: Exit points for trades.
+  - `leverage`: Multiplier for PnL and fees.
+  - `initialCapital` / `riskPerTrade`: For position sizing and capital management.
+- **Automatic Trade Closure at End of Backtest**: To ensure complete and accurate results, the backtester now automatically closes any open trades at the end of the simulation.
+  - **Mechanism**: If an `activeTrade` object exists after all candles are processed, the trade is formally closed using the `close` price of the final candle in the dataset.
+  - **Trade Record**: The closed trade is added to the trades array with a result of 'EOB' (End Of Backtest), ensuring it's included in all statistics.
+  - **Complete PnL Calculation**: Fees are properly calculated and deducted, and the final capital is updated accordingly.
+- **Enhanced Trade Details Display**: The backtester now provides a comprehensive, color-coded breakdown of each trade before the summary statistics.
+  - **Trade Header**: The first line of each trade is color-coded based on profitability (green for profitable trades, red for losing trades).
+    - Shows trade number, direction (LONG/SHORT), P&L percentage, outcome (WIN/LOSS), and result type (TP, SL, EOB).
+  - **Trade Details**: Entry, exit, and duration information is displayed in blue for improved readability.
+  - **Price Movement**: Shows the raw price movement in both percentage and absolute terms, color-coded (green for price increases, red for decreases).
+  - **Date Formatting**: Includes day of week alongside date and time for better context.
+  - **Duration Calculation**: Shows trade duration in hours and minutes for quick analysis of holding periods.
+- **Output**:
+  - The script first outputs the standard pivot detection log for each identified pivot.
+  - At the end of the simulation, it appends a detailed **Trade Summary**:
+    - **Performance Metrics**: Total trades, wins, losses, and win rate.
+    - **Profit and Loss**: 
+      - **Gross PnL**: Total profit or loss *before* deducting trading fees.
+      - **Net PnL**: The final profit or loss *after* all leveraged trading fees have been deducted.
+    - **Capital**: Initial and final capital, and the overall percentage return on capital.
+
+This tool is essential for validating the end-to-end profitability of a pivot-based trading strategy, including the critical impact of leverage and fees.

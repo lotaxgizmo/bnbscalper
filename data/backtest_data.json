@@ -1,29 +1,167 @@
 {
   "trades": [
     {
-      "entryTime": 1753161660000,
-      "exitTime": 1753169100000,
-      "pnl": -8.000000000000023,
+      "entryTime": 1753109100000,
+      "exitTime": 1753111800000,
+      "pnl": 0.39999999999999525,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753112580000,
+      "exitTime": 1753181700000,
+      "pnl": 0.39999999999999714,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753109100000,
+      "exitTime": 1753111800000,
+      "pnl": 0.4000000000000005,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753110480000,
+      "exitTime": 1753147020000,
+      "pnl": -2.0000000000000036,
       "result": "LOSS"
     },
     {
-      "entryTime": 1753173180000,
-      "exitTime": 1753184820000,
-      "pnl": -7.999999999999989,
+      "entryTime": 1753111800000,
+      "exitTime": 1753147020000,
+      "pnl": -1.9999999999999987,
       "result": "LOSS"
+    },
+    {
+      "entryTime": 1753119660000,
+      "exitTime": 1753121760000,
+      "pnl": 0.40000000000000024,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753122120000,
+      "exitTime": 1753123020000,
+      "pnl": 0.3999999999999948,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753118940000,
+      "exitTime": 1753122120000,
+      "pnl": 0.4000000000000039,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753117860000,
+      "exitTime": 1753118940000,
+      "pnl": 0.40000000000000496,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753123560000,
+      "exitTime": 1753148400000,
+      "pnl": 0.40000000000000346,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753168320000,
+      "exitTime": 1753171440000,
+      "pnl": 0.40000000000000363,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753126200000,
+      "exitTime": 1753137120000,
+      "pnl": 0.4000000000000025,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753125360000,
+      "exitTime": 1753126080000,
+      "pnl": 0.4000000000000021,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753147020000,
+      "exitTime": 1753147320000,
+      "pnl": 0.4000000000000064,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753133940000,
+      "exitTime": 1753146900000,
+      "pnl": 0.399999999999996,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753146840000,
+      "exitTime": 1753147860000,
+      "pnl": 0.40000000000000246,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753148400000,
+      "exitTime": 1753152600000,
+      "pnl": 0.40000000000000363,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753144680000,
+      "exitTime": 1753148400000,
+      "pnl": 0.40000000000000113,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753148400000,
+      "exitTime": 1753152780000,
+      "pnl": 0.4000000000000014,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753160040000,
+      "exitTime": 1753161180000,
+      "pnl": 0.3999999999999988,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753157340000,
+      "exitTime": 1753159680000,
+      "pnl": 0.400000000000005,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753159680000,
+      "exitTime": 1753161540000,
+      "pnl": 0.4000000000000007,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753159020000,
+      "exitTime": 1753159680000,
+      "pnl": 0.39999999999999725,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753159440000,
+      "exitTime": 1753161600000,
+      "pnl": 0.40000000000000036,
+      "result": "WIN"
+    },
+    {
+      "entryTime": 1753172760000,
+      "exitTime": 1753173180000,
+      "pnl": 0.3999999999999999,
+      "result": "WIN"
     }
   ],
   "stats": {
-    "totalTrades": 2,
-    "winRate": 0,
-    "wins": 0,
+    "totalTrades": 25,
+    "winRate": 92,
+    "wins": 23,
     "losses": 2,
-    "totalPnL": -16,
-    "avgPnL": -8,
-    "highestWinPnL": "0.00",
-    "lowestWinPnL": "0.00",
-    "highestLossPnL": "-8.00",
-    "lowestLossPnL": "-8.00",
-    "sharpeRatio": "-473407882533413.56"
+    "totalPnL": 5.2,
+    "avgPnL": 0.21,
+    "highestWinPnL": "0.40",
+    "lowestWinPnL": "0.40",
+    "highestLossPnL": "-2.00",
+    "lowestLossPnL": "-2.00",
+    "sharpeRatio": "0.32"
   }
 }

@@ -66,12 +66,18 @@ You can tune these three parameters in `config/config.js` to balance sensitivity
 
 #### Test Output
 
-The script produces a clean, analytical summary for each pivot detected:
+The script produces a clean, color-coded, single-line summary for each pivot, packing all the critical data into a compact and readable format.
 
 ```
-1.[PIVOT] LOW  @ 116691.20 | Time: Tuesday, July 22, 2025 at 5:54:00 AM | Move: 0.00% | Bars: 6
-2.[PIVOT] HIGH @ 117274.00 | Time: Tuesday, July 22, 2025 at 6:14:00 AM | Move: +0.50% | Bars: 20
+1.[PIVOT] LOW @ 118760.00 | ... | Move: -0.32% | Bars: 13 | Swing Low: 118760.00 (-0.32%) | Swing High: 119275.00 (+0.12%)
 ```
+
+This single line contains all the information you need:
+- **Pivot Data**: The main pivot information (type, price, time, move, bars) is displayed first.
+- **Swing Analysis**: This is appended to the same line, with distinct `cyan` labels for `Swing Low:` and `Swing High:` to make them stand out.
+- **Swing Values**: The swing prices and percentages remain color-coded (`red` for low, `green` for high) for quick visual analysis.
+
+This format provides a complete picture of each swing's volatility—both the final outcome and the journey—in one efficient line.
 
 At the end, it will also show the total time period covered by the test data:
 
@@ -193,6 +199,27 @@ To adapt for real-time use:
 2. Process incoming candles through the EnhancedPivotTracker.update() method
 3. Add signal handling code to act on pivot detections
 
+### Full Trading Backtest (`pivotBacktester.js`)
+
+For a complete evaluation of your trading strategy, including profitability with leverage and fees, use the pivot backtester.
+
+```bash
+node pivotBacktester.js
+```
+
+This script goes beyond simple pivot detection and runs a full trading simulation:
+- **Trades on Pivots**: It automatically places `long` trades on low pivots and `short` trades on high pivots.
+- **Uses Trade Config**: All trading parameters (leverage, take profit, stop loss, etc.) are taken from `config/tradeconfig.js`.
+- **Outputs a Full Summary**: At the end of the test, it provides a detailed trade summary, including:
+  - **Win Rate**: The percentage of winning trades.
+  - **Total PnL**: The net profit or loss from all trades, after deducting fees.
+  - **Automatic Trade Closure**: Any open trades at the end of the backtest are automatically closed at the last candle's closing price and marked as 'EOB' (End Of Backtest).
+  - **Final Capital**: The final value of your account after all trades are closed.
+  - **Overall Profit**: Your final percentage profit/loss after accounting for all trades and fees.
+  - **Overall Profit %**: The percentage return on your initial capital.
+
+This is the primary tool for validating whether your pivot strategy is profitable from end to end.
+
 ## Backtesting Behavior
 
 ### Sequential Trading: One Trade at a Time
@@ -263,7 +290,18 @@ When `showLimits` is enabled in config:
 - **New**: The backtest summary now explicitly states if a trade was `CANCELLED/NOT FILLED`, providing a clearer picture of your strategy's behavior.
 
 ### Final Summary
-- **New Trade Details Section**: If you set `showTradeDetails: true` in `config/tradeconfig.js`, the final summary will now include a "Trade Details" section. This provides a full breakdown of every single trade, including P&L, entry/exit times and prices, duration, and the specific edge data at the time of the trade.
+- **Enhanced Trade Details Section**: The backtester now provides a comprehensive, color-coded breakdown of each trade before the summary statistics:
+  - **Color-Coded Headers**: Each trade header is color-coded based on profitability:
+    - **Green Headers**: For profitable trades (wins)
+    - **Red Headers**: For losing trades
+  - **Blue Details**: Entry, exit, and duration information is displayed in blue for improved readability
+  - **Comprehensive Information**:
+    - Trade number and direction (LONG/SHORT)
+    - P&L percentage and outcome (WIN/LOSS)
+    - Result type (TP = Take Profit, SL = Stop Loss, EOB = End of Backtest)
+    - Entry and exit dates with day of week for better context
+    - Trade duration in hours and minutes
+    - Raw price movement in both percentage and absolute terms
 - Date range and elapsed time
 - Total trade count and win rate
 - Overall P&L statistics

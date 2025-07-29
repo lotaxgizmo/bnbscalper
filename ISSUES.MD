@@ -1,5 +1,109 @@
 # Issues and Solutions Log
 
+## 24. Trade Details Display Needed Enhancement
+
+**Issue**: The trade details section in `pivotBacktester.js` lacked visual clarity and organization, making it difficult to quickly distinguish between profitable and losing trades. Entry, exit, and duration information wasn't visually separated from other data.
+
+**Root Cause**: The original implementation used minimal color coding and formatting, displaying all trade details in the same style regardless of trade outcome. This made it challenging to scan through multiple trades and identify patterns or issues at a glance.
+
+**Fix**: Enhanced the trade details formatting with comprehensive color coding and improved layout:
+
+```javascript
+// Before (Limited color coding, all text in same style)
+console.log(`[TRADE ${index + 1}] ${trade.type.toUpperCase()} | P&L: ${resultColor}${pnlPct}%${colors.reset} | ${resultColor}${resultText}${colors.reset} | Result: ${trade.result}`);
+console.log();
+console.log(`  Entry: ${entryDate} at $${trade.entryPrice.toFixed(4)}`);
+console.log(`  Exit:  ${exitDate} at $${trade.exitPrice.toFixed(4)}`);
+console.log(`  Duration: ${durationStr}`);
+
+// After (Comprehensive color coding with improved layout)
+// Format the trade header - entire line in result color
+console.log(`${resultColor}[TRADE ${(index + 1).toString().padStart(2, ' ')}] ${trade.type.toUpperCase()} | P&L: ${pnlPct}% | ${resultText} | Result: ${trade.result}${colors.reset}`);
+console.log();
+console.log(`${colors.cyan}  Entry: ${entryDateStr} at $${trade.entryPrice.toFixed(4)}${colors.reset}`);
+console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${trade.exitPrice.toFixed(4)}${colors.reset}`);
+console.log(`${colors.cyan}  Duration: ${durationStr}${colors.reset}`);
+
+// Add price movement information
+const priceDiff = trade.exitPrice - trade.entryPrice;
+const priceDiffPct = (priceDiff / trade.entryPrice * 100).toFixed(4);
+const priceColor = priceDiff >= 0 ? colors.green : colors.red;
+console.log(`  Price Movement: ${priceColor}${priceDiff > 0 ? '+' : ''}${priceDiffPct}%${colors.reset} (${priceColor}$${priceDiff.toFixed(4)}${colors.reset})`);
+```
+
+**Key Improvements**:
+1. **Color-Coded Trade Headers**: Entire first line is green for profitable trades and red for losing trades
+2. **Blue Entry/Exit Details**: All entry, exit, and duration information displayed in blue for visual separation
+3. **Enhanced Date Formatting**: Added day of week alongside date and time for better context
+4. **Price Movement Information**: Added raw price movement in both percentage and absolute terms
+5. **Consistent Number Formatting**: Trade numbers are padded for better alignment
+
+**Benefits**:
+- **Improved Readability**: Clear visual distinction between profitable and losing trades
+- **Faster Analysis**: Color coding allows for quick pattern identification across multiple trades
+- **More Complete Information**: Added price movement data provides context beyond just P&L
+- **Better Context**: Enhanced date formatting with day of week helps identify time patterns
+- **Cleaner Output**: Consistent formatting and visual hierarchy improves overall readability
+
+## 23. Open Trades Not Closed at End of Backtesting
+
+**Issue**: In `pivotBacktester.js`, trades that were still open at the end of the backtesting period were not being properly closed. Instead, the script was calculating unrealized PnL and temporarily adding it to the final capital for reporting purposes, but the trades remained in an 'open' state and weren't added to the trades array.
+
+**Root Cause**: The backtesting logic was designed to close trades only when they hit take profit or stop loss levels. There was no mechanism to formally close trades that were still open when the historical data ran out.
+
+**Fix**: Modified the code to properly close any open trades at the end of the backtesting period using the last candle's closing price.
+
+```javascript
+// Before (Only calculated unrealized PnL without closing the trade)
+let unrealizedPnl = 0;
+if (activeTrade) {
+    const endPrice = candles[candles.length - 1].close;
+    const pnlPct = (activeTrade.type === 'long' ? (endPrice - activeTrade.entryPrice) / activeTrade.entryPrice : (activeTrade.entryPrice - endPrice) / activeTrade.entryPrice) * tradeConfig.leverage;
+    unrealizedPnl = activeTrade.size * pnlPct;
+    finalCapital += unrealizedPnl; // Temporarily add for final reporting
+    console.log(`\n${colors.yellow}Note: 1 trade is still open.${colors.reset}`)
+    console.log(`  └─> Mark-to-market PnL: ${(unrealizedPnl > 0 ? colors.green : colors.red)}${unrealizedPnl.toFixed(2)}${colors.reset} (using last close price ${endPrice.toFixed(2)})`);
+}
+
+// After (Properly closes the trade and adds it to the trades array)
+if (activeTrade) {
+    const endPrice = candles[candles.length - 1].close;
+    const pnlPct = (activeTrade.type === 'long' ? (endPrice - activeTrade.entryPrice) / activeTrade.entryPrice : (activeTrade.entryPrice - endPrice) / activeTrade.entryPrice) * tradeConfig.leverage;
+    const grossPnl = activeTrade.size * pnlPct;
+    const fee = (activeTrade.size * tradeConfig.leverage * (tradeConfig.totalMakerFee / 100));
+    const pnl = grossPnl - fee;
+    
+    capital += pnl;
+    finalCapital = capital;
+    
+    console.log(`\n${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
+    console.log(`  └─> [EOB] ${activeTrade.type.toUpperCase()} trade closed @ ${endPrice.toFixed(2)}. PnL: ${(pnl >= 0 ? colors.green : colors.red)}${pnl.toFixed(2)}${colors.reset}`);
+    
+    // Add the closed trade to the trades array
+    trades.push({
+        ...activeTrade,
+        exitPrice: endPrice,
+        exitTime: candles[candles.length - 1].time,
+        exitIndex: candles.length - 1,
+        status: 'closed',
+        result: 'EOB', // End Of Backtest
+        grossPnl,
+        pnl,
+        fee,
+        capitalAfter: capital
+    });
+    
+    activeTrade = null;
+}
+```
+
+**Benefits**:
+- **Complete Trade Records**: All trades are now properly closed and recorded, providing a complete trading history.
+- **Accurate Statistics**: Win/loss rates and other statistics now include all trades that occurred during the backtest.
+- **Consistent Capital Tracking**: Final capital calculation is more accurate as it includes properly calculated fees for all trades.
+- **Clear Reporting**: Trade summary now shows "Total PnL" instead of separate "Realized PnL" and "Unrealized PnL" lines, simplifying the output.
+- **Realistic Simulation**: Better simulates what would happen in a real trading environment where positions would be closed at the end of a trading session.
+
 ## 22. Pivot Confirmation Lag in Historical Simulation
 
 **Issue**: When running `historicalStreamer.js`, a significant delay was observed between the formation of a pivot point (a price high or low) and the confirmation of that pivot. This lag, often lasting several minutes (multiple candles), resulted in delayed trade entries and missed opportunities, which is detrimental to a high-frequency scalping strategy.

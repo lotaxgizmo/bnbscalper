@@ -1,5 +1,47 @@
 # Issues Log
 
+## Misleading Backtest Results Due to Ignored Open Trades
+
+### Issue:
+Backtests for `buy`-only and `sell`-only strategies produced identical, statistically improbable PnL results. This created confusion and undermined confidence in the backtester's accuracy.
+
+### Root Cause:
+The final trade summary in `pivotBacktester.js` only calculated metrics based on *closed* trades. Any trade that was still open when the simulation ended was completely ignored. The "Final Capital" figure did not account for the unrealized PnL of this open position, leading to inaccurate and misleading reports.
+
+### Fix:
+The final summary logic was refactored to perform a **mark-to-market (MTM)** calculation for any open trade at the end of the test, ensuring the final report reflects the true state of the account.
+
+1.  **MTM Calculation**: If a trade is still active after all candles are processed, its unrealized PnL is calculated using the closing price of the very last candle in the dataset.
+2.  **Enhanced Summary**: The trade summary output was updated to be more transparent:
+    *   A clear note is displayed if a trade is still open, along with its calculated MTM PnL.
+    *   The summary now distinguishes between **Realized PnL** (from closed trades) and **Unrealized PnL** (from the open trade).
+    *   The **Final Capital** now includes the unrealized PnL, providing a completely accurate end-of-test valuation.
+
+**Code Snippet (After):**
+```javascript
+// In pivotBacktester.js, at the end of the runTest function
+
+let finalCapital = capital;
+let unrealizedPnl = 0;
+if (activeTrade) {
+    const endPrice = candles[candles.length - 1].close;
+    const pnlPct = (activeTrade.type === 'long' ? (endPrice - activeTrade.entryPrice) / activeTrade.entryPrice : (activeTrade.entryPrice - endPrice) / activeTrade.entryPrice) * tradeConfig.leverage;
+    unrealizedPnl = activeTrade.size * pnlPct;
+    finalCapital += unrealizedPnl;
+    console.log(`\n${colors.yellow}Note: 1 trade is still open.${colors.reset}`)
+    console.log(`  └─> Mark-to-market PnL: ${(unrealizedPnl > 0 ? colors.green : colors.red)}${unrealizedPnl.toFixed(2)}${colors.reset}`);
+}
+
+if (trades.length > 0 || activeTrade) {
+    console.log(`\n${colors.cyan}--- Trade Summary ---${colors.reset}`);
+    // ... summary logic ...
+    console.log(`Realized PnL: ...`);
+    console.log(`Unrealized PnL: ...`);
+    console.log(`Final Capital: ${colors.yellow}${finalCapital.toFixed(2)}${colors.reset}`);
+    // ...
+}
+```
+
 ## Issues During Instant Pivot Test Development
 
 ### Issue:

@@ -1,4 +1,4 @@
-// pivotBacktester.js
+// tests/instantPivotTest.js
 // Self-sufficient test file for instant pivot detection using the user's two-step logic.
 
 import {
@@ -38,7 +38,18 @@ const displayCandleInfo = (candle, candleNumber, pivotType = null) => {
     console.log(`  ${(candleNumber).toString().padStart(5, ' ')} | ${pivotIndicator} | ${formattedTime} | O: ${o} H: ${h} L: ${l} C: ${cColor}${c}${colors.reset}`);
 };
 
-console.log(`${colors.cyan}--- Instant Pivot Detection Test (Two-Step Logic) ---${colors.reset}`);
+console.log(`${colors.cyan}--- Instant Pivot Detection Test (No Lookahead) ---${colors.reset}`);
+
+// Display trade configuration at the top
+console.log(`${colors.cyan}--- Trade Configuration ---${colors.reset}`);
+console.log(`Direction: ${colors.yellow}${tradeConfig.direction}${colors.reset}`);
+console.log(`Take Profit: ${colors.green}${tradeConfig.takeProfit}%${colors.reset}`);
+console.log(`Stop Loss: ${colors.red}${tradeConfig.stopLoss}%${colors.reset}`);
+console.log(`Leverage: ${colors.yellow}${tradeConfig.leverage}x${colors.reset}`);
+console.log(`Maker Fee: ${colors.yellow}${tradeConfig.totalMakerFee}%${colors.reset}`);
+console.log(`Initial Capital: ${colors.yellow}${tradeConfig.initialCapital} USDT${colors.reset}`);
+console.log(`Risk Per Trade: ${colors.yellow}${tradeConfig.riskPerTrade}%${colors.reset}`);
+
 
 async function runTest() {
     const allLocalCandles = await getCandles(symbol, interval, null, null, true);
@@ -56,15 +67,77 @@ async function runTest() {
     let highPivotCount = 0;
     let lowPivotCount = 0;
 
+    // --- Trade State Initialization ---
+    let capital = tradeConfig.initialCapital;
+    const trades = [];
+    let activeTrade = null;
+
     // Iterate, leaving enough space for lookback on either side
-    for (let i = pivotLookback; i < candles.length - pivotLookback; i++) {
+    for (let i = pivotLookback; i < candles.length; i++) {
         const currentCandle = candles[i];
         let pivotType = null;
+
+        // --- Active Trade Management ---
+        if (activeTrade) {
+            let tradeClosed = false;
+            let exitPrice = null;
+            let result = '';
+
+            if (activeTrade.type === 'long') {
+                if (currentCandle.high >= activeTrade.takeProfitPrice) {
+                    tradeClosed = true;
+                    exitPrice = activeTrade.takeProfitPrice;
+                    result = 'TP';
+                } else if (currentCandle.low <= activeTrade.stopLossPrice) {
+                    tradeClosed = true;
+                    exitPrice = activeTrade.stopLossPrice;
+                    result = 'SL';
+                }
+            } else { // short
+                if (currentCandle.low <= activeTrade.takeProfitPrice) {
+                    tradeClosed = true;
+                    exitPrice = activeTrade.takeProfitPrice;
+                    result = 'TP';
+                } else if (currentCandle.high >= activeTrade.stopLossPrice) {
+                    tradeClosed = true;
+                    exitPrice = activeTrade.stopLossPrice;
+                    result = 'SL';
+                }
+            }
+
+            if (tradeClosed) {
+                const pnlPct = (activeTrade.type === 'long' ? (exitPrice - activeTrade.entryPrice) / activeTrade.entryPrice : (activeTrade.entryPrice - exitPrice) / activeTrade.entryPrice) * tradeConfig.leverage;
+                const grossPnl = activeTrade.size * pnlPct;
+                const fee = (activeTrade.size * tradeConfig.leverage * (tradeConfig.totalMakerFee / 100));
+                const pnl = grossPnl - fee;
+                
+                capital += pnl;
+
+                const resultColor = result === 'TP' ? colors.green : colors.red;
+                const tradeType = activeTrade.type.toUpperCase();
+                const pnlText = `${resultColor}${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}${colors.reset}`;
+                console.log(`  ${resultColor}└─> [${result}] ${tradeType} trade closed @ ${exitPrice.toFixed(2)}. PnL: ${pnlText}${colors.reset}`);
+
+                trades.push({
+                    ...activeTrade,
+                    exitPrice,
+                    exitTime: currentCandle.time,
+                    exitIndex: i,
+                    status: 'closed',
+                    result,
+                    grossPnl,
+                    pnl,
+                    fee,
+                    capitalAfter: capital
+                });
+                activeTrade = null;
+            }
+        }
 
         // --- High Pivot Logic ---
         let isHighPivot = true;
         for (let j = 1; j <= pivotLookback; j++) {
-            if (currentCandle.high <= candles[i - j].high || currentCandle.high <= candles[i + j].high) {
+            if (currentCandle.high <= candles[i - j].high) {
                 isHighPivot = false;
                 break;
             }
@@ -72,25 +145,62 @@ async function runTest() {
 
         if (isHighPivot) {
             const swingPct = lastPivot.price ? (currentCandle.high - lastPivot.price) / lastPivot.price : 0;
+            const isFirstPivot = lastPivot.type === null;
+
             // For the first pivot, we don't check swingPct. For subsequent pivots, we do.
-            if ((lastPivot.type === null || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
+            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
                 pivotType = 'high';
                 pivotCounter++;
                 highPivotCount++;
                 const barsSinceLast = i - lastPivot.index;
                 const movePct = swingPct * 100;
                 const formattedTime = new Date(currentCandle.time).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' });
-                
-                console.log(`${colors.green}${pivotCounter}.[PIVOT] HIGH @ ${currentCandle.high.toFixed(2)} | Time: ${formattedTime} | Move: +${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`);
-                
+
+                let output = `${colors.green}${pivotCounter}.[PIVOT] HIGH @ ${currentCandle.high.toFixed(2)} | Time: ${formattedTime} | Move: +${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`;
+
+                if (lastPivot.price) {
+                    const swingCandles = candles.slice(lastPivot.index, i + 1);
+                    const swingATL = Math.min(...swingCandles.map(c => c.low));
+                    const swingATH = Math.max(...swingCandles.map(c => c.high));
+
+                    const swingLowPct = ((swingATL - lastPivot.price) / lastPivot.price) * 100;
+                    const swingHighPct = ((swingATH - lastPivot.price) / lastPivot.price) * 100;
+
+                    const swingLowText = `${colors.red}${swingATL.toFixed(2)} (${swingLowPct.toFixed(2)}%)${colors.reset}`;
+                    const swingHighText = `${colors.green}${swingATH.toFixed(2)} (${swingHighPct.toFixed(2)}%)${colors.reset}`;
+                    output += ` | ${colors.cyan}Swing Low:${colors.reset} ${swingLowText} | ${colors.cyan}Swing High:${colors.reset} ${swingHighText}`;
+                }
+                console.log(output);
+
                 lastPivot = { type: 'high', price: currentCandle.high, time: currentCandle.time, index: i };
+
+                // --- Open Short Trade ---
+                if (!isFirstPivot && !activeTrade && (tradeConfig.direction === 'sell' || tradeConfig.direction === 'both')) {
+                    const entryPrice = currentCandle.high;
+                    const size = capital * (tradeConfig.riskPerTrade / 100);
+                    const takeProfitPrice = entryPrice * (1 - (tradeConfig.takeProfit / 100));
+                    const stopLossPrice = entryPrice * (1 + (tradeConfig.stopLoss / 100));
+
+                    activeTrade = {
+                        type: 'short',
+                        entryPrice,
+                        entryTime: currentCandle.time,
+                        entryIndex: i,
+                        size,
+                        status: 'open',
+                        takeProfitPrice,
+                        stopLossPrice,
+                        pivot: { ...lastPivot }
+                    };
+                    console.log(`  ${colors.yellow}└─> [SHORT] Entry: ${entryPrice.toFixed(2)} | Size: ${size.toFixed(2)} | TP: ${takeProfitPrice.toFixed(2)} | SL: ${stopLossPrice.toFixed(2)}${colors.reset}`);
+                }
             }
         }
 
         // --- Low Pivot Logic ---
         let isLowPivot = true;
         for (let j = 1; j <= pivotLookback; j++) {
-            if (currentCandle.low >= candles[i - j].low || currentCandle.low >= candles[i + j].low) {
+            if (currentCandle.low >= candles[i - j].low) {
                 isLowPivot = false;
                 break;
             }
@@ -98,8 +208,9 @@ async function runTest() {
 
         if (isLowPivot) {
             const swingPct = lastPivot.price ? (currentCandle.low - lastPivot.price) / lastPivot.price : 0;
-            // For the first pivot, we don't check swingPct. For subsequent pivots, we do.
-            if ((lastPivot.type === null || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
+            const isFirstPivot = lastPivot.type === null;
+
+            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
                 pivotType = 'low';
                 pivotCounter++;
                 lowPivotCount++;
@@ -107,9 +218,45 @@ async function runTest() {
                 const movePct = swingPct * 100;
                 const formattedTime = new Date(currentCandle.time).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' });
 
-                console.log(`${colors.red}${pivotCounter}.[PIVOT] LOW  @ ${currentCandle.low.toFixed(2)} | Time: ${formattedTime} | Move: ${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`);
+                let output = `${colors.red}${pivotCounter}.[PIVOT] LOW  @ ${currentCandle.low.toFixed(2)} | Time: ${formattedTime} | Move: ${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`;
+
+                if (lastPivot.price) {
+                    const swingCandles = candles.slice(lastPivot.index, i + 1);
+                    const swingATL = Math.min(...swingCandles.map(c => c.low));
+                    const swingATH = Math.max(...swingCandles.map(c => c.high));
+
+                    const swingLowPct = ((swingATL - lastPivot.price) / lastPivot.price) * 100;
+                    const swingHighPct = ((swingATH - lastPivot.price) / lastPivot.price) * 100;
+
+                    const swingLowText = `${colors.red}${swingATL.toFixed(2)} (${swingLowPct.toFixed(2)}%)${colors.reset}`;
+                    const swingHighText = `${colors.green}${swingATH.toFixed(2)} (${swingHighPct.toFixed(2)}%)${colors.reset}`;
+                    output += ` | ${colors.cyan}Swing Low:${colors.reset} ${swingLowText} | ${colors.cyan}Swing High:${colors.reset} ${swingHighText}`;
+                }
+
+                console.log(output);
                 
                 lastPivot = { type: 'low', price: currentCandle.low, time: currentCandle.time, index: i };
+
+                // --- Open Long Trade ---
+                if (!isFirstPivot && !activeTrade && (tradeConfig.direction === 'buy' || tradeConfig.direction === 'both')) {
+                    const entryPrice = currentCandle.low;
+                    const size = capital * (tradeConfig.riskPerTrade / 100);
+                    const takeProfitPrice = entryPrice * (1 + (tradeConfig.takeProfit / 100));
+                    const stopLossPrice = entryPrice * (1 - (tradeConfig.stopLoss / 100));
+
+                    activeTrade = {
+                        type: 'long',
+                        entryPrice,
+                        entryTime: currentCandle.time,
+                        entryIndex: i,
+                        size,
+                        status: 'open',
+                        takeProfitPrice,
+                        stopLossPrice,
+                        pivot: { ...lastPivot }
+                    };
+                    console.log(`  ${colors.yellow}└─> [LONG]  Entry: ${entryPrice.toFixed(2)} | Size: ${size.toFixed(2)} | TP: ${takeProfitPrice.toFixed(2)} | SL: ${stopLossPrice.toFixed(2)}${colors.reset}`);
+                }
             }
         }
 
@@ -140,6 +287,107 @@ async function runTest() {
     const totalDownwardChange = ((lowestLow - firstPrice) / firstPrice) * 100;
     const netPriceRange = ((highestHigh - lowestLow) / lowestLow) * 100;
 
+
+
+    // --- Trade Summary --- 
+    let finalCapital = capital;
+    
+    // Close any open trades at the end of backtesting using the last candle's close price
+    if (activeTrade) {
+        const endPrice = candles[candles.length - 1].close;
+        const pnlPct = (activeTrade.type === 'long' ? (endPrice - activeTrade.entryPrice) / activeTrade.entryPrice : (activeTrade.entryPrice - endPrice) / activeTrade.entryPrice) * tradeConfig.leverage;
+        const grossPnl = activeTrade.size * pnlPct;
+        const fee = (activeTrade.size * tradeConfig.leverage * (tradeConfig.totalMakerFee / 100));
+        const pnl = grossPnl - fee;
+        
+        capital += pnl;
+        finalCapital = capital;
+        
+        console.log(`
+${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
+        console.log(`  └─> [EOB] ${activeTrade.type.toUpperCase()} trade closed @ ${endPrice.toFixed(2)}. PnL: ${(pnl >= 0 ? colors.green : colors.red)}${pnl.toFixed(2)}${colors.reset}`);
+        
+        // Add the closed trade to the trades array
+        trades.push({
+            ...activeTrade,
+            exitPrice: endPrice,
+            exitTime: candles[candles.length - 1].time,
+            exitIndex: candles.length - 1,
+            status: 'closed',
+            result: 'EOB', // End Of Backtest
+            grossPnl,
+            pnl,
+            fee,
+            capitalAfter: capital
+        });
+        
+        activeTrade = null;
+    }
+
+    if (trades.length > 0 || activeTrade) {
+        // Display detailed trade information
+        console.log(`\n${colors.cyan}--- Trade Details ---${colors.reset}`);
+        console.log('--------------------------------------------------------------------------------');
+        
+        trades.forEach((trade, index) => {
+            // Format dates to be more readable
+            const entryDate = new Date(trade.entryTime);
+            const exitDate = new Date(trade.exitTime);
+            const entryDateStr = `${entryDate.toLocaleDateString('en-US', { weekday: 'short' })} ${entryDate.toLocaleDateString()} ${entryDate.toLocaleTimeString()}`;
+            const exitDateStr = `${exitDate.toLocaleDateString('en-US', { weekday: 'short' })} ${exitDate.toLocaleDateString()} ${exitDate.toLocaleTimeString()}`;
+            
+            // Calculate duration
+            const durationMs = trade.exitTime - trade.entryTime;
+            const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
+            const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+            const durationStr = `${durationHours} hours, ${durationMinutes} minutes`;
+            
+            // Determine if win or loss
+            const resultColor = trade.pnl >= 0 ? colors.green : colors.red;
+            const resultText = trade.pnl >= 0 ? 'WIN' : 'LOSS';
+            const pnlPct = ((trade.pnl / trade.size) * 100).toFixed(2);
+            
+            // Determine trade type color
+            const typeColor = trade.type === 'long' ? colors.green : colors.red;
+            
+            // Format the trade header - entire line in result color
+            console.log(`${resultColor}[TRADE ${(index + 1).toString().padStart(2, ' ')}] ${trade.type.toUpperCase()} | P&L: ${pnlPct}% | ${resultText} | Result: ${trade.result}${colors.reset}`);
+            console.log();
+            console.log(`${colors.cyan}  Entry: ${entryDateStr} at $${trade.entryPrice.toFixed(4)}${colors.reset}`);
+            console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${trade.exitPrice.toFixed(4)}${colors.reset}`);
+            console.log(`${colors.cyan}  Duration: ${durationStr}${colors.reset}`);
+            
+            // Add price movement information
+            const priceDiff = trade.exitPrice - trade.entryPrice;
+            const priceDiffPct = (priceDiff / trade.entryPrice * 100).toFixed(4);
+            const priceColor = priceDiff >= 0 ? colors.green : colors.red;
+            console.log(`  Price Movement: ${priceColor}${priceDiff > 0 ? '+' : ''}${priceDiffPct}%${colors.reset} (${priceColor}$${priceDiff.toFixed(4)}${colors.reset})`);
+            console.log('--------------------------------------------------------------------------------');
+        });
+        
+        console.log(`\n${colors.cyan}--- Trade Summary ---${colors.reset}`);
+        const closedTrades = trades.length;
+        const wins = trades.filter(t => t.pnl >= 0).length;
+        const losses = trades.filter(t => t.pnl < 0).length;
+        const winRate = closedTrades > 0 ? (wins / closedTrades * 100).toFixed(2) : 'N/A';
+        const totalRealizedPnl = trades.reduce((acc, t) => acc + t.pnl, 0);
+        const totalFees = trades.reduce((acc, t) => acc + t.fee, 0);
+
+        console.log(`Total Closed Trades: ${closedTrades}`);
+        if(closedTrades > 0) {
+            console.log(`Wins: ${colors.green}${wins}${colors.reset} | Losses: ${colors.red}${losses}${colors.reset}`);
+            console.log(`Win Rate: ${colors.yellow}${winRate}%${colors.reset}`);
+        }
+        console.log(`Total PnL: ${(totalRealizedPnl > 0 ? colors.green : colors.red)}${totalRealizedPnl.toFixed(2)}${colors.reset} (after ${totalFees.toFixed(2)} in fees)`);
+        console.log(`Initial Capital: ${tradeConfig.initialCapital.toFixed(2)}`);
+        console.log(`Final Capital: ${colors.yellow}${finalCapital.toFixed(2)}${colors.reset}`);
+
+        const profit = ((finalCapital - tradeConfig.initialCapital) / tradeConfig.initialCapital) * 100;
+        console.log(`Overall Profit: ${(profit > 0 ? colors.green : colors.red)}${profit.toFixed(2)}%${colors.reset}`);
+    }
+
+
+
     const totalPivots = highPivotCount + lowPivotCount;
     if (totalPivots > 0) {
         const highPct = ((highPivotCount / totalPivots) * 100).toFixed(2);
@@ -155,7 +403,16 @@ async function runTest() {
     console.log(`Max Downward Move: ${colors.red}${totalDownwardChange.toFixed(2)}%${colors.reset} (from start to ATL)`);
     console.log(`Net Price Range: ${colors.yellow}${netPriceRange.toFixed(2)}%${colors.reset} (from ATL to ATH)`);
 
+   
+
     console.log(`\n${colors.cyan}--- Test Complete ---${colors.reset}`);
 }
 
-runTest();
+(async () => {
+    try {
+        await runTest();
+    } catch (err) {
+        console.error('\nAn error occurred during the test:', err);
+        process.exit(1);
+    }
+})();

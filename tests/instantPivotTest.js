@@ -80,9 +80,23 @@ async function runTest() {
                 const barsSinceLast = i - lastPivot.index;
                 const movePct = swingPct * 100;
                 const formattedTime = new Date(currentCandle.time).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' });
-                
-                console.log(`${colors.green}${pivotCounter}.[PIVOT] HIGH @ ${currentCandle.high.toFixed(2)} | Time: ${formattedTime} | Move: +${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`);
-                
+
+                let output = `${colors.green}${pivotCounter}.[PIVOT] HIGH @ ${currentCandle.high.toFixed(2)} | Time: ${formattedTime} | Move: +${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`;
+
+                if (lastPivot.price) {
+                    const swingCandles = candles.slice(lastPivot.index, i + 1);
+                    const swingATL = Math.min(...swingCandles.map(c => c.low));
+                    const swingATH = Math.max(...swingCandles.map(c => c.high));
+
+                    const swingLowPct = ((swingATL - lastPivot.price) / lastPivot.price) * 100;
+                    const swingHighPct = ((swingATH - lastPivot.price) / lastPivot.price) * 100;
+
+                    const swingLowText = `${colors.red}${swingATL.toFixed(2)} (${swingLowPct.toFixed(2)}%)${colors.reset}`;
+                    const swingHighText = `${colors.green}${swingATH.toFixed(2)} (${swingHighPct.toFixed(2)}%)${colors.reset}`;
+                    output += ` | ${colors.cyan}Swing Low:${colors.reset} ${swingLowText} | ${colors.cyan}Swing High:${colors.reset} ${swingHighText}`;
+                }
+                console.log(output);
+
                 lastPivot = { type: 'high', price: currentCandle.high, time: currentCandle.time, index: i };
             }
         }
@@ -107,7 +121,22 @@ async function runTest() {
                 const movePct = swingPct * 100;
                 const formattedTime = new Date(currentCandle.time).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' });
 
-                console.log(`${colors.red}${pivotCounter}.[PIVOT] LOW  @ ${currentCandle.low.toFixed(2)} | Time: ${formattedTime} | Move: ${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`);
+                let output = `${colors.red}${pivotCounter}.[PIVOT] LOW  @ ${currentCandle.low.toFixed(2)} | Time: ${formattedTime} | Move: ${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`;
+
+                if (lastPivot.price) {
+                    const swingCandles = candles.slice(lastPivot.index, i + 1);
+                    const swingATL = Math.min(...swingCandles.map(c => c.low));
+                    const swingATH = Math.max(...swingCandles.map(c => c.high));
+
+                    const swingLowPct = ((swingATL - lastPivot.price) / lastPivot.price) * 100;
+                    const swingHighPct = ((swingATH - lastPivot.price) / lastPivot.price) * 100;
+
+                    const swingLowText = `${colors.red}${swingATL.toFixed(2)} (${swingLowPct.toFixed(2)}%)${colors.reset}`;
+                    const swingHighText = `${colors.green}${swingATH.toFixed(2)} (${swingHighPct.toFixed(2)}%)${colors.reset}`;
+                    output += ` | ${colors.cyan}Swing Low:${colors.reset} ${swingLowText} | ${colors.cyan}Swing High:${colors.reset} ${swingHighText}`;
+                }
+
+                console.log(output);
                 
                 lastPivot = { type: 'low', price: currentCandle.low, time: currentCandle.time, index: i };
             }
