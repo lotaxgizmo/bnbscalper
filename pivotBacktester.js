@@ -96,67 +96,196 @@ const detectPivot = (candles, i, pivotLookback, pivotType) => {
     return isPivot;
 };
 
-// Helper function to format edge data display
-const formatEdgeData = (pivotEdgeData, timeframes) => {
+// Helper function to format edge data display - COPY EXACT SAME LOGIC FROM CANDLE DISPLAY
+const formatEdgeData = (currentCandle, edgeCandles, timeframes) => {
     const edgeDisplayData = [];
     
-    // Section 1: Closest edges - now using currentMove which has the correct sign based on reference
-    let edgesSection = `${colors.yellow}Edges:${colors.reset} `;
-    timeframes.forEach(tf => {
-        if (pivotEdgeData[tf]) {
-            // Use the currentMove value which is already properly signed relative to the reference point
-            const signedValue = pivotEdgeData[tf].currentMove;
-            const color = signedValue >= 0 ? colors.green : colors.red;
-            const tfShort = tf === 'daily' ? 'D' : tf === 'weekly' ? 'W' : tf === 'biweekly' ? 'B' : 'M';
-            // Use explicit sign in the display
-            const signPrefix = signedValue >= 0 ? '+' : '';
-            edgesSection += `${tfShort}:${color}${signPrefix}${signedValue.toFixed(2)}%${colors.reset} `;
-        }
-    });
-    
-    // Section 2: Average edges (historical average of ranges)
-    let avgEdgesSection = `${colors.magenta}Average:${colors.reset} `;
-    timeframes.forEach(tf => {
-        if (pivotEdgeData[tf] && pivotEdgeData[tf].averageRange) {
-            const avgRange = pivotEdgeData[tf].averageRange;
-            // Apply sign based on direction - positive for up, negative for down
-            const signedValue = avgRange.direction === 'up' 
-                ? avgRange.value 
-                : -avgRange.value;
-            const color = signedValue >= 0 ? colors.green : colors.red;
-            const tfShort = tf === 'daily' ? 'D' : tf === 'weekly' ? 'W' : tf === 'biweekly' ? 'B' : 'M';
-            // Use explicit sign in the display
-            const signPrefix = signedValue >= 0 ? '+' : '';
-            avgEdgesSection += `${tfShort}:${color}${signPrefix}${signedValue.toFixed(2)}%${colors.reset} `;
-        }
-    });
-    
-    // Section 3: Range/total edges
-    let rangeEdgesSection = `${colors.blue}Range:${colors.reset} `;
-    timeframes.forEach(tf => {
-        if (pivotEdgeData[tf]) {
-            // Calculate total range now based on the min/max from reference point
-            const upEdge = pivotEdgeData[tf].upEdge.percentToEdge;
-            const downEdge = pivotEdgeData[tf].downEdge.percentToEdge;
-            const totalRange = Math.abs(upEdge - downEdge); // Total range is always positive
+    // COPY THE EXACT SAME LOGIC FROM THE CANDLE DISPLAY SECTION
+    let dailyPct = null, weeklyPct = null, biweeklyPct = null, monthlyPct = null;
+
+    // Find the reference candle from 24 hours ago for the daily edge
+    const twentyFourHoursAgo = currentCandle.time - (24 * 60 * 60 * 1000);
+    let referenceCandle = null;
             
-            // For sign, use the current position's direction relative to the reference
-            // If current price is above reference, range is positive; if below, negative
-            const signedTotalRange = pivotEdgeData[tf].currentMove >= 0 ? totalRange : -totalRange;
-            
-            const color = signedTotalRange >= 0 ? colors.green : colors.red;
-            const tfShort = tf === 'daily' ? 'D' : tf === 'weekly' ? 'W' : tf === 'biweekly' ? 'B' : 'M';
-            // Use explicit sign in the display
-            const signPrefix = signedTotalRange >= 0 ? '+' : '';
-            rangeEdgesSection += `${tfShort}:${color}${signPrefix}${signedTotalRange.toFixed(2)}%${colors.reset} `;
+    // Find the closest candle to 24 hours ago
+    for (let j = 0; j < edgeCandles.length; j++) {
+        if (edgeCandles[j].time >= twentyFourHoursAgo) {
+            referenceCandle = edgeCandles[j];
+            break;
         }
-    });
+    }
+            
+    // Calculate the daily edge percentage
+    if (referenceCandle) {
+        dailyPct = ((currentCandle.close - referenceCandle.open) / referenceCandle.open) * 100;
+    }
+            
+    // Find the reference candle from 7 days ago for the weekly edge
+    const sevenDaysAgo = currentCandle.time - (7 * 24 * 60 * 60 * 1000);
+    let weeklyReferenceCandle = null;
+
+    for (let j = 0; j < edgeCandles.length; j++) {
+        if (edgeCandles[j].time >= sevenDaysAgo) {
+            weeklyReferenceCandle = edgeCandles[j];
+            break;
+        }
+    }
+
+    // Calculate the weekly edge percentage
+    if (weeklyReferenceCandle) {
+        weeklyPct = ((currentCandle.close - weeklyReferenceCandle.open) / weeklyReferenceCandle.open) * 100;
+    }
+
+    // Find the reference candle from 14 days ago for the bi-weekly edge
+    const fourteenDaysAgo = currentCandle.time - (14 * 24 * 60 * 60 * 1000);
+    let biweeklyReferenceCandle = null;
+
+    for (let j = 0; j < edgeCandles.length; j++) {
+        if (edgeCandles[j].time >= fourteenDaysAgo) {
+            biweeklyReferenceCandle = edgeCandles[j];
+            break;
+        }
+    }
+
+    // Calculate the bi-weekly edge percentage
+    if (biweeklyReferenceCandle) {
+        biweeklyPct = ((currentCandle.close - biweeklyReferenceCandle.open) / biweeklyReferenceCandle.open) * 100;
+    }
+
+    // Find the reference candle from 30 days ago for the monthly edge
+    const thirtyDaysAgo = currentCandle.time - (30 * 24 * 60 * 60 * 1000);
+    let monthlyReferenceCandle = null;
+
+    for (let j = 0; j < edgeCandles.length; j++) {
+        if (edgeCandles[j].time >= thirtyDaysAgo) {
+            monthlyReferenceCandle = edgeCandles[j];
+            break;
+        }
+    }
+
+    // Calculate the monthly edge percentage
+    if (monthlyReferenceCandle) {
+        monthlyPct = ((currentCandle.close - monthlyReferenceCandle.open) / monthlyReferenceCandle.open) * 100;
+    }
+
+    // --- Ranged Edge Calculation (Highest High to Lowest Low) ---
+    const timeframesForRange = {
+        'Daily': 1,
+        'Weekly': 7,
+        'Bi-Weekly': 14,
+        'Monthly': 30
+    };
+
+    let totalRangeParts = [];
+    let breakoutRangeParts = [];
+
+    for (const [name, days] of Object.entries(timeframesForRange)) {
+        const startTime = currentCandle.time - (days * 24 * 60 * 60 * 1000);
+        const candlesInRange = edgeCandles.filter(c => c.time >= startTime && c.time <= currentCandle.time);
+
+        if (candlesInRange.length > 0) {
+            const referencePrice = candlesInRange[0].open;
+            const maxHigh = Math.max(...candlesInRange.map(c => c.high));
+            const minLow = Math.min(...candlesInRange.map(c => c.low));
+
+            // 1. Total Range Calculation (High vs Low)
+            const totalRangePct = ((maxHigh - minLow) / minLow) * 100;
+            totalRangeParts.push(`${name}: ${totalRangePct.toFixed(2)}%`);
+
+            // 2. Breakout Range Calculation (High/Low vs Start)
+            const upwardRangePct = ((maxHigh - referencePrice) / referencePrice) * 100;
+            const downwardRangePct = ((minLow - referencePrice) / referencePrice) * 100;
+            breakoutRangeParts.push(`${name}: +${upwardRangePct.toFixed(2)}% / ${downwardRangePct.toFixed(2)}%`);
+        }
+    }
+
+    // --- Average Range Calculations ---
+    const avgLookbackPeriods = { 'Daily': 7, 'Weekly': 4, 'Bi-Weekly': 4, 'Monthly': 4 };
+    let avgBreakoutParts = [];
+
+    for (const [name, lookback] of Object.entries(avgLookbackPeriods)) {
+        const daysInPeriod = name === 'Daily' ? 1 : name === 'Weekly' ? 7 : name === 'Bi-Weekly' ? 14 : 30;
+        let periodUpwardRanges = [];
+        let periodDownwardRanges = [];
+
+        for (let i = 0; i < lookback; i++) {
+            const periodEndTime = currentCandle.time - (i * daysInPeriod * 24 * 60 * 60 * 1000);
+            const periodStartTime = periodEndTime - (daysInPeriod * 24 * 60 * 60 * 1000);
+            const candlesInPeriod = edgeCandles.filter(c => c.time >= periodStartTime && c.time < periodEndTime);
+
+            if (candlesInPeriod.length > 0) {
+                const referencePrice = candlesInPeriod[0].open;
+                const maxHigh = Math.max(...candlesInPeriod.map(c => c.high));
+                const minLow = Math.min(...candlesInPeriod.map(c => c.low));
+
+                periodUpwardRanges.push(((maxHigh - referencePrice) / referencePrice) * 100);
+                periodDownwardRanges.push(((minLow - referencePrice) / referencePrice) * 100);
+            }
+        }
+
+        if (periodUpwardRanges.length > 0 && periodDownwardRanges.length > 0) {
+            const avgUpward = periodUpwardRanges.reduce((a, b) => a + b, 0) / periodUpwardRanges.length;
+            const avgDownward = periodDownwardRanges.reduce((a, b) => a + b, 0) / periodDownwardRanges.length;
+            avgBreakoutParts.push(`${name}: +${avgUpward.toFixed(2)}% / ${avgDownward.toFixed(2)}%`);
+        }
+    }
     
-    // Combine all sections with pipe separators
-    edgeDisplayData.push(`${edgesSection} ${colors.cyan}|${colors.reset} ${avgEdgesSection} ${colors.cyan}|${colors.reset} ${rangeEdgesSection}`);
+    // Format the main edge line
+    let edgeLine = `${colors.yellow}Edges:${colors.reset} `;
+    if (dailyPct !== null) edgeLine += `D:${dailyPct >= 0 ? '+' : ''}${dailyPct.toFixed(2)}% `;
+    if (weeklyPct !== null) edgeLine += `W:${weeklyPct >= 0 ? '+' : ''}${weeklyPct.toFixed(2)}% `;
+    if (biweeklyPct !== null) edgeLine += `B:${biweeklyPct >= 0 ? '+' : ''}${biweeklyPct.toFixed(2)}% `;
+    if (monthlyPct !== null) edgeLine += `M:${monthlyPct >= 0 ? '+' : ''}${monthlyPct.toFixed(2)}% `;
+    
+    edgeLine += ` |  ${colors.cyan}Total Range:${colors.reset} `;
+    edgeLine += totalRangeParts.join(' ');
+    
+    edgeLine += ` |  ${colors.magenta}Average Range:${colors.reset} `;
+    // Calculate average ranges from the same logic as candle display
+    const avgLookback = { 'Daily': 7, 'Weekly': 4, 'Bi-Weekly': 4, 'Monthly': 4 };
+    let avgRangeParts = [];
+    
+    for (const [name, lookback] of Object.entries(avgLookback)) {
+        const daysInPeriod = name === 'Daily' ? 1 : name === 'Weekly' ? 7 : name === 'Bi-Weekly' ? 14 : 30;
+        let periodTotalRanges = [];
+
+        for (let i = 0; i < lookback; i++) {
+            const periodEndTime = currentCandle.time - (i * daysInPeriod * 24 * 60 * 60 * 1000);
+            const periodStartTime = periodEndTime - (daysInPeriod * 24 * 60 * 60 * 1000);
+            const candlesInPeriod = edgeCandles.filter(c => c.time >= periodStartTime && c.time < periodEndTime);
+
+            if (candlesInPeriod.length > 0) {
+                const maxHigh = Math.max(...candlesInPeriod.map(c => c.high));
+                const minLow = Math.min(...candlesInPeriod.map(c => c.low));
+                periodTotalRanges.push(((maxHigh - minLow) / minLow) * 100);
+            }
+        }
+
+        if (periodTotalRanges.length > 0) {
+            const avgTotalRange = periodTotalRanges.reduce((a, b) => a + b, 0) / periodTotalRanges.length;
+            avgRangeParts.push(`${name}: ${avgTotalRange.toFixed(2)}%`);
+        }
+    }
+    
+    edgeLine += avgRangeParts.join(' ');
+    edgeDisplayData.push(edgeLine);
+    
+    // Add DEBUG lines
+    let debugLine1 = `    ${colors.blue}    [DEBUG] Range Breakout:${colors.reset} `;
+    debugLine1 += breakoutRangeParts.join(' | ');
+    edgeDisplayData.push(debugLine1);
+    
+    let debugLine2 = `    ${colors.blue}[DEBUG] Avg Range Breakout:${colors.reset} `;
+    debugLine2 += avgBreakoutParts.join(' | ');
+    edgeDisplayData.push(debugLine2);
+    
+    // Add a blank line for better readability after each pivot
+    edgeDisplayData.push('');
     
     return edgeDisplayData;
 };
+
+ 
 
 // Helper function to create a trade
 const createTrade = (type, currentCandle, pivotData, i, capital, tradeConfig) => {
@@ -312,11 +441,12 @@ async function runTest() {
                     
             // Format candle data
             const candleTime = new Date(currentCandle.time).toLocaleString();
-            const candleData = `${i.toString().padStart(6, ' ')} | ${candleTime} | O: ${currentCandle.open.toFixed(2)} H: ${currentCandle.high.toFixed(2)} L: ${currentCandle.low.toFixed(2)} C: ${currentCandle.close.toFixed(2)}`;
+            const candleData = `${i.toString().padStart(0, '')} | ${candleTime} | O: ${currentCandle.open.toFixed(2)} H: ${currentCandle.high.toFixed(2)} L: ${currentCandle.low.toFixed(2)} C: ${currentCandle.close.toFixed(2)}`;
                     
-            // Format edge data for this candle
-            const edgeOutput = formatEdgeData(pivotEdgeData, timeframes);
+            // Format edge data for this candle 
                     
+            let dailyPct = null, weeklyPct = null, biweeklyPct = null, monthlyPct = null;
+
             // Find the reference candle from 24 hours ago for the daily edge
             const twentyFourHoursAgo = currentCandle.time - (24 * 60 * 60 * 1000);
             let referenceCandle = null;
@@ -333,7 +463,7 @@ async function runTest() {
             let dailyEdgeDebug = '';
             if (referenceCandle) {
                 const refTime = new Date(referenceCandle.time).toLocaleString();
-                const dailyPct = ((currentCandle.close - referenceCandle.open) / referenceCandle.open) * 100;
+                dailyPct = ((currentCandle.close - referenceCandle.open) / referenceCandle.open) * 100;
                 const pctSign = dailyPct >= 0 ? '+' : '';
                 const pctColor = dailyPct >= 0 ? colors.green : colors.red;
                         
@@ -357,7 +487,7 @@ async function runTest() {
             let weeklyEdgeDebug = '';
             if (weeklyReferenceCandle) {
                 const refTime = new Date(weeklyReferenceCandle.time).toLocaleString();
-                const weeklyPct = ((currentCandle.close - weeklyReferenceCandle.open) / weeklyReferenceCandle.open) * 100;
+                weeklyPct = ((currentCandle.close - weeklyReferenceCandle.open) / weeklyReferenceCandle.open) * 100;
                 const pctSign = weeklyPct >= 0 ? '+' : '';
                 const pctColor = weeklyPct >= 0 ? colors.green : colors.red;
                 
@@ -381,7 +511,7 @@ async function runTest() {
             let biweeklyEdgeDebug = '';
             if (biweeklyReferenceCandle) {
                 const refTime = new Date(biweeklyReferenceCandle.time).toLocaleString();
-                const biweeklyPct = ((currentCandle.close - biweeklyReferenceCandle.open) / biweeklyReferenceCandle.open) * 100;
+                biweeklyPct = ((currentCandle.close - biweeklyReferenceCandle.open) / biweeklyReferenceCandle.open) * 100;
                 const pctSign = biweeklyPct >= 0 ? '+' : '';
                 const pctColor = biweeklyPct >= 0 ? colors.green : colors.red;
                 
@@ -404,7 +534,7 @@ async function runTest() {
             // Calculate and display the monthly edge percentage
             let monthlyEdgeDebug = '';
             if (monthlyReferenceCandle) {
-                const monthlyPct = ((currentCandle.close - monthlyReferenceCandle.open) / monthlyReferenceCandle.open) * 100;
+                monthlyPct = ((currentCandle.close - monthlyReferenceCandle.open) / monthlyReferenceCandle.open) * 100;
                 const monthlySign = monthlyPct >= 0 ? '+' : '';
                 const monthlyColor = monthlyPct >= 0 ? colors.green : colors.red;
                 monthlyEdgeDebug = `\n    ${colors.blue}[DEBUG] Monthly Edge (30d): ${new Date(monthlyReferenceCandle.time).toLocaleString()} (O: ${monthlyReferenceCandle.open}) -> ${monthlyColor}${monthlySign}${monthlyPct.toFixed(2)}%${colors.reset}`;
@@ -448,7 +578,7 @@ async function runTest() {
 
             let breakoutRangeDebug = '';
             if (breakoutRangeParts.length > 0) {
-                breakoutRangeDebug = `\n    ${colors.yellow}[DEBUG] Range Breakout: ${breakoutRangeParts.join(' | ')}`;
+                breakoutRangeDebug = `\n    ${colors.yellow}    [DEBUG] Range Breakout: ${breakoutRangeParts.join(' | ')}`;
             }
 
             // --- Average Range Calculations ---
@@ -495,11 +625,32 @@ async function runTest() {
 
             let avgBreakoutDebug = '';
             if (avgBreakoutParts.length > 0) {
-                avgBreakoutDebug = `\n    ${colors.magenta}[DEBUG] Avg Range Breakout: ${avgBreakoutParts.join(' | ')}`;
+                avgBreakoutDebug = `\n    ${colors.magenta}[DEBUG] Avg Range Breakout: ${avgBreakoutParts.join(' | ')} `;
             }
 
+            // --- Consolidated Edge and Range Output ---
+            let edgeParts = [];
+            const timeframesForEdges = { 'Daily': dailyPct, 'Weekly': weeklyPct, 'Bi-Weekly': biweeklyPct, 'Monthly': monthlyPct };
+            for (const [name, pct] of Object.entries(timeframesForEdges)) {
+                if (pct !== null) {
+                    const tfShort = name.charAt(0);
+                    const pctSign = pct >= 0 ? '+' : '';
+                    const pctColor = pct >= 0 ? colors.green : colors.red;
+                    edgeParts.push(`${tfShort}:${pctColor}${pctSign}${pct.toFixed(2)}%${colors.reset}`);
+                }
+            }
+            const edgesLine = `Edges: ${edgeParts.join(' ')}`;
+
+            const totalRangeLine = `Total Range: ${totalRangeParts.join(' ')}`;
+            const avgRangeLine = `Average Range: ${avgTotalRangeParts.join(' ')}`;
+
+            const consolidatedLine = `${edgesLine}  |  ${totalRangeLine}  |  ${avgRangeLine}`;
+
             // Output candle with its edge data and debug information
-            console.log(`${candleData}${dailyEdgeDebug}${weeklyEdgeDebug}${biweeklyEdgeDebug}${monthlyEdgeDebug}${totalRangeDebug}${breakoutRangeDebug}${avgTotalRangeDebug}${avgBreakoutDebug}`);
+            console.log(`${candleData}`);
+            console.log(consolidatedLine);
+            if (breakoutRangeDebug) console.log(`    ${breakoutRangeDebug.trim()}`);
+            if (avgBreakoutDebug) console.log(`    ${avgBreakoutDebug.trim()}`);
         }
 
         // --- Active Trade Management ---
@@ -618,11 +769,9 @@ async function runTest() {
                 if (tradeConfig.showPivot) {
                     console.log(output);
                     
-                    // Display edge data
-                    if (pivotEdgeData) {
-                        const edgeDisplayData = formatEdgeData(pivotEdgeData, timeframes);
-                        edgeDisplayData.forEach(line => console.log(line));
-                    }
+                    // Display edge data from the candle where the pivot was detected
+                    const edgeDisplayData = formatEdgeData(currentCandle, candles, timeframes);
+                    edgeDisplayData.forEach(line => console.log(line));
                 }
                 
                 // Store pivot data
@@ -672,11 +821,9 @@ async function runTest() {
                 if (tradeConfig.showPivot) {
                     console.log(output);
                     
-                    // Display edge data
-                    if (pivotEdgeData) {
-                        const edgeDisplayData = formatEdgeData(pivotEdgeData, timeframes);
-                        edgeDisplayData.forEach(line => console.log(line));
-                    }
+                    // Display edge data from the candle where the pivot was detected
+                    const edgeDisplayData = formatEdgeData(currentCandle, candles, timeframes);
+                    edgeDisplayData.forEach(line => console.log(line));
                 }
                 
                 // Store pivot data
