@@ -62,6 +62,36 @@
   - If the trade was not filled, it logs a clear `[TRADE X] CANCELLED/NOT FILLED` message, including the cancellation reason if available.
   - This prevents the script from crashing and provides more transparent logging in the backtest output, improving the reliability of the testing suite.
 
+#### Code Duplication Refactoring (July 2025)
+- **Issue**: The `pivotBacktester.js` script contained duplicated code for formatting duration strings and pivot output, with nearly identical implementations in multiple places within the file.
+- **Fix**: Refactored the code to use single utility functions at the top level of the file and updated all usage locations to call these functions.
+- **Implementation**: 
+  - Moved the duration formatting logic to a top-level `formatDuration` utility function
+  - Created a new `formatPivotOutput` function to handle both high and low pivot output formatting
+  - Updated both the trade details display and trade duration statistics sections to use the `formatDuration` function
+  - Updated both high and low pivot sections to use the `formatPivotOutput` function
+  - This improves maintainability and ensures consistent formatting throughout the output
+
+#### Comprehensive Pivot Backtester Refactoring (July 29, 2025)
+- **Issue**: The `pivotBacktester.js` script contained significant code duplication in pivot detection logic, edge data display, and trade creation.
+- **Fix**: Created reusable helper functions to reduce duplication and improve maintainability.
+- **Implementation**:
+  - Added `detectPivot()` function to unify high and low pivot detection logic into a single reusable function
+  - Created `formatEdgeData()` function to handle the complex edge data display formatting
+  - **Updated (July 29, 2025)**: Modified `formatEdgeData()` to consolidate edge data display from three separate lines into a single comprehensive line with sections for edge proximity, average edges, and range/total edges
+  - **Updated (July 29, 2025)**: Enhanced edge data display with color differentiation for section headers (Edges: yellow, Average: magenta, Range: blue) and cyan pipe separators for improved visual scanning
+  - **Updated (July 29, 2025)**: Fixed Average Edge calculation to properly show historical averages (7-day for daily, 4-period for weekly/biweekly/monthly) rather than just current period data
+  - Implemented `createTrade()` function to standardize trade creation for both long and short positions
+  - Updated all instances of pivot detection to use the new helper functions
+  - Fixed math in edge calculation to properly handle absolute values for downward movements
+  - Ensured pivot data objects are properly copied when creating trades to avoid reference issues
+  - Maintained consistent formatting and behavior while reducing code size by ~200 lines
+- **Benefits**:
+  - Improved code maintainability by centralizing common logic
+  - Reduced risk of inconsistencies between high and low pivot processing
+  - Easier debugging with isolated, purpose-specific functions
+  - More consistent edge data formatting and display
+
 #### Backtest Output Refactoring (July 2025)
 - **Issue**: The backtest console output was cluttered and difficult to read due to interleaved log messages from different parts of the system. Pivot details and trade events were not logged sequentially.
 - **Fix**: A new `BacktestController` class (`utils/backtest/backtestController.js`) was introduced to orchestrate the backtesting process and centralize all console logging.
@@ -105,8 +135,8 @@
   * Logging is now focused on trade signals rather than internal calculations
 - **Edge Data Display**:
   * Trade details now display complete edge data at entry time
-  * Shows current edge position percentages with direction (U/D)
-  * Includes average edge data for daily/weekly/monthly timeframes
+  * Shows current edge position percentages with explicit signs (+/-)
+  * Includes average edge data for daily/weekly/monthly timeframes with consistent sign conventions
   * Displays range/total edge movements for comprehensive analysis
   * Guaranteed edge data capture at order fill time (trade entry)
   * Uses pivot's exact edge data for orders (after July 24, 2025 fix)
@@ -172,6 +202,31 @@
 - Market orders maintain required properties for compatibility with existing loggers
 - Serves as validation test for edge data inheritance and update functionality
 - Compatible with both enhanced and standard pivot data formats
+
+#### Edge Calculation Performance Optimization (July 2025)
+- **Issue**: Edge calculations for larger timeframes were inefficient when using 1-minute candles, causing significant performance issues during backtesting with full historical data.
+- **Impact**: Processing up to 43,200 candles for monthly edge calculations resulted in extremely slow backtests and high memory usage.
+- **Optimization**: Modified `pivotBacktester.js` to use hourly candles for edge calculations while keeping 1-minute candles for display and trading logic:
+  - Loads hourly candles specifically for edge calculations (60x fewer candles to process)
+  - Limits hourly candles to 1,440 (approximately 2 months) for optimal performance
+  - Automatically detects candle intervals and adjusts timeframe calculations accordingly:
+    - For hourly data: Daily=24, Weekly=168, Biweekly=336, Monthly=720 candles
+    - For minute data: Daily=1440, Weekly=10080, Biweekly=20160, Monthly=43200 candles
+  - Includes fallback to minute candles if hourly data isn't available
+- **Results**: 
+  - Processing time reduced from minutes to seconds for full backtests
+  - Memory usage significantly reduced
+  - Edge accuracy maintained across all timeframes
+
+#### Edge Calculation Timeframe Fix (July 2025)
+- **Issue**: The edge calculation logic in `pivotBacktester.js` incorrectly assumed 1-hour candles when calculating timeframes for daily, weekly, biweekly, and monthly edges, despite actually processing 1-minute candle data.
+- **Impact**: This resulted in inaccurate edge calculations with incorrectly scaled timeframes (e.g., "daily" edges only covered 24 minutes instead of 24 hours).
+- **Fix**: Updated the timeframe calculations in the `calculateEdges` function to properly handle 1-minute candle data:
+  - Daily: 24 * 60 = 1,440 candles (full 24 hours)
+  - Weekly: 24 * 60 * 7 = 10,080 candles (full week)
+  - Biweekly: 24 * 60 * 14 = 20,160 candles (two weeks)
+  - Monthly: 24 * 60 * 30 = 43,200 candles (30 days)
+- **Verification**: Edge calculations now correctly reflect the proper time periods, producing more accurate market analysis.
 
 #### Enhanced Pivot Detection System (July 2025)
 - Completely redesigned pivot detection algorithm with improved timestamp accuracy

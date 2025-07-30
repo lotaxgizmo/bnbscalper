@@ -1,13 +1,13 @@
 // Trade configuration for backtesting
 
 const day = 0
-const hour = day * 24;
-// const hour = 6;
+// const hour = day * 24;
+const hour = 7;
 const minute = hour * 60;
 
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell' or 'both')
-    direction: 'both',
+    direction: 'buy',
 
     // Profit and loss settings (in %)
     takeProfit: 0.47,    // Take profit at 0.2%
@@ -34,10 +34,10 @@ export const tradeConfig = {
 
     // Display settings
 
-    showCandle: false,
-    showPivot: true,
-    showLimits: false,
-    showTradeDetails: true,
+    showCandle: true,
+    showPivot: false,
+    showLimits: false ,
+    showTradeDetails: false,
     
     // Export settings
     saveToFile: true,  // Set to false to disable JSON and CSV exports

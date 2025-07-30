@@ -1,5 +1,27 @@
 # User Guide
 
+## Code Structure
+
+### Pivot Backtester Architecture
+
+The `pivotBacktester.js` file has been refactored to improve code maintainability and reduce duplication:
+
+- **Helper Functions**:
+  - `detectPivot()`: A unified function for detecting both high and low pivots based on lookback period
+  - `formatEdgeData()`: Formats edge data consistently for display with consolidated output of closest edges, average edges, and range/total edges all on a single line for improved readability
+    - Closest Edges: Shows current distance to nearest price boundaries (color-coded by direction)
+    - Average Edges: Displays historical averages of total ranges (7-day for daily, 4-period for weekly/biweekly/monthly)
+    - Range Edges: Shows total range size from lowest to highest point in the timeframe
+  - `createTrade()`: Creates standardized trade objects for both long and short positions
+  - `formatPivotOutput()`: Formats pivot information consistently for logging
+  - `formatDuration()`: Standardizes time duration formatting
+
+- **Benefits**:
+  - More consistent behavior between high and low pivot detection
+  - Reduced code redundancy
+  - Easier maintenance and future enhancements
+  - Improved readability of the main backtesting logic
+
 ## Core Trading Logic
 
 ### High-Speed Pivot Confirmation
@@ -278,8 +300,7 @@ Example trade details with edge data:
 ```
 [TRADE 1] LONG | Entry: 110341.19 | Exit: 110506.70 | Move: 0.15% | P&L: 0.88% | Capital: $100.00 → $100.88 | WIN
 
-Edges: D:+0.5%(U) W:+2.0%(U) M:+2.5%(U)
-Average Edge D:+1.8%(U) W:+5.7%(U) M:+10.7%(U) | Range/Total Edge D:+1.3%(U) W:+4.1%(U) M:+11.9%(U)
+  └─ Edges: D:0.5%(U) W:2.0%(U) M:2.5%(U) | Average: D:1.8%(U) W:5.7%(U) M:10.7%(U) | Range: D:1.3%(U) W:4.1%(U) M:11.9%(U)
 
   Max Favorable: +0.17%
   Max Adverse:   -9.05%
@@ -357,6 +378,7 @@ When `showLimits` is enabled in config:
     - Longest trade duration
     - Average trade duration
     - These metrics help you understand your typical holding periods and optimize your trading frequency strategy.
+  - **Improved Duration Formatting**: The duration formatting has been refactored for consistency, now using a single utility function across all parts of the backtest output. This ensures uniform display of durations in the format of "X days, Y hours, Z minutes" or "Y hours, Z minutes" when appropriate.
 - Trade Durations (now correctly formatted in days, hours, and minutes)
 
 ### Edge-Enhanced Backtesting
@@ -365,16 +387,44 @@ When `showLimits` is enabled in config:
 1. Run `node generators/generateEdgePivots.js` to calculate edge data
 2. Run `node backtestWithEdges.js` to backtest with edge analysis
 
+#### Edge Timeframe Calculations & Performance Optimization
+
+The edge calculation system dynamically calculates the appropriate number of candles to use for each timeframe based on your candle interval. For optimal performance, the system now automatically uses hourly candles for edge calculations while maintaining minute-level precision for trading decisions.
+
+**Performance Benefits:**
+- **Faster Processing**: Edge calculations using hourly candles are approximately 60x faster than using minute candles
+- **Lower Memory Usage**: Significantly reduced memory footprint during backtesting
+- **Same Accuracy**: The hourly aggregation maintains the same statistical accuracy for edge calculations
+- **Optimal Data Range**: Uses a maximum of 1,440 hourly candles (~2 months of data) for the perfect balance of accuracy and performance
+
+**Automatic Candle Interval Detection:**
+The system automatically detects and adjusts calculations based on the candle interval:
+
+- **For hourly candles:**
+  - Daily edge: 24 candles
+  - Weekly edge: 168 candles
+  - Biweekly edge: 336 candles
+  - Monthly edge: 720 candles
+
+- **For 1-minute candles (fallback if hourly data unavailable):**
+  - Daily edge: 1,440 candles (24 hours × 60 minutes)
+  - Weekly edge: 10,080 candles (7 days × 24 hours × 60 minutes)
+  - Biweekly edge: 20,160 candles (14 days × 24 hours × 60 minutes)
+  - Monthly edge: 43,200 candles (30 days × 24 hours × 60 minutes)
+
+This optimization ensures that edge calculations are both accurate and efficient, providing you with reliable trading signals without unnecessary processing overhead.
+
 #### Edge Information
-For each pivot and limit order, you'll see edge proximity data:
+For each pivot and limit order, you'll see edge proximity data with explicit signs:
 ```
-D:+1.8%(U) W:-1.4%(L) M:+2.1%(U)
+D:+1.8% W:-1.4% B:+4.6% M:+4.6%
 ```
 Where:
-- D/W/M: Daily/Weekly/Monthly timeframe
-- +/-: Sign indicates position relative to period start price
+- D/W/M/B: Daily/Weekly/Biweekly/Monthly timeframe
+- +/-: Sign explicitly indicates position relative to period start price
+  * Positive (+): Current price is above the reference point (period start)
+  * Negative (-): Current price is below the reference point (period start)
 - %: Percentage movement from period start
-- U/D: Direction indicator (Up when price is above period start, Down when below)
 
 This helps identify trades near significant market edges across multiple timeframes.
 

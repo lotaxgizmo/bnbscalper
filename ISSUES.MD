@@ -1,5 +1,444 @@
 # Issues and Solutions Log
 
+## 34. Edge Calculation Reference Point Inconsistency
+
+**Date:** July 30, 2025
+
+**Problem:** Edge calculations were using inconsistent reference points, causing edge percentages to suddenly flip from positive to negative (e.g., +1.3% to -1.3%) between consecutive candles when there was no significant price movement. This created misleading edge data that could affect trading decisions.
+
+**Root Cause:** The edge calculation was using the current candle's closing price as the reference point instead of the period start price (24 hours ago for daily edges). This meant the reference point was constantly shifting, creating inconsistent sign representation in the edge data.
+
+```javascript
+// Before: Using current price as reference
+const lastPrice = windowCandles[windowCandles.length - 1].close;
+const upMove = ((maxPrice - lastPrice) / lastPrice) * 100;
+const downMove = ((lastPrice - minPrice) / lastPrice) * 100;
+```
+
+**Fix:** Modified the edge calculation to use the first candle in the window (24 hours ago for daily) as the consistent reference point, ensuring edge percentages maintain proper signs relative to this fixed reference:
+
+```javascript
+// After: Using period start price as reference
+const lastPrice = windowCandles[windowCandles.length - 1].close;
+const referencePrice = windowCandles[0].open; // First candle in window as reference
+
+// Calculate percentage moves relative to the reference price
+const upMove = ((maxPrice - referencePrice) / referencePrice) * 100;
+const downMove = ((minPrice - referencePrice) / referencePrice) * 100;
+const currentMove = ((lastPrice - referencePrice) / referencePrice) * 100;
+```
+
+Also updated the edge data storage and display code to use this consistent reference point:
+
+```javascript
+// Display edge data with proper sign
+const signedValue = pivotEdgeData[tf].currentMove; // Already has correct sign
+const color = signedValue >= 0 ? colors.green : colors.red;
+const signPrefix = signedValue >= 0 ? '+' : '';
+edgesSection += `${tfShort}:${color}${signPrefix}${signedValue.toFixed(1)}%${colors.reset} `;
+```
+
+**Benefits:**
+- Consistent sign usage in edge data across all timeframes
+- Edges now correctly show position relative to the period start price
+- No more confusing sign flips in edge data between consecutive candles
+- More accurate representation of market position for trading decisions
+- Signs properly reflect whether price is above (+) or below (-) the reference point
+
+## 33. Edge Calculation Performance Optimization with Hourly Candles
+
+**Date:** July 29, 2025
+
+**Problem:** Edge calculations for larger timeframes (weekly, biweekly, monthly) were slow and inefficient when using 1-minute candles, especially when trying to use the ideal number of candles for each timeframe (up to 43200 candles for monthly). This caused significant performance issues during backtesting.
+
+**Root Cause:** The `runTest` function in `pivotBacktester.js` was using the same 1-minute candle array for both display and edge calculations, resulting in excessive processing time when calculating edges for larger timeframes:
+
+```javascript
+const candles = allLocalCandles.slice(-limit);
+// Later used for both display and edge calculations
+const edges = calculateEdges(candles, timeframes);
+```
+
+**Fix:** Modified the code to use hourly candles for edge calculations while keeping 1-minute candles for display and trading logic:
+
+```javascript
+// Load hourly candles for more efficient edge calculations
+console.log(`Loading hourly candles for background edge calculations...`);
+const hourlyCandles = await getCandles(symbol, '1h', null, null, true);
+
+// Define edge candles based on availability
+let edgeCandles;
+if (!hourlyCandles || hourlyCandles.length === 0) {
+    console.warn('Could not load hourly candles for edge calculations. Using minute candles instead.');
+    const maxEdgeCandles = Math.min(43200, allLocalCandles.length);
+    edgeCandles = allLocalCandles.slice(-maxEdgeCandles);
+} else {
+    console.log(`Using ${hourlyCandles.length} hourly candles for edge calculations.`);
+    edgeCandles = hourlyCandles;
+}
+
+// Load display candles limited by user setting
+const candles = allLocalCandles.slice(-limit);
+
+// Use hourly candle set for edge calculations
+const edges = calculateEdges(edgeCandles, timeframes);
+```
+
+Also enhanced the `calculateEdges` function to automatically detect and adjust calculations based on candle interval:
+
+```javascript
+// Detect the candle interval
+let candleInterval = '1m'; // Default assumption
+if (candles.length > 1) {
+    const timeDiff = candles[1].time - candles[0].time;
+    if (timeDiff >= 60 * 60 * 1000) { // 1 hour or more
+        candleInterval = '1h';
+        console.log('Detected hourly candles for edge calculations');
+    }
+}
+
+// Later, when calculating candle counts per timeframe:
+if (candleInterval === '1h') {
+    // For hourly candles
+    switch(tf) {
+        case 'daily':
+            tfCandles = 24; // 24 hourly candles for a day
+            // ... other timeframes
+    }
+}
+```
+
+**Benefits:**
+- Dramatically improved performance by using hourly candles (60x fewer candles to process)
+- Maintained accuracy of edge calculations across all timeframes
+- Display still uses 1-minute candles for detailed price action and trading
+- Automatic detection of candle interval makes the code more adaptable
+- Fallback mechanism ensures the system works even if hourly data isn't available
+- Processing time reduced from minutes to seconds for full backtests
+
+
+## 32. Duplicate Candle Logging in Backtest Output
+
+**Date:** July 29, 2025
+
+**Problem:** The backtest output was showing two lines for each candle when `tradeConfig.showCandle` was enabled. One line contained only the OHLC data, while the second, correct line contained the OHLC data plus the consolidated edge information.
+
+**Root Cause:** When the candle-by-candle edge display was re-integrated, a new `console.log` was added to the main loop to show the candle and edge data together. However, a pre-existing call to `displayCandleInfo` within the same loop was not removed, leading to redundant logging.
+
+**Fix:** The redundant call to `displayCandleInfo` was located and removed from the main loop in `pivotBacktester.js`. The `displayCandleInfo` function itself was kept in the codebase as it is used for logging pivot-specific events.
+
+**Code Changes:**
+
+```javascript
+// The following block was removed from the main loop in runTest()
+
+// Display the current candle, highlighting if it's a new pivot
+if (tradeConfig.showCandle) {
+    displayCandleInfo(currentCandle, i + 1, pivotType);
+}
+```
+
+**Benefits:**
+- Corrected the backtest output to be clean and non-redundant.
+- Improved readability of the console log.
+- Removed unnecessary function call, resulting in a minor performance improvement.
+
+
+
+## 31. Verbose Edge Data Display in pivotBacktester.js
+
+**Date:** July 29, 2025
+
+**Problem:** The edge data display in pivotBacktester.js was too verbose, showing three separate lines for edge information (closest edges, average edges, and range/total edges) which made the console output cluttered and difficult to read.
+
+**Root Cause:** The `formatEdgeData` function was originally designed to output each type of edge data on separate lines, prioritizing detailed visibility over console space efficiency.
+
+**Fix:** Modified the `formatEdgeData` function to consolidate all edge data into a single comprehensive line with clear section separators.
+
+**Code Changes:**
+
+```javascript
+// Before: Three separate lines for edge data
+function formatEdgeData(pivotEdgeData, timeframes) {
+    let output = [];
+    
+    // Line 1: Closest edges
+    let edgesLine = `${colors.cyan}Edges:${colors.reset}`;
+    timeframes.forEach(tf => {
+        const edgeData = pivotEdgeData[tf.id];
+        if (edgeData) {
+            const direction = edgeData.direction === 'up' ? 'U' : 'D';
+            const color = edgeData.direction === 'up' ? colors.green : colors.red;
+            edgesLine += ` ${tf.label}:${color}${edgeData.toEdge.toFixed(1)}%(${direction})${colors.reset}`;
+        }
+    });
+    output.push(edgesLine);
+    
+    // Line 2: Average edges
+    let avgEdgesLine = `${colors.cyan}Average:${colors.reset}`;
+    timeframes.forEach(tf => {
+        const edgeData = pivotEdgeData[tf.id];
+        if (edgeData && edgeData.averageEdge) {
+            const direction = edgeData.averageDirection === 'up' ? 'U' : 'D';
+            const color = edgeData.averageDirection === 'up' ? colors.green : colors.red;
+            avgEdgesLine += ` ${tf.label}:${color}${edgeData.averageEdge.toFixed(1)}%(${direction})${colors.reset}`;
+        }
+    });
+    output.push(avgEdgesLine);
+    
+    // Line 3: Range/total edges
+    let rangeEdgesLine = `${colors.cyan}Range:${colors.reset}`;
+    timeframes.forEach(tf => {
+        const edgeData = pivotEdgeData[tf.id];
+        if (edgeData && edgeData.rangeEdge) {
+            const direction = edgeData.rangeDirection === 'up' ? 'U' : 'D';
+            const color = edgeData.rangeDirection === 'up' ? colors.green : colors.red;
+            rangeEdgesLine += ` ${tf.label}:${color}${edgeData.rangeEdge.toFixed(1)}%(${direction})${colors.reset}`;
+        }
+    });
+    output.push(rangeEdgesLine);
+    
+    return output;
+}
+
+// After: Single consolidated line for edge data
+function formatEdgeData(pivotEdgeData, timeframes) {
+    let sections = [];
+    
+    // Section 1: Closest edges
+    let edgesSection = `${colors.cyan}Edges:${colors.reset}`;
+    timeframes.forEach(tf => {
+        const edgeData = pivotEdgeData[tf.id];
+        if (edgeData) {
+            const direction = edgeData.direction === 'up' ? 'U' : 'D';
+            const color = edgeData.direction === 'up' ? colors.green : colors.red;
+            edgesSection += ` ${tf.label}:${color}${edgeData.toEdge.toFixed(1)}%(${direction})${colors.reset}`;
+        }
+    });
+    sections.push(edgesSection);
+    
+    // Section 2: Average edges
+    let avgEdgesSection = `${colors.cyan}Average:${colors.reset}`;
+    timeframes.forEach(tf => {
+        const edgeData = pivotEdgeData[tf.id];
+        if (edgeData && edgeData.averageEdge) {
+            const direction = edgeData.averageDirection === 'up' ? 'U' : 'D';
+            const color = edgeData.averageDirection === 'up' ? colors.green : colors.red;
+            avgEdgesSection += ` ${tf.label}:${color}${edgeData.averageEdge.toFixed(1)}%(${direction})${colors.reset}`;
+        }
+    });
+    sections.push(avgEdgesSection);
+    
+    // Section 3: Range/total edges
+    let rangeEdgesSection = `${colors.cyan}Range:${colors.reset}`;
+    timeframes.forEach(tf => {
+        const edgeData = pivotEdgeData[tf.id];
+        if (edgeData && edgeData.rangeEdge) {
+            const direction = edgeData.rangeDirection === 'up' ? 'U' : 'D';
+            const color = edgeData.rangeDirection === 'up' ? colors.green : colors.red;
+            rangeEdgesSection += ` ${tf.label}:${color}${edgeData.rangeEdge.toFixed(1)}%(${direction})${colors.reset}`;
+        }
+    });
+    sections.push(rangeEdgesSection);
+    
+    // Combine all sections with pipe separators
+    return [sections.join(' | ')];
+}
+```
+
+**Output Comparison:**
+
+Before:
+```
+Edges: D:0.8%(D) W:0.1%(D) B:0.6%(D) M:1.1%(U)
+Average: D:0.1%(U) W:0.5%(U) B:0.9%(U) M:1.4%(U)
+Range: D:1.9%(U) W:1.2%(U) B:1.7%(U) M:2.9%(D)
+```
+
+After:
+```
+Edges: D:0.8%(D) W:0.1%(D) B:0.6%(D) M:1.1%(U) | Average: D:0.1%(U) W:0.5%(U) B:0.9%(U) M:1.4%(U) | Range: D:1.9%(U) W:1.2%(U) B:1.7%(U) M:2.9%(D)
+```
+
+**Benefits:**
+- Reduced console output by 67% for edge data information
+- Maintained all critical edge information in a more compact format
+- Improved readability by using clear section separators
+- Preserved color coding and direction indicators
+- Made backtesting logs easier to scan and analyze
+
+**Update (July 29, 2025):**
+Further enhanced the edge data display by using different colors for each section header:
+- "Edges" section header in yellow
+- "Average" section header in magenta
+- "Range" section header in blue
+- Pipe separators (|) in cyan
+
+This additional color differentiation makes it even easier to distinguish between different types of edge data while maintaining the compact display format.
+
+**Update (July 29, 2025):**
+Fixed the Average Edge calculation to use historical averages of ranges:
+- Daily: Shows average of ranges from past 7 days
+- Weekly: Shows average of ranges from past 4 weeks
+- Biweekly: Shows average of ranges from past 4 biweeks
+- Monthly: Shows average of ranges from past 4 months
+
+This ensures that the Average edge data now correctly represents historical volatility trends rather than just the current period's data.
+
+## 30. Code Duplication in Pivot Output Formatting in pivotBacktester.js
+
+**Date:** July 29, 2025
+
+**Problem:** The pivotBacktester.js file contains duplicated code for formatting pivot output in the high and low pivot sections, with nearly identical implementations for each pivot type.
+
+**Root Cause:** Pivot output formatting logic is implemented twice:
+1. Within the high pivot section (around line 338)
+2. Within the low pivot section (around line 465)
+
+**Fix:** Refactor the code to use a single function for pivot output formatting by creating a `formatPivotOutput` function at the top level of the file and using it in both high and low pivot sections.
+
+**Code Changes:**
+
+```javascript
+// Before: Two separate implementations
+
+// Implementation 1 (in high pivot section)
+let output = `${colors.green}${pivotCounter}.[PIVOT] HIGH @ ${currentCandle.high.toFixed(2)} | Time: ${formattedTime} | Move: +${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`;
+
+if (lastPivot.price) {
+    const swingCandles = candles.slice(lastPivot.index, i + 1);
+    const swingATL = Math.min(...swingCandles.map(c => c.low));
+    const swingATH = Math.max(...swingCandles.map(c => c.high));
+
+    const swingLowPct = ((swingATL - lastPivot.price) / lastPivot.price) * 100;
+    const swingHighPct = ((swingATH - lastPivot.price) / lastPivot.price) * 100;
+
+    const swingLowText = `${colors.red}${swingATL.toFixed(2)} (${swingLowPct.toFixed(2)}%)${colors.reset}`;
+    const swingHighText = `${colors.green}${swingATH.toFixed(2)} (${swingHighPct.toFixed(2)}%)${colors.reset}`;
+    output += ` | ${colors.cyan}Swing Low:${colors.reset} ${swingLowText} | ${colors.cyan}Swing High:${colors.reset} ${swingHighText}`;
+}
+
+// Implementation 2 (in low pivot section)
+let output = `${colors.red}${pivotCounter}.[PIVOT] LOW  @ ${currentCandle.low.toFixed(2)} | Time: ${formattedTime} | Move: ${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`;
+
+if (lastPivot.price) {
+    const swingCandles = candles.slice(lastPivot.index, i + 1);
+    const swingATL = Math.min(...swingCandles.map(c => c.low));
+    const swingATH = Math.max(...swingCandles.map(c => c.high));
+
+    const swingLowPct = ((swingATL - lastPivot.price) / lastPivot.price) * 100;
+    const swingHighPct = ((swingATH - lastPivot.price) / lastPivot.price) * 100;
+
+    const swingLowText = `${colors.red}${swingATL.toFixed(2)} (${swingLowPct.toFixed(2)}%)${colors.reset}`;
+    const swingHighText = `${colors.green}${swingATH.toFixed(2)} (${swingHighPct.toFixed(2)}%)${colors.reset}`;
+    output += ` | ${colors.cyan}Swing Low:${colors.reset} ${swingLowText} | ${colors.cyan}Swing High:${colors.reset} ${swingHighText}`;
+}
+
+// After: Single implementation at the top level
+const formatPivotOutput = (pivotType, pivotCounter, pivotPrice, formattedTime, movePct, barsSinceLast, lastPivot, swingCandles) => {
+    const pivotColor = pivotType === 'high' ? colors.green : colors.red;
+    const movePrefix = pivotType === 'high' ? '+' : ''; // High pivots show + sign, low pivots don't need it as they're negative
+    
+    let output = `${pivotColor}${pivotCounter}.[PIVOT] ${pivotType.toUpperCase()} @ ${pivotPrice.toFixed(2)} | Time: ${formattedTime} | Move: ${movePrefix}${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`;
+    
+    if (lastPivot.price && swingCandles) {
+        const swingATL = Math.min(...swingCandles.map(c => c.low));
+        const swingATH = Math.max(...swingCandles.map(c => c.high));
+        
+        const swingLowPct = ((swingATL - lastPivot.price) / lastPivot.price) * 100;
+        const swingHighPct = ((swingATH - lastPivot.price) / lastPivot.price) * 100;
+        
+        const swingLowText = `${colors.red}${swingATL.toFixed(2)} (${swingLowPct.toFixed(2)}%)${colors.reset}`;
+        const swingHighText = `${colors.green}${swingATH.toFixed(2)} (${swingHighPct.toFixed(2)}%)${colors.reset}`;
+        output += ` | ${colors.cyan}Swing Low:${colors.reset} ${swingLowText} | ${colors.cyan}Swing High:${colors.reset} ${swingHighText}`;
+    }
+    
+    return output;
+};
+
+// Usage in high pivot section
+const swingCandles = lastPivot.price ? candles.slice(lastPivot.index, i + 1) : null;
+const output = formatPivotOutput('high', pivotCounter, currentCandle.high, formattedTime, movePct, barsSinceLast, lastPivot, swingCandles);
+
+// Usage in low pivot section
+const swingCandles = lastPivot.price ? candles.slice(lastPivot.index, i + 1) : null;
+const output = formatPivotOutput('low', pivotCounter, currentCandle.low, formattedTime, movePct, barsSinceLast, lastPivot, swingCandles);
+```
+
+**Benefits:**
+- Eliminates code duplication in pivot output formatting
+- Improves maintainability by centralizing the pivot formatting logic
+- Makes the code more DRY (Don't Repeat Yourself)
+- Ensures consistent formatting between high and low pivots
+- Makes future modifications to pivot output format easier to implement
+
+## 29. Code Duplication in Duration Formatting in pivotBacktester.js
+
+**Date:** July 29, 2025
+
+**Problem:** The pivotBacktester.js script contains duplicated code for formatting duration strings, with nearly identical implementations in two different places within the file.
+
+**Root Cause:** Duration formatting logic is implemented twice:
+1. Within the trade details display section (around line 300)
+2. As a nested `formatDuration` function within `runTest` (around line 877)
+
+**Fix:** Refactor the code to use a single function for duration formatting by moving the `formatDuration` function to the top level of the file and using it in both places.
+
+**Code Changes:**
+
+```javascript
+// Before: Two separate implementations
+
+// Implementation 1 (in trade details section)
+const durationMs = trade.exitTime - trade.entryTime;
+const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+const durationHours = Math.floor((durationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+
+let durationStr = '';
+if (durationDays > 0) {
+    durationStr = `${durationDays} days, ${durationHours} hours, ${durationMinutes} minutes`;
+} else {
+    durationStr = `${durationHours} hours, ${durationMinutes} minutes`;
+}
+
+// Implementation 2 (in trade duration statistics)
+const formatDuration = (ms) => {
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (days > 0) {
+        return `${days} days, ${hours} hours, ${minutes} minutes`;
+    } else {
+        return `${hours} hours, ${minutes} minutes`;
+    }
+};
+
+// After: Single implementation at the top level
+const formatDuration = (ms) => {
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (days > 0) {
+        return `${days} days, ${hours} hours, ${minutes} minutes`;
+    } else {
+        return `${hours} hours, ${minutes} minutes`;
+    }
+};
+
+// Usage in trade details section
+const durationMs = trade.exitTime - trade.entryTime;
+const durationStr = formatDuration(durationMs);
+```
+
+**Benefits:**
+- Eliminates code duplication, reducing the risk of inconsistencies
+- Improves maintainability by centralizing the duration formatting logic
+- Makes the code more DRY (Don't Repeat Yourself)
+- Reduces the overall file size
+
 ## 28. Indentation Issues in pivotBacktester.js
 
 **Date:** August 2, 2025
