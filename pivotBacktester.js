@@ -574,46 +574,10 @@ async function runTest() {
             // Calculate and display the monthly edge percentage
             let monthlyEdgeDebug = '';
             if (monthlyReferenceCandle) {
-                const refTime = new Date(monthlyReferenceCandle.time).toLocaleString();
                 const monthlyPct = ((currentCandle.close - monthlyReferenceCandle.open) / monthlyReferenceCandle.open) * 100;
-                const pctSign = monthlyPct >= 0 ? '+' : '';
-                const pctColor = monthlyPct >= 0 ? colors.green : colors.red;
-                
-                monthlyEdgeDebug = `\n    ${colors.blue}[DEBUG] 30d Reference:${colors.reset} ${refTime} | O: ${monthlyReferenceCandle.open.toFixed(2)} | Monthly Edge: ${pctColor}${pctSign}${monthlyPct.toFixed(2)}%${colors.reset}`;
-            } else {
-                monthlyEdgeDebug = `\n    ${colors.red}[DEBUG] No 30d reference candle found${colors.reset}`;
-            }
-
-            // Calculate the average daily edge over the past 7 days
-            let sevenDayAvgDebug = '';
-            const dailyEdges = [];
-            for (let day = 0; day < 7; day++) {
-                const targetTime = currentCandle.time - (day * 24 * 60 * 60 * 1000);
-                const refTime = targetTime - (24 * 60 * 60 * 1000);
-                
-                let targetCandle = null;
-                let refCandle = null;
-
-                // This is inefficient but necessary for this specific debug calculation
-                for (let k = edgeCandles.length - 1; k >= 0; k--) {
-                    if (edgeCandles[k].time <= targetTime && !targetCandle) targetCandle = edgeCandles[k];
-                    if (edgeCandles[k].time <= refTime && !refCandle) refCandle = edgeCandles[k];
-                    if (targetCandle && refCandle) break;
-                }
-
-                if (targetCandle && refCandle) {
-                    const dailyEdge = ((targetCandle.close - refCandle.open) / refCandle.open) * 100;
-                    dailyEdges.push(dailyEdge);
-                }
-            }
-
-            if (dailyEdges.length > 0) {
-                const avgDailyEdge = dailyEdges.reduce((a, b) => a + b, 0) / dailyEdges.length;
-                const avgSign = avgDailyEdge >= 0 ? '+' : '';
-                const avgColor = avgDailyEdge >= 0 ? colors.green : colors.red;
-                sevenDayAvgDebug = `\n    ${colors.green}[DEBUG] 7d Avg Daily Edge:${colors.reset} ${avgColor}${avgSign}${avgDailyEdge.toFixed(2)}%${colors.reset}`;
-            } else {
-                sevenDayAvgDebug = `\n    ${colors.red}[DEBUG] Could not calculate 7d Avg Daily Edge${colors.reset}`;
+                const monthlySign = monthlyPct >= 0 ? '+' : '';
+                const monthlyColor = monthlyPct >= 0 ? colors.green : colors.red;
+                monthlyEdgeDebug = `\n    ${colors.blue}[DEBUG] Monthly Edge (30d): ${new Date(monthlyReferenceCandle.time).toLocaleString()} (O: ${monthlyReferenceCandle.open}) -> ${monthlyColor}${monthlySign}${monthlyPct.toFixed(2)}%${colors.reset}`;
             }
 
             // --- Ranged Edge Calculation (Highest High to Lowest Low) ---
@@ -657,8 +621,55 @@ async function runTest() {
                 breakoutRangeDebug = `\n    ${colors.yellow}[DEBUG] Range Breakout: ${breakoutRangeParts.join(' | ')}`;
             }
 
+            // --- Average Range Calculations ---
+            const avgLookbackPeriods = { 'Daily': 7, 'Weekly': 4, 'Bi-Weekly': 4, 'Monthly': 4 };
+            let avgTotalRangeParts = [];
+            let avgBreakoutParts = [];
+
+            for (const [name, lookback] of Object.entries(avgLookbackPeriods)) {
+                const daysInPeriod = name === 'Daily' ? 1 : name === 'Weekly' ? 7 : name === 'Bi-Weekly' ? 14 : 30;
+                let periodTotalRanges = [];
+                let periodUpwardRanges = [];
+                let periodDownwardRanges = [];
+
+                for (let i = 0; i < lookback; i++) {
+                    const periodEndTime = currentCandle.time - (i * daysInPeriod * 24 * 60 * 60 * 1000);
+                    const periodStartTime = periodEndTime - (daysInPeriod * 24 * 60 * 60 * 1000);
+                    const candlesInPeriod = edgeCandles.filter(c => c.time >= periodStartTime && c.time < periodEndTime);
+
+                    if (candlesInPeriod.length > 0) {
+                        const referencePrice = candlesInPeriod[0].open;
+                        const maxHigh = Math.max(...candlesInPeriod.map(c => c.high));
+                        const minLow = Math.min(...candlesInPeriod.map(c => c.low));
+
+                        periodTotalRanges.push(((maxHigh - minLow) / minLow) * 100);
+                        periodUpwardRanges.push(((maxHigh - referencePrice) / referencePrice) * 100);
+                        periodDownwardRanges.push(((minLow - referencePrice) / referencePrice) * 100);
+                    }
+                }
+
+                if (periodTotalRanges.length > 0) {
+                    const avgTotalRange = periodTotalRanges.reduce((a, b) => a + b, 0) / periodTotalRanges.length;
+                    avgTotalRangeParts.push(`${name}: ${avgTotalRange.toFixed(2)}%`);
+
+                    const avgUpward = periodUpwardRanges.reduce((a, b) => a + b, 0) / periodUpwardRanges.length;
+                    const avgDownward = periodDownwardRanges.reduce((a, b) => a + b, 0) / periodDownwardRanges.length;
+                    avgBreakoutParts.push(`${name}: ${colors.green}+${avgUpward.toFixed(2)}%${colors.reset} / ${colors.red}${avgDownward.toFixed(2)}%${colors.reset}`);
+                }
+            }
+
+            let avgTotalRangeDebug = '';
+            if (avgTotalRangeParts.length > 0) {
+                avgTotalRangeDebug = `\n    ${colors.cyan}[DEBUG] Avg Total Range:   ${avgTotalRangeParts.join(' | ')}${colors.reset}`;
+            }
+
+            let avgBreakoutDebug = '';
+            if (avgBreakoutParts.length > 0) {
+                avgBreakoutDebug = `\n    ${colors.magenta}[DEBUG] Avg Range Breakout: ${avgBreakoutParts.join(' | ')}`;
+            }
+
             // Output candle with its edge data and debug information
-            console.log(`${candleData} ${edgeOutput}${dailyEdgeDebug}${weeklyEdgeDebug}${biweeklyEdgeDebug}${monthlyEdgeDebug}${sevenDayAvgDebug}${totalRangeDebug}${breakoutRangeDebug}`);
+            console.log(`${candleData} ${edgeOutput}${dailyEdgeDebug}${weeklyEdgeDebug}${biweeklyEdgeDebug}${monthlyEdgeDebug}${totalRangeDebug}${breakoutRangeDebug}${avgTotalRangeDebug}${avgBreakoutDebug}`);
         }
 
         // --- Active Trade Management ---
