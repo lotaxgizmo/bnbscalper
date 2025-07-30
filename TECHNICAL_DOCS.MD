@@ -46,13 +46,14 @@
   - **Root Cause Fix**: The core issue was resolved by ensuring the `showTradeDetails` configuration from `tradeconfig.js` is correctly initialized in the base `ConsoleLogger` constructor.
   - **New Summary Section**: The `EdgeConsoleLogger` now includes an overridden `logFinalSummary` method. When `showTradeDetails` is `true`, this method appends a new "Trade Details" section to the end of the backtest report. This section contains a full, detailed breakdown of every trade executed during the run, keeping the real-time log clean while providing comprehensive data in the final summary.
 
-#### Pre-computed Edge Data Integration in pivotBacktester.js (July 30, 2025)
-- **Enhancement**: The pivotBacktester.js has been modified to load and use pre-computed candle data enriched with multi-timeframe edge calculations from a JSON cache file.
-- **Implementation**:
-  - Added imports for Node.js `fs`, `path`, and `url` modules to handle file system operations
-  - Created a `loadCandlesWithEdges()` function to read and parse candles with pre-computed edge data from a JSON file
+#### Pre-computed Edge Data for Backtesting (July 2025)
+- **Implementation**: Added a specialized backtesting script (`pivotBacktester.js`) that loads pre-computed candle data with edge calculations from a JSON file.
+- **Key Components**:
+  - Created `loadCandlesWithEdges()` function to parse JSON data containing both candles and edge information
+  - Added `getCurrentEdgeData()` function to retrieve edge data directly from each candle's `edges` property
   - Modified `runTest()` function to use the loaded candles instead of fetching new ones
   - Updated `getCurrentEdgeData()` function to retrieve edge data directly from each candle's `edges` property
+  - **Candle Limiting (July 2025)**: Enhanced `loadCandlesWithEdges()` to respect the `limit` parameter from config.js, allowing precise control over the number of most recent candles to process
 - **Benefits**:
   - Eliminates runtime edge calculations during backtesting for improved performance
   - More consistent edge data across multiple backtesting runs

@@ -52,8 +52,11 @@ Benefits:
 - Consistent edge calculations across multiple backtest runs
 - Clearer separation of data preparation and backtest execution
 - Supports both array and object JSON structures
+- **NEW**: Control the amount of historical data processed using the `limit` parameter in `config/config.js`
 
 The JSON file is stored in `data/BTCUSDT_1m_1440_candles_with_edges.json` by default.
+
+> **TIP**: You can adjust the `limit` parameter in `config/config.js` to control exactly how many of the most recent candles should be used from the loaded JSON file. This allows you to test different historical periods without regenerating the data.
 
 ### Enhanced Pivot Detection System
 

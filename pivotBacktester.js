@@ -213,7 +213,13 @@ const loadCandlesWithEdges = (filePath) => {
         const data = JSON.parse(jsonData);
         
         // Check if the data is an array (direct candles) or has a candles property
-        const candles = Array.isArray(data) ? data : (data.candles || []);
+        let candles = Array.isArray(data) ? data : (data.candles || []);
+        
+        // Apply limit from config if available
+        if (limit > 0 && candles.length > limit) {
+            console.log(`Limiting to ${limit} most recent candles out of ${candles.length} available`);
+            candles = candles.slice(-limit); // Take the most recent candles based on limit
+        }
         
         console.log(`Loaded ${candles.length} candles with pre-computed edges from ${filePath}`);
         
