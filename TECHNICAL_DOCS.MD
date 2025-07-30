@@ -46,6 +46,19 @@
   - **Root Cause Fix**: The core issue was resolved by ensuring the `showTradeDetails` configuration from `tradeconfig.js` is correctly initialized in the base `ConsoleLogger` constructor.
   - **New Summary Section**: The `EdgeConsoleLogger` now includes an overridden `logFinalSummary` method. When `showTradeDetails` is `true`, this method appends a new "Trade Details" section to the end of the backtest report. This section contains a full, detailed breakdown of every trade executed during the run, keeping the real-time log clean while providing comprehensive data in the final summary.
 
+#### Pre-computed Edge Data Integration in pivotBacktester.js (July 30, 2025)
+- **Enhancement**: The pivotBacktester.js has been modified to load and use pre-computed candle data enriched with multi-timeframe edge calculations from a JSON cache file.
+- **Implementation**:
+  - Added imports for Node.js `fs`, `path`, and `url` modules to handle file system operations
+  - Created a `loadCandlesWithEdges()` function to read and parse candles with pre-computed edge data from a JSON file
+  - Modified `runTest()` function to use the loaded candles instead of fetching new ones
+  - Updated `getCurrentEdgeData()` function to retrieve edge data directly from each candle's `edges` property
+- **Benefits**:
+  - Eliminates runtime edge calculations during backtesting for improved performance
+  - More consistent edge data across multiple backtesting runs
+  - Clearer code that separates edge computation from backtesting logic
+  - Compatible with both array-based and object-based JSON structure formats
+
 #### Display Settings Integration in pivotBacktester.js (July 2025)
 - **Configurable Output**: The `pivotBacktester.js` has been updated to respect the display settings from `tradeconfig.js`.
   - **Pivot Display Control**: The `showPivot` setting now controls the visibility of pivot detection logs, including high and low pivot information and swing analysis.

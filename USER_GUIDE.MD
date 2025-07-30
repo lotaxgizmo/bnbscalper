@@ -33,6 +33,28 @@ To maximize effectiveness for scalping, the pivot detection logic has been optim
 
 ## Testing Tools
 
+### Pre-computed Edge Data for Faster Backtesting (Added July 30, 2025)
+
+The system now supports loading pre-computed candle data with edge calculations from a JSON file, eliminating the need to recalculate edges during backtesting:
+
+1. First, generate candles with pre-computed edges using the generator script:
+```bash
+node generators/generateCandlesWithEdges.js
+```
+
+2. Then run the backtester which will automatically use the pre-computed data:
+```bash
+node pivotBacktester.js
+```
+
+Benefits:
+- Much faster backtest execution (no runtime edge calculations)
+- Consistent edge calculations across multiple backtest runs
+- Clearer separation of data preparation and backtest execution
+- Supports both array and object JSON structures
+
+The JSON file is stored in `data/BTCUSDT_1m_1440_candles_with_edges.json` by default.
+
 ### Enhanced Pivot Detection System
 
 The system now uses an improved pivot detection algorithm with better timestamp handling and proper closing price confirmation:

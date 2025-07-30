@@ -1,5 +1,118 @@
 # Issues and Solutions Log
 
+## 35. Function Reference Error in Precomputed Edge Data Implementation
+
+**Date:** July 30, 2025
+
+**Problem:** When implementing the precomputed edge data functionality in `pivotBacktester.js`, the script failed with a `ReferenceError: Cannot access 'loadCandlesWithEdges' before initialization` error.
+
+**Root Cause:** The function `loadCandlesWithEdges()` was being called before it was defined in the code, causing a JavaScript temporal dead zone issue.
+
+```javascript
+// Error: Function called before definition
+console.log(`${colors.cyan}--- Instant Pivot Detection Test with Pre-Computed Edge Data ---${colors.reset}`);
+
+// Load candles with pre-computed edges from JSON file
+const { candles, edges } = loadCandlesWithEdges(CANDLES_WITH_EDGES_FILE);
+
+// Function defined after it was called
+const loadCandlesWithEdges = (filePath) => {
+    // Function implementation
+};
+```
+
+**Fix:** Moved the function definition before it's used in the code:
+
+```javascript
+// Function defined before it's used
+const loadCandlesWithEdges = (filePath) => {
+    // Function implementation
+};
+
+console.log(`${colors.cyan}--- Instant Pivot Detection Test with Pre-Computed Edge Data ---${colors.reset}`);
+
+// Now the function call works correctly
+const { candles, edges } = loadCandlesWithEdges(CANDLES_WITH_EDGES_FILE);
+```
+
+## 36. JSON Structure Mismatch in Precomputed Edge Data
+
+**Date:** July 30, 2025
+
+**Problem:** After fixing the function reference error, the code failed with `TypeError: Cannot read properties of undefined (reading 'length')` when trying to access `data.candles.length`.
+
+**Root Cause:** The JSON file structure was an array of candles directly, not an object with a "candles" property as the code expected.
+
+**Fix:** Modified the `loadCandlesWithEdges()` function to handle both array and object structures:
+
+```javascript
+// Flexible structure handling
+const loadCandlesWithEdges = (filePath) => {
+    try {
+        // Read the JSON file
+        const jsonData = fs.readFileSync(filePath, 'utf8');
+        const data = JSON.parse(jsonData);
+        
+        // Check if the data is an array (direct candles) or has a candles property
+        const candles = Array.isArray(data) ? data : (data.candles || []);
+        
+        console.log(`Loaded ${candles.length} candles with pre-computed edges from ${filePath}`);
+        
+        // Extract edges if available or use an empty object
+        const edges = Array.isArray(data) ? {} : (data.edges || {});
+        
+        // Return both candles and edges
+        return {
+            candles: candles,
+            edges: edges
+        };
+    } catch (error) {
+        console.error(`Failed to load candles with edges from ${filePath}:`, error);
+        process.exit(1);
+    }
+};
+```
+
+## 37. Duplicate Candle Loading in Precomputed Edge Data Implementation
+
+**Date:** July 30, 2025
+
+**Problem:** After fixing the JSON structure handling, the backtester was showing warnings about missing pre-computed edge data for candles.
+
+**Root Cause:** The `runTest()` function was still calling `getCandles()` to fetch a new set of candles that didn't have the pre-computed edge data, instead of using the candles loaded from the JSON file.
+
+```javascript
+async function runTest() {
+    // This was overriding the pre-loaded candles with edges
+    const allLocalCandles = await getCandles(symbol, interval, null, null, true);
+    // Rest of the function using allLocalCandles and not the pre-loaded candles with edges
+}
+```
+
+**Fix:** Modified the `runTest()` function to use the pre-loaded candles with edges instead of fetching new ones:
+
+```javascript
+async function runTest() {
+    // We'll use the pre-computed candles with edges loaded from the JSON file
+    // No need to call getCandles() since we already have the data
+    
+    // We're using the pre-loaded candles with edges for both edge calculations and display
+    const edgeCandles = candles; // Using the same candles since they already have edge data
+    
+    console.log(`Using pre-computed candles with edges for backtesting.`);
+    console.log(`Loaded ${candles.length} candles with pre-computed edge data for display.\n`);
+}
+```
+
+**Benefits:**
+- Fixed reference error by properly ordering function definitions
+- Added support for both array and object JSON structures
+- Eliminated duplicate candle loading for better performance
+- Improved error handling with clear messages and timestamps
+- Added detailed console logs to track data loading progress
+
+# Issues and Solutions Log
+
 ## 34. Edge Calculation Reference Point Inconsistency
 
 **Date:** July 30, 2025

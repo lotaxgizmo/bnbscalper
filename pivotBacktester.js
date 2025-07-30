@@ -8,9 +8,18 @@ import {
     minSwingPct,
     pivotLookback,
     minLegBars
-} from './config/config.js';
-import { getCandles } from './apis/bybit.js';
+} from './config/config.js'; 
 import { tradeConfig } from './config/tradeconfig.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get the directory name in a way that works with ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Path to the JSON file with pre-computed candles and edges
+const CANDLES_WITH_EDGES_FILE = path.join(__dirname, 'data', 'BTCUSDT_1m_1440_candles_with_edges.json');
 
 const colors = {
     reset: '\x1b[0m',
@@ -196,7 +205,36 @@ const displayCandleInfo = (candle, candleNumber, pivotType = null) => {
     console.log(`  ${(candleNumber).toString().padStart(5, ' ')} | ${pivotIndicator} | ${formattedTime} | O: ${o} H: ${h} L: ${l} C: ${cColor}${c}${colors.reset} `);
 };
 
-console.log(`${colors.cyan}--- Instant Pivot Detection Test with Edge Analysis (No Lookahead) ---${colors.reset}`);
+// Function to load candles with pre-computed edges from JSON file
+const loadCandlesWithEdges = (filePath) => {
+    try {
+        // Read the JSON file
+        const jsonData = fs.readFileSync(filePath, 'utf8');
+        const data = JSON.parse(jsonData);
+        
+        // Check if the data is an array (direct candles) or has a candles property
+        const candles = Array.isArray(data) ? data : (data.candles || []);
+        
+        console.log(`Loaded ${candles.length} candles with pre-computed edges from ${filePath}`);
+        
+        // Extract edges if available or use an empty object
+        const edges = Array.isArray(data) ? {} : (data.edges || {});
+        
+        // Return both candles and edges
+        return {
+            candles: candles,
+            edges: edges
+        };
+    } catch (error) {
+        console.error(`Failed to load candles with edges from ${filePath}:`, error);
+        process.exit(1);
+    }
+};
+
+console.log(`${colors.cyan}--- Instant Pivot Detection Test with Pre-Computed Edge Data ---${colors.reset}`);
+
+// Load candles with pre-computed edges from JSON file
+const { candles, edges } = loadCandlesWithEdges(CANDLES_WITH_EDGES_FILE);
 
 // Display trade configuration at the top
 console.log(`${colors.cyan}--- Trade Configuration ---${colors.reset}`);
@@ -208,254 +246,41 @@ console.log(`Maker Fee: ${colors.yellow}${tradeConfig.totalMakerFee}%${colors.re
 console.log(`Initial Capital: ${colors.yellow}${tradeConfig.initialCapital} USDT${colors.reset}`);
 console.log(`Risk Per Trade: ${colors.yellow}${tradeConfig.riskPerTrade}%${colors.reset}`);
 
-// Function to calculate edge data for price movements
-const calculateEdges = (candles, timeframes) => {
-    const edges = {};
-    
-    // Initialize edges for each timeframe
-    timeframes.forEach(tf => {
-        edges[tf] = {
-            upEdges: [],
-            downEdges: [],
-            rangeTotals: [] // Store historical range totals for averaging
-        };
-    });
-    
-    // Detect the candle interval
-    let candleInterval = '1m'; // Default assumption
-    if (candles.length > 1) {
-        const timeDiff = candles[1].time - candles[0].time;
-        if (timeDiff >= 60 * 60 * 1000) { // 1 hour or more
-            candleInterval = '1h';
-            console.log('Detected hourly candles for edge calculations');
-        } else if (timeDiff >= 5 * 60 * 1000) { // 5 minutes or more
-            candleInterval = '5m';
-            console.log('Detected 5-minute candles for edge calculations');
-        } else {
-            console.log('Detected 1-minute candles for edge calculations');
-        }
+// Function to get edge data for a current price from pre-computed data
+const getCurrentEdgeData = (currentPrice, candle, edges, timeframes) => {
+    // Check if the candle already has pre-computed edge data
+    if (candle && candle.edges) {
+        // Debug log to see what edge data is available
+        // console.log('Found edge data for candle:', new Date(candle.time).toLocaleString(), Object.keys(candle.edges));
+        return candle.edges;
     }
     
-    // Calculate edges for each timeframe
-    timeframes.forEach(tf => {
-        // Calculate the number of candles to include for this timeframe
-        let tfCandles;
-        
-        // Adjust candle counts based on detected interval
-        if (candleInterval === '1h') {
-            // For hourly candles
-            switch(tf) {
-                case 'daily':
-                    tfCandles = 24; // 24 hourly candles for a day
-                    break;
-                case 'weekly':
-                    tfCandles = 24 * 7; // 168 hourly candles for a week
-                    break;
-                case 'biweekly':
-                    tfCandles = 24 * 14; // 336 hourly candles for 2 weeks
-                    break;
-                case 'monthly':
-                    tfCandles = 24 * 30; // 720 hourly candles for a month
-                    break;
-                default:
-                    tfCandles = 24; // Default to daily
-            }
-        } else {
-            // For minute candles (1m or 5m)
-            const minuteMultiplier = candleInterval === '5m' ? 5 : 1;
-            
-            switch(tf) {
-                case 'daily':
-                    tfCandles = (24 * 60) / minuteMultiplier; // 1440 or 288 candles for a day
-                    break;
-                case 'weekly':
-                    tfCandles = (24 * 60 * 7) / minuteMultiplier; // 10080 or 2016 candles for a week
-                    break;
-                case 'biweekly':
-                    tfCandles = (24 * 60 * 14) / minuteMultiplier; // 20160 or 4032 candles for 2 weeks
-                    break;
-                case 'monthly':
-                    tfCandles = (24 * 60 * 30) / minuteMultiplier; // 43200 or 8640 candles for a month
-                    break;
-                default:
-                    tfCandles = (24 * 60) / minuteMultiplier; // Default to daily
-            }
-        }
-        
-        // Adjust calculation window if we don't have enough candles
-        if (candles.length < tfCandles) {
-            console.warn(`Limited data for ${tf} edge calculation. Using all ${candles.length} available candles instead of ideal ${tfCandles}.`);
-            tfCandles = candles.length; // Use all available candles
-        }
-        
-        // Calculate max up and down moves for each window
-        for (let i = tfCandles; i < candles.length; i++) {
-            const windowCandles = candles.slice(i - tfCandles, i);
-            
-            // Find max and min prices in the window
-            const maxPrice = Math.max(...windowCandles.map(c => c.high));
-            const minPrice = Math.min(...windowCandles.map(c => c.low));
-            const lastPrice = windowCandles[windowCandles.length - 1].close;
-            const referencePrice = windowCandles[0].open; // Use first candle in window as reference point
-            
-            // Calculate percentage moves relative to the reference price
-            const upMove = ((maxPrice - referencePrice) / referencePrice) * 100;
-            const downMove = ((minPrice - referencePrice) / referencePrice) * 100;
-            const currentMove = ((lastPrice - referencePrice) / referencePrice) * 100;
-            
-            // Calculate total range (used for historical averaging)
-            const totalRange = upMove + downMove;
-            
-            // Store the edges with reference-based calculations
-            edges[tf].upEdges.push({
-                time: candles[i].time,
-                price: lastPrice,
-                edgePrice: maxPrice,
-                percentToEdge: upMove,
-                referencePrice: referencePrice,
-                currentMove: currentMove // Store current position relative to reference
-            });
-            
-            edges[tf].downEdges.push({
-                time: candles[i].time,
-                price: lastPrice,
-                edgePrice: minPrice,
-                percentToEdge: downMove,
-                referencePrice: referencePrice,
-                currentMove: currentMove // Store current position relative to reference
-            });
-            
-            // Store the total range for this timeframe window
-            edges[tf].rangeTotals.push({
-                time: candles[i].time,
-                totalRange: totalRange,
-                // Store which direction has more room (for display purposes)
-                dominantDirection: upMove > downMove ? 'up' : 'down'
-            });
-        }
-    });
-    
-    return edges;
+    // If no pre-computed edges, return empty result
+    console.warn('No pre-computed edge data found for candle:', new Date(candle.time).toLocaleString());
+    return {};
 };
 
-// Function to get current edge data for a specific price
-const getCurrentEdgeData = (price, edges, timeframes) => {
-    const edgeData = {};
-    
-    timeframes.forEach(tf => {
-        if (!edges[tf] || edges[tf].upEdges.length === 0 || edges[tf].downEdges.length === 0) {
-            return;
-        }
-        
-        // Get the latest edge data for this timeframe
-        const latestUpEdge = edges[tf].upEdges[edges[tf].upEdges.length - 1];
-        const latestDownEdge = edges[tf].downEdges[edges[tf].downEdges.length - 1];
-        
-        // Use the stored currentMove value which is relative to the reference price
-        // This provides a consistent reference point and proper +/- sign
-        const currentMove = latestUpEdge.currentMove; // Same value stored in both up/down edges
-        
-        // Calculate average of historical ranges based on timeframe
-        let lookbackPeriods;
-        switch(tf) {
-            case 'daily':
-                lookbackPeriods = 7; // Past 7 days
-                break;
-            case 'weekly':
-                lookbackPeriods = 4; // Past 4 weeks
-                break;
-            case 'biweekly':
-                lookbackPeriods = 4; // Past 4 biweeks
-                break;
-            case 'monthly':
-                lookbackPeriods = 4; // Past 4 months
-                break;
-            default:
-                lookbackPeriods = 7; // Default to 7 periods
-        }
-        
-        // Ensure we have enough historical data
-        const rangeTotals = edges[tf].rangeTotals;
-        const historicalRanges = rangeTotals.length >= lookbackPeriods ? 
-            rangeTotals.slice(rangeTotals.length - lookbackPeriods) : 
-            rangeTotals;
-        
-        // Calculate average range
-        const averageRange = historicalRanges.reduce((sum, range) => sum + range.totalRange, 0) / historicalRanges.length;
-        
-        // Determine dominant direction in the lookback period
-        const upDirectionCount = historicalRanges.filter(range => range.dominantDirection === 'up').length;
-        const averageDirection = upDirectionCount > historicalRanges.length / 2 ? 'up' : 'down';
-        
-        // Calculate distances to up and down edges based on the reference point
-        const upPercentToEdge = latestUpEdge.percentToEdge - currentMove;
-        const downPercentToEdge = currentMove - latestDownEdge.percentToEdge;
-        
-        // Determine the closest edge direction based on which has the smaller absolute distance
-        const closerToUpEdge = Math.abs(upPercentToEdge) < Math.abs(downPercentToEdge);
-        
-        edgeData[tf] = {
-            // Current position relative to the reference point - this maintains the proper sign
-            currentMove: currentMove,
-            
-            // Store edge data with proper signs based on reference point
-            upEdge: {
-                price: latestUpEdge.edgePrice,
-                percentToEdge: latestUpEdge.percentToEdge, // Original calculation from reference
-                currentToEdge: upPercentToEdge, // Distance from current to edge
-                referencePrice: latestUpEdge.referencePrice,
-                direction: 'up'
-            },
-            downEdge: {
-                price: latestDownEdge.edgePrice,
-                percentToEdge: latestDownEdge.percentToEdge, // Original calculation from reference
-                currentToEdge: downPercentToEdge, // Distance from current to edge
-                referencePrice: latestDownEdge.referencePrice,
-                direction: 'down'
-            },
-            
-            // The closestEdge now properly represents the movement direction and distance
-            closestEdge: closerToUpEdge ? 
-                { direction: 'up', percentToEdge: Math.abs(upPercentToEdge), price: latestUpEdge.edgePrice } : 
-                { direction: 'down', percentToEdge: Math.abs(downPercentToEdge), price: latestDownEdge.edgePrice },
-                
-            // Average of historical ranges with proper direction
-            averageRange: {
-                value: Math.abs(averageRange), // Always positive magnitude
-                direction: averageDirection // Direction indicates if historical range is typically up or down
-            }
-        };
-    });
-    
-    return edgeData;
-};
+
 
 async function runTest() {
-    const allLocalCandles = await getCandles(symbol, interval, null, null, true);
+    // We'll use the pre-computed candles with edges loaded from the JSON file
+    // No need to call getCandles() since we already have the data
+    
     // Ensure there are enough candles for the lookback on both sides
-    if (!allLocalCandles || allLocalCandles.length < (pivotLookback * 2 + 1)) {
+    if (!candles || candles.length < (pivotLookback * 2 + 1)) {
         console.error(`Not enough historical data. Need at least ${pivotLookback * 2 + 1} candles for lookback of ${pivotLookback}.`);
         return;
     }
-    // Use minute candles for more accurate edge calculations
-    console.log(`Using minute candles for edge calculations (more accurate)...`);
     
-    // Define edge candles - limit to 43,200 minute candles (30 days) for memory efficiency
-    const maxEdgeCandles = Math.min(20160, allLocalCandles.length);
-    const edgeCandles = allLocalCandles.slice(-maxEdgeCandles);
-    console.log(`Using ${edgeCandles.length} minute candles for edge calculations.`);
+    // We're using the pre-loaded candles with edges for both edge calculations and display
+    const edgeCandles = candles; // Using the same candles since they already have edge data
     
-    // Load display candles limited by user setting
-    const candles = allLocalCandles.slice(-limit);
-    console.log(`Loaded ${candles.length} of ${allLocalCandles.length} available '${interval}' local candles for display.\n`);
+    console.log(`Using pre-computed candles with edges for backtesting.`);
+    console.log(`Loaded ${candles.length} candles with pre-computed edge data for display.\n`);
     
     // Define timeframes for edge detection
     const timeframes = ['daily', 'weekly', 'biweekly', 'monthly'];
     
-    // Calculate edges for all timeframes using the extended candle set
-    const edges = calculateEdges(edgeCandles, timeframes);
-    console.log(`${colors.cyan}Calculated edge data for timeframes: ${timeframes.join(', ')}${colors.reset}\n`);
-
     let lastPivot = { type: null, price: null, time: null, index: 0 };
     const swingThreshold = minSwingPct / 100;
     let pivotCounter = 0;
@@ -477,8 +302,7 @@ async function runTest() {
         // Display candle with edge data if enabled
         if (tradeConfig.showCandle) {
             // Calculate current edge data for this candle
-            const currentPrice = currentCandle.close;
-            const pivotEdgeData = getCurrentEdgeData(currentPrice, edges, timeframes);
+            const pivotEdgeData = getCurrentEdgeData(currentCandle.close, currentCandle, edges, timeframes);
                     
             // Format candle data
             const candleTime = new Date(currentCandle.time).toLocaleString();
@@ -669,7 +493,7 @@ async function runTest() {
             }
 
             // Output candle with its edge data and debug information
-            console.log(`${candleData} ${edgeOutput}${dailyEdgeDebug}${weeklyEdgeDebug}${biweeklyEdgeDebug}${monthlyEdgeDebug}${totalRangeDebug}${breakoutRangeDebug}${avgTotalRangeDebug}${avgBreakoutDebug}`);
+            console.log(`${candleData}${dailyEdgeDebug}${weeklyEdgeDebug}${biweeklyEdgeDebug}${monthlyEdgeDebug}${totalRangeDebug}${breakoutRangeDebug}${avgTotalRangeDebug}${avgBreakoutDebug}`);
         }
 
         // --- Active Trade Management ---
@@ -778,8 +602,8 @@ async function runTest() {
                 const movePct = swingPct * 100;
                 const formattedTime = new Date(currentCandle.time).toLocaleString();
                 
-                // Get edge data for this pivot
-                const pivotEdgeData = getCurrentEdgeData(currentCandle.high, edges, timeframes);
+                // Get edge data for this pivot from pre-computed data
+                const pivotEdgeData = getCurrentEdgeData(currentCandle.high, currentCandle, edges, timeframes);
                 
                 const swingCandles = lastPivot.price ? candles.slice(lastPivot.index, i + 1) : null;
                 const output = formatPivotOutput('high', pivotCounter, currentCandle.high, formattedTime, movePct, barsSinceLast, lastPivot, swingCandles);
@@ -828,8 +652,8 @@ async function runTest() {
                 const barsSinceLast = i - lastPivot.index;
                 const formattedTime = new Date(candles[i].time).toLocaleString();
                 
-                // Get edge data for this pivot
-                const pivotEdgeData = getCurrentEdgeData(candles[i].low, edges, timeframes);
+                // Get edge data for this pivot from pre-computed data
+                const pivotEdgeData = getCurrentEdgeData(candles[i].low, candles[i], edges, timeframes);
                 
                 const swingCandles = lastPivot.price ? candles.slice(lastPivot.index, i + 1) : null;
                 const output = formatPivotOutput('low', pivotCounter, candles[i].low, formattedTime, movePct, barsSinceLast, lastPivot, swingCandles);
@@ -1033,7 +857,7 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
                 
                 if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
                     // This is a valid high pivot, get its edge data
-                    const pivotEdgeData = getCurrentEdgeData(currentCandle.high, edges, timeframes);
+                    const pivotEdgeData = getCurrentEdgeData(currentCandle.high, currentCandle, edges, timeframes);
                     
                     // Add edge data to statistics
                     timeframes.forEach(tf => {
@@ -1056,7 +880,7 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
                 
                 if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
                     // This is a valid low pivot, get its edge data
-                    const pivotEdgeData = getCurrentEdgeData(currentCandle.low, edges, timeframes);
+                    const pivotEdgeData = getCurrentEdgeData(currentCandle.low, currentCandle, edges, timeframes);
                     
                     // Add edge data to statistics
                     timeframes.forEach(tf => {
