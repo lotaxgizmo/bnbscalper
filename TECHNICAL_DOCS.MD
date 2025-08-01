@@ -99,6 +99,9 @@
   - Updated all instances of pivot detection to use the new helper functions
   - Fixed math in edge calculation to properly handle absolute values for downward movements
   - Ensured pivot data objects are properly copied when creating trades to avoid reference issues
+  - **Updated (July 30, 2025)**: Added `formatPercentageWithColor()` helper function to standardize color formatting for all percentage values
+  - **Updated (July 30, 2025)**: Applied consistent color formatting to all edge data displays (main edges, breakout ranges, and average breakout ranges)
+  - **Updated (July 30, 2025)**: Eliminated code duplication in percentage formatting across both `formatEdgeData()` function and main `runTest()` function
   - Maintained consistent formatting and behavior while reducing code size by ~200 lines
 - **Benefits**:
   - Improved code maintainability by centralizing common logic
@@ -514,7 +517,14 @@ The system tracks various performance metrics including:
   - **`[CLOSED]`**: Cyan for `WIN`, Magenta for `LOSS`. Used for trades that are force-closed at the end of the simulation data.
     - *Example*: `[CLOSED] WIN | Side: SELL | PnL: 0.0432% | Entry: 119460.3 | Exit: 119408.7`
 
-### Pivot Backtester (`pivotBacktester.js`)
+### Pivot Backtester
+
+### 2025-07-31 – Trade Details Edge Data
+
+* Added pivot edge data display to each Trade Details block.
+* `pivotBacktester.js` now calls `formatEdgeData()` for the pivot candle associated with the trade and prints the returned lines indented beneath the standard trade stats.
+* Ensures visual formatting, colors, and indentation are identical to original pivot output.
+ (`pivotBacktester.js`)
 
 - **Purpose**: To provide a comprehensive backtest of a trading strategy based on pivot points. Unlike `instantPivotTest.js` which only validates pivot signals, `pivotBacktester.js` simulates actual trades based on these pivots, providing a full performance report.
 - **Core Logic**:

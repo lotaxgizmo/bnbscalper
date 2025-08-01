@@ -307,7 +307,17 @@ The application provides detailed console output during backtesting:
 - Data source information (API or cache)
 - Candle fetch statistics
 
-### Trade Details
+### Viewing Trade Details
+
+Each trade block now also displays the exact edge metrics (Daily, Weekly, Bi-Weekly, Monthly) that were in effect at the originating pivot. This appears directly beneath the standard stats so you can correlate a trade’s success with its edge context.
+
+Example snippet:
+```
+  Edges: D:+0.02% W:+0.02% B:+0.02% M:+0.02% | Total Range: … | Average Range: …
+      [DEBUG] Range Breakout: …
+      [DEBUG] Avg Range Breakout: …
+```
+
 When `showTradeDetails` is enabled in config:
 - Entry and exit prices
 - Raw price movement and P&L

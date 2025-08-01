@@ -2,19 +2,19 @@
 
 const day = 0
 // const hour = day * 24;
-const hour = 7;
+const hour = 0;
 const minute = hour * 60;
 
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell' or 'both')
-    direction: 'buy',
+    direction: 'both',
 
     // Profit and loss settings (in %)
-    takeProfit: 0.47,    // Take profit at 0.2%
-    stopLoss: 10,      // Stop loss at 0.1%
+    takeProfit: 0.2,    // Take profit at 0.2%
+    stopLoss: 5,      // Stop loss at 0.1%
 
     // Leverage multiplier
-    leverage: 8,        // 1x leverage (spot trading)
+    leverage: 30,        // 1x leverage (spot trading)
     
     // Trading fees
     totalMakerFee: 0.06, // 0.04% maker fee
@@ -35,7 +35,7 @@ export const tradeConfig = {
     // Display settings
 
     showCandle: false,
-    showPivot: true,
+    showPivot: false,
     showLimits: false ,
     showTradeDetails: false,
     
