@@ -10,11 +10,11 @@ export const tradeConfig = {
     direction: 'both',
 
     // Profit and loss settings (in %)
-    takeProfit: 0.6,    // Take profit at 0.2%
-    stopLoss: 1,      // Stop loss at 0.1%
+    takeProfit: 0.2,     
+    stopLoss: 1,       
 
     // Leverage multiplier
-    leverage: 1,        // 1x leverage (spot trading)
+    leverage: 25,        // 1x leverage (spot trading)
     
     // Trading fees
     totalMakerFee: 0.06, // 0.04% maker fee
@@ -28,8 +28,8 @@ export const tradeConfig = {
     amountPerTrade: 100,    // Fixed amount per trade in USDT (only used if positionSizingMode is 'fixed')
     
     // riskPerTrade = Percentage of capital to risk per trade (100 = full capital)
-    // initialCapital: 1000, 
-    // riskPerTrade: 10,   
+        // initialCapital: 1000, 
+        // riskPerTrade: 50,   
     // initialCapital: 300, 
     // riskPerTrade: 54.39,   
     // initialCapital: 200, 

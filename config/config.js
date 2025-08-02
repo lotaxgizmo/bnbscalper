@@ -7,7 +7,7 @@ export const useEdges = false;    // Use pre-computed edge data; if false, use s
 // API settings
 export const api = 'bybit'; // 'binance' or 'bybit'
 // export const api = 'binance'; // 'binance' or 'bybit'
-export const time = '4h';
+export const time = '1m';
 export const symbol = 'BTCUSDT';
 
 // candle limit below
@@ -55,7 +55,7 @@ const getIntervalMultiplier = (intervalStr) => {
 const multiplier = getIntervalMultiplier(time);
 
 // Calculate limits in terms of number of candles
-const monthlimit = 5; // Base unit - 1 month
+const monthlimit = 1; // Base unit - 1 month
 const weeklimit = monthlimit * multiplier.perMonth / multiplier.perWeek;
 // const weeklimit = 8;
 const daylimit = weeklimit * 7;
@@ -63,8 +63,8 @@ const daylimit = weeklimit * 7;
 const hourlimit = daylimit * 24;
 const minlimit = Math.floor(monthlimit * multiplier.perMonth); // Total candles for the month
  
-export const limit = minlimit;
-// export const limit = 110;
+// export const limit = minlimit;
+export const limit = 43200;
 
 // delay below
 // Limit being 49.1 months
