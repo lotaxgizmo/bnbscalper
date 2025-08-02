@@ -2,6 +2,26 @@
 
 ## Recent Updates
 
+### Edge Mode Toggle Added (2025-08-01)
+- Added `useEdges` flag to config.js for data source selection
+- When `true`: Uses pre-computed edge data from JSON file
+- When `false`: Uses standard CSV candle data without edges
+- Modified `pivotBacktester.js` to support both data sources
+- Added `loadCandlesFromCSV()` function to read from CSV files
+- Automatic data source selection based on config setting
+
+### Multiple Concurrent Trades Support Added (2025-08-01)
+- Modified `pivotBacktester.js` to support multiple simultaneous open trades
+- Replaced single `activeTrade` variable with `openTrades` array
+- Added capital tracking to prevent over-allocation
+- Added flexible position sizing options:
+  - Percentage-based: Risk X% of total capital per trade
+  - Fixed amount: Use consistent trade size in USDT
+- Modified trade creation and management logic
+- Enhanced EOB (End of Backtest) handling for multiple trades
+- Added multiple trades configuration options in `tradeconfig.js`
+
+
 ### Rate Limit Testing Utility Added (2025-07-18)
 - Added `testRateLimits.js` for testing Bybit API rate limits
 - Tests sequential requests with configurable delays

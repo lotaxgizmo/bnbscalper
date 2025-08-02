@@ -7,7 +7,8 @@ import {
     limit,
     minSwingPct,
     pivotLookback,
-    minLegBars
+    minLegBars,
+    useEdges
 } from './config/config.js'; 
 import { tradeConfig } from './config/tradeconfig.js';
 import fs from 'fs';
@@ -18,8 +19,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Path to the JSON file with pre-computed candles and edges
+// Paths for data sources
 const CANDLES_WITH_EDGES_FILE = path.join(__dirname, 'data', 'BTCUSDT_1m_40320_candles_with_edges.json');
+const CSV_DATA_FILE = path.join(__dirname, 'data', 'historical', symbol, `${interval}.csv`);
 
 const colors = {
     reset: '\x1b[0m',
@@ -40,8 +42,29 @@ const colors = {
     bold: '\x1b[1m'
 };
 
+// Function to convert interval string to milliseconds
+const intervalToMs = (interval) => {
+    const unit = interval.slice(-1);
+    const value = parseInt(interval.slice(0, -1));
+    
+    switch(unit) {
+        case 'm': return value * 60 * 1000;             // minutes
+        case 'h': return value * 60 * 60 * 1000;        // hours
+        case 'd': return value * 24 * 60 * 60 * 1000;   // days
+        case 'w': return value * 7 * 24 * 60 * 60 * 1000; // weeks
+        default: return value * 60 * 1000;              // default to minutes
+    }
+};
+
+// Get the candle duration based on the interval
+const candleDurationMs = intervalToMs(interval);
+
 // Utility function to format duration in milliseconds to a readable string
+// Adjusted to account for the candle interval
 const formatDuration = (ms) => {
+    // For intervals other than 1m, adjust the calculation
+    // This represents the actual duration, not just timestamp difference
+    
     const days = Math.floor(ms / (1000 * 60 * 60 * 24));
     const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
@@ -295,9 +318,10 @@ const formatEdgeData = (currentCandle, edgeCandles, timeframes) => {
  
 
 // Helper function to create a trade
-const createTrade = (type, currentCandle, pivotData, i, capital, tradeConfig) => {
+const createTrade = (type, currentCandle, pivotData, i, tradeSize, tradeConfig) => {
     const entryPrice = type === 'long' ? currentCandle.low : currentCandle.high;
-    const size = capital * (tradeConfig.riskPerTrade / 100);
+    // Use the provided trade size directly instead of calculating from capital
+    const size = tradeSize;
     
     // Calculate TP/SL differently based on trade type
     const takeProfitPrice = type === 'long'
@@ -373,10 +397,80 @@ const loadCandlesWithEdges = (filePath) => {
     }
 };
 
-console.log(`${colors.cyan}--- Instant Pivot Detection Test with Pre-Computed Edge Data ---${colors.reset}`);
+// Function to load candles from CSV file
+const loadCandlesFromCSV = (filePath) => {
+    try {
+        // Check if the file exists
+        if (!fs.existsSync(filePath)) {
+            console.error(`CSV file not found: ${filePath}`);
+            process.exit(1);
+        }
+        
+        // Read the CSV file
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const lines = fileContent
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line && line !== 'timestamp,open,high,low,close,volume');
+        
+        const candles = [];
+        
+        for (const line of lines) {
+            const [time, open, high, low, close, volume] = line.split(',');
+            
+            const candle = {
+                time: parseInt(time),
+                open: parseFloat(open),
+                high: parseFloat(high),
+                low: parseFloat(low),
+                close: parseFloat(close),
+                volume: parseFloat(volume || '0')
+            };
+            
+            // Validate the candle data
+            if (!isNaN(candle.time) && 
+                !isNaN(candle.open) && 
+                !isNaN(candle.high) && 
+                !isNaN(candle.low) && 
+                !isNaN(candle.close)) {
+                candles.push(candle);
+            }
+        }
+        
+        // Apply limit from config if available
+        let filteredCandles = candles;
+        if (limit > 0 && filteredCandles.length > limit) {
+            console.log(`Limiting to ${limit} most recent candles out of ${filteredCandles.length} available`);
+            filteredCandles = filteredCandles.slice(-limit); // Take the most recent candles
+        }
+        
+        // Sort by timestamp to ensure chronological order
+        filteredCandles.sort((a, b) => a.time - b.time);
+        
+        console.log(`Loaded ${filteredCandles.length} candles from CSV file: ${filePath}`);
+        
+        // Return candles and empty edges object
+        return {
+            candles: filteredCandles,
+            edges: {}
+        };
+    } catch (error) {
+        console.error(`Failed to load candles from CSV file ${filePath}:`, error);
+        process.exit(1);
+    }
+};
 
-// Load candles with pre-computed edges from JSON file
-const { candles, edges } = loadCandlesWithEdges(CANDLES_WITH_EDGES_FILE);
+// Display the appropriate title based on the mode
+if (useEdges) {
+    console.log(`${colors.cyan}--- Instant Pivot Detection Test with Pre-Computed Edge Data ---${colors.reset}`);
+} else {
+    console.log(`${colors.cyan}--- Instant Pivot Detection Test with Standard CSV Data ---${colors.reset}`);
+}
+
+// Load candles based on useEdges configuration
+const { candles, edges } = useEdges 
+    ? loadCandlesWithEdges(CANDLES_WITH_EDGES_FILE)
+    : loadCandlesFromCSV(CSV_DATA_FILE);
 
 // Display trade configuration at the top
 console.log(`${colors.cyan}--- Trade Configuration ---${colors.reset}`);
@@ -398,7 +492,7 @@ const getCurrentEdgeData = (currentPrice, candle, edges, timeframes) => {
     }
     
     // If no pre-computed edges, return empty result
-    console.warn('No pre-computed edge data found for candle:', new Date(candle.time).toLocaleString());
+    // console.warn('No pre-computed edge data found for candle:', new Date(candle.time).toLocaleString());
     return {};
 };
 
@@ -432,7 +526,7 @@ async function runTest() {
     // --- Trade State Initialization ---
     let capital = tradeConfig.initialCapital;
     const trades = [];
-    let activeTrade = null;
+    const openTrades = []; // Array to hold multiple concurrent trades
     let tradeMaxDrawdown = 0;
     let tradeMaxProfit = 0;
 
@@ -659,31 +753,33 @@ async function runTest() {
         }
 
         // --- Active Trade Management ---
-        if (activeTrade) {
+        // Process all open trades
+        for (let j = openTrades.length - 1; j >= 0; j--) {
+            const trade = openTrades[j];
             let tradeClosed = false;
             let exitPrice = null;
             let result = '';
             
             // Track maximum favorable and unfavorable price movements
-            if (activeTrade.type === 'long') {
+            if (trade.type === 'long') {
                 // For long trades: favorable = price goes up, unfavorable = price goes down
-                const currentFavorable = (currentCandle.high - activeTrade.entryPrice) / activeTrade.entryPrice * 100;
-                const currentUnfavorable = (currentCandle.low - activeTrade.entryPrice) / activeTrade.entryPrice * 100;
+                const currentFavorable = (currentCandle.high - trade.entryPrice) / trade.entryPrice * 100;
+                const currentUnfavorable = (currentCandle.low - trade.entryPrice) / trade.entryPrice * 100;
                 
-                activeTrade.maxFavorable = Math.max(activeTrade.maxFavorable, currentFavorable);
-                activeTrade.maxUnfavorable = Math.min(activeTrade.maxUnfavorable, currentUnfavorable);
+                trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
+                trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
             } else { // short
                 // For short trades: favorable = price goes down, unfavorable = price goes up
-                const currentFavorable = (activeTrade.entryPrice - currentCandle.low) / activeTrade.entryPrice * 100;
-                const currentUnfavorable = (activeTrade.entryPrice - currentCandle.high) / activeTrade.entryPrice * 100;
+                const currentFavorable = (trade.entryPrice - currentCandle.low) / trade.entryPrice * 100;
+                const currentUnfavorable = (trade.entryPrice - currentCandle.high) / trade.entryPrice * 100;
                 
-                activeTrade.maxFavorable = Math.max(activeTrade.maxFavorable, currentFavorable);
-                activeTrade.maxUnfavorable = Math.min(activeTrade.maxUnfavorable, currentUnfavorable);
+                trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
+                trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
             }
 
             // Check for trade timeout if maxTradeTimeMinutes is enabled (greater than 0)
             if (tradeConfig.maxTradeTimeMinutes > 0) {
-                const tradeTimeMs = currentCandle.time - activeTrade.entryTime;
+                const tradeTimeMs = currentCandle.time - trade.entryTime;
                 const tradeTimeMinutes = tradeTimeMs / (1000 * 60);
                 
                 if (tradeTimeMinutes >= tradeConfig.maxTradeTimeMinutes) {
@@ -694,39 +790,39 @@ async function runTest() {
             }
 
             if (!tradeClosed) { // Only check TP/SL if not already closed due to timeout
-                if (activeTrade.type === 'long') {
-                    if (currentCandle.high >= activeTrade.takeProfitPrice) {
+                if (trade.type === 'long') {
+                    if (currentCandle.high >= trade.takeProfitPrice) {
                         tradeClosed = true;
-                        exitPrice = activeTrade.takeProfitPrice;
+                        exitPrice = trade.takeProfitPrice;
                         result = 'TP';
-                    } else if (currentCandle.low <= activeTrade.stopLossPrice) {
+                    } else if (currentCandle.low <= trade.stopLossPrice) {
                         tradeClosed = true;
-                        exitPrice = activeTrade.stopLossPrice;
+                        exitPrice = trade.stopLossPrice;
                         result = 'SL';
                     }
                 } else { // short
-                    if (currentCandle.low <= activeTrade.takeProfitPrice) {
+                    if (currentCandle.low <= trade.takeProfitPrice) {
                         tradeClosed = true;
-                        exitPrice = activeTrade.takeProfitPrice;
+                        exitPrice = trade.takeProfitPrice;
                         result = 'TP';
-                    } else if (currentCandle.high >= activeTrade.stopLossPrice) {
+                    } else if (currentCandle.high >= trade.stopLossPrice) {
                         tradeClosed = true;
-                        exitPrice = activeTrade.stopLossPrice;
+                        exitPrice = trade.stopLossPrice;
                         result = 'SL';
                     }
                 }
             }
 
             if (tradeClosed) {
-                const pnlPct = (activeTrade.type === 'long' ? (exitPrice - activeTrade.entryPrice) / activeTrade.entryPrice : (activeTrade.entryPrice - exitPrice) / activeTrade.entryPrice) * tradeConfig.leverage;
-                const grossPnl = activeTrade.size * pnlPct;
-                const fee = (activeTrade.size * tradeConfig.leverage * (tradeConfig.totalMakerFee / 100));
+                const pnlPct = (trade.type === 'long' ? (exitPrice - trade.entryPrice) / trade.entryPrice : (trade.entryPrice - exitPrice) / trade.entryPrice) * tradeConfig.leverage;
+                const grossPnl = trade.size * pnlPct;
+                const fee = (trade.size * tradeConfig.leverage * (tradeConfig.totalMakerFee / 100));
                 const pnl = grossPnl - fee;
                 
                 capital += pnl;
 
                 const resultColor = result === 'TP' ? colors.green : colors.red;
-                const tradeType = activeTrade.type.toUpperCase();
+                const tradeType = trade.type.toUpperCase();
                 const pnlText = `${resultColor}${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}${colors.reset}`;
                 // Only log trade details if showTradeDetails is enabled
                 if (tradeConfig.showTradeDetails) {
@@ -734,7 +830,7 @@ async function runTest() {
                 }
 
                 trades.push({
-                    ...activeTrade,
+                    ...trade,
                     exitPrice,
                     exitTime: currentCandle.time,
                     exitIndex: i,
@@ -745,7 +841,9 @@ async function runTest() {
                     fee,
                     capitalAfter: capital
                 });
-                activeTrade = null;
+                
+                // Remove this trade from openTrades array
+                openTrades.splice(j, 1);
             }
         }
 
@@ -789,12 +887,33 @@ async function runTest() {
                 };
                 
                 // --- Open Short Trade ---
-                if (!isFirstPivot && !activeTrade && (tradeConfig.direction === 'sell' || tradeConfig.direction === 'both')) {
-                    activeTrade = createTrade('short', currentCandle, lastPivot, i, capital, tradeConfig);
-                    
-                    // Only log limit order information if showLimits is enabled
-                    if (tradeConfig.showLimits) {
-                        console.log(`  ${colors.yellow}└─> [SHORT] Entry: ${activeTrade.entryPrice.toFixed(2)} | Size: ${activeTrade.size.toFixed(2)} | TP: ${activeTrade.takeProfitPrice.toFixed(2)} | SL: ${activeTrade.stopLossPrice.toFixed(2)}${colors.reset}`);
+                if (!isFirstPivot && (tradeConfig.direction === 'sell' || tradeConfig.direction === 'both')) {
+                    // Check if we can open a new trade based on maxConcurrentTrades
+                    if (openTrades.length < tradeConfig.maxConcurrentTrades) {
+                        // Calculate available capital for this trade
+                        const usedCapital = openTrades.reduce((sum, trade) => sum + trade.size, 0);
+                        const availableCapital = capital - usedCapital;
+                        
+                        // Determine trade size based on positionSizingMode
+                        let tradeSize = 0;
+                        if (tradeConfig.positionSizingMode === 'fixed' && tradeConfig.amountPerTrade) {
+                            // Use fixed amount, but check against available capital
+                            tradeSize = Math.min(tradeConfig.amountPerTrade, availableCapital);
+                        } else {
+                            // Use percentage of total capital (default mode)
+                            tradeSize = availableCapital * (tradeConfig.riskPerTrade / 100);
+                        }
+                        
+                        // Only open trade if we have enough capital
+                        if (tradeSize > 0) {
+                            const trade = createTrade('short', currentCandle, lastPivot, i, tradeSize, tradeConfig);
+                            openTrades.push(trade);
+                            
+                            // Only log limit order information if showLimits is enabled
+                            if (tradeConfig.showLimits) {
+                                console.log(`  ${colors.yellow}└─> [SHORT] Entry: ${trade.entryPrice.toFixed(2)} | Size: ${trade.size.toFixed(2)} | TP: ${trade.takeProfitPrice.toFixed(2)} | SL: ${trade.stopLossPrice.toFixed(2)}${colors.reset}`);
+                            }
+                        }
                     }
                 }
             }
@@ -835,12 +954,31 @@ async function runTest() {
                 lastPivot = { type: 'low', price: candles[i].low, time: candles[i].time, index: i, edges: pivotEdgeData };
                 
                 // Open a long trade if conditions are met
-                if (!isFirstPivot && !activeTrade) {
-                    if (tradeConfig.direction === 'buy' || tradeConfig.direction === 'both') {
-                        activeTrade = createTrade('long', candles[i], lastPivot, i, capital, tradeConfig);
+                if (!isFirstPivot && (tradeConfig.direction === 'buy' || tradeConfig.direction === 'both')) {
+                    // Check if we can open a new trade based on maxConcurrentTrades
+                    if (openTrades.length < tradeConfig.maxConcurrentTrades) {
+                        // Calculate available capital for this trade
+                        const usedCapital = openTrades.reduce((sum, trade) => sum + trade.size, 0);
+                        const availableCapital = capital - usedCapital;
                         
-                        if (tradeConfig.showLimits) {
-                            console.log(`  ${colors.yellow}└─> [LONG]  Entry: ${activeTrade.entryPrice.toFixed(2)} | Size: ${activeTrade.size.toFixed(2)} | TP: ${activeTrade.takeProfitPrice.toFixed(2)} | SL: ${activeTrade.stopLossPrice.toFixed(2)}${colors.reset}`);
+                        // Determine trade size based on positionSizingMode
+                        let tradeSize = 0;
+                        if (tradeConfig.positionSizingMode === 'fixed' && tradeConfig.amountPerTrade) {
+                            // Use fixed amount, but check against available capital
+                            tradeSize = Math.min(tradeConfig.amountPerTrade, availableCapital);
+                        } else {
+                            // Use percentage of total capital (default mode)
+                            tradeSize = availableCapital * (tradeConfig.riskPerTrade / 100);
+                        }
+                        
+                        // Only open trade if we have enough capital
+                        if (tradeSize > 0) {
+                            const trade = createTrade('long', candles[i], lastPivot, i, tradeSize, tradeConfig);
+                            openTrades.push(trade);
+                            
+                            if (tradeConfig.showLimits) {
+                                console.log(`  ${colors.yellow}└─> [LONG]  Entry: ${trade.entryPrice.toFixed(2)} | Size: ${trade.size.toFixed(2)} | TP: ${trade.takeProfitPrice.toFixed(2)} | SL: ${trade.stopLossPrice.toFixed(2)}${colors.reset}`);
+                            }
                         }
                     }
                 }
@@ -866,39 +1004,45 @@ async function runTest() {
     // --- Trade Summary --- 
     let finalCapital = capital;
     
-    // Close any open trades at the end of backtesting using the last candle's close price
-    if (activeTrade) {
+    // Close any remaining open trades at the end of backtesting using the last candle's close price
+    if (openTrades.length > 0) {
         const endPrice = candles[candles.length - 1].close;
-        const pnlPct = (activeTrade.type === 'long' ? (endPrice - activeTrade.entryPrice) / activeTrade.entryPrice : (activeTrade.entryPrice - endPrice) / activeTrade.entryPrice) * tradeConfig.leverage;
-        const grossPnl = activeTrade.size * pnlPct;
-        const fee = (activeTrade.size * tradeConfig.leverage * (tradeConfig.totalMakerFee / 100));
-        const pnl = grossPnl - fee;
         
-        capital += pnl;
-        finalCapital = capital;
-        
-        // Always show EOB trade closing message, but only show details if showTradeDetails is enabled
         console.log(`
-${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
-        if (tradeConfig.showTradeDetails) {
-            console.log(`  └─> [EOB] ${activeTrade.type.toUpperCase()} trade closed @ ${endPrice.toFixed(2)}. PnL: ${(pnl >= 0 ? colors.green : colors.red)}${pnl.toFixed(2)}${colors.reset}`);
-        }
+${colors.yellow}Closing ${openTrades.length} open trade${openTrades.length > 1 ? 's' : ''} at end of backtest.${colors.reset}`);
         
-        // Add the closed trade to the trades array
-        trades.push({
-            ...activeTrade,
-            exitPrice: endPrice,
-            exitTime: candles[candles.length - 1].time,
-            exitIndex: candles.length - 1,
-            status: 'closed',
-            result: 'EOB', // End Of Backtest
-            grossPnl,
-            pnl,
-            fee,
-            capitalAfter: capital
+        // Process each open trade
+        openTrades.forEach(trade => {
+            const pnlPct = (trade.type === 'long' ? (endPrice - trade.entryPrice) / trade.entryPrice : (trade.entryPrice - endPrice) / trade.entryPrice) * tradeConfig.leverage;
+            const grossPnl = trade.size * pnlPct;
+            const fee = (trade.size * tradeConfig.leverage * (tradeConfig.totalMakerFee / 100));
+            const pnl = grossPnl - fee;
+            
+            capital += pnl;
+            
+            // Only show details if showTradeDetails is enabled
+            if (tradeConfig.showTradeDetails) {
+                console.log(`  └─> [EOB] ${trade.type.toUpperCase()} trade closed @ ${endPrice.toFixed(2)}. PnL: ${(pnl >= 0 ? colors.green : colors.red)}${pnl.toFixed(2)}${colors.reset}`);
+            }
+            
+            // Add the closed trade to the trades array
+            trades.push({
+                ...trade,
+                exitPrice: endPrice,
+                exitTime: candles[candles.length - 1].time,
+                exitIndex: candles.length - 1,
+                status: 'closed',
+                result: 'EOB', // End Of Backtest
+                grossPnl,
+                pnl,
+                fee,
+                capitalAfter: capital
+            });
         });
         
-        activeTrade = null;
+        // Clear the openTrades array
+        openTrades.length = 0;
+        finalCapital = capital;
     }
 
     // Define regularTrades and eobTrades at the top level
@@ -1146,16 +1290,18 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
 
     // Calculate trade duration statistics if there are regular trades
     if (regularTrades.length > 0) {
-        // Get durations in milliseconds for each trade
-        const tradeDurations = regularTrades.map(trade => trade.exitTime - trade.entryTime);
+        // Get durations in number of candles for each trade
+        const tradeDurations = regularTrades.map(trade => trade.exitIndex - trade.entryIndex);
+        
+        // Convert candle count to actual time duration based on interval
+        const tradeDurationsMs = tradeDurations.map(candles => candles * candleDurationMs);
         
         // Find min, max, and average durations
-        const minDurationMs = Math.min(...tradeDurations);
-        const maxDurationMs = Math.max(...tradeDurations);
-        const avgDurationMs = tradeDurations.reduce((sum, duration) => sum + duration, 0) / tradeDurations.length;
+        const minDurationMs = Math.min(...tradeDurationsMs);
+        const maxDurationMs = Math.max(...tradeDurationsMs);
+        const avgDurationMs = tradeDurationsMs.reduce((sum, duration) => sum + duration, 0) / tradeDurationsMs.length;
         
         // Use the formatDuration function defined at the top level
-
         
         console.log(`\n${colors.cyan}--- Trade Duration Statistics ---${colors.reset}`);
         console.log(`Shortest Trade: ${colors.yellow}${formatDuration(minDurationMs)}${colors.reset}`);
@@ -1167,9 +1313,10 @@ ${colors.yellow}Closing open trade at end of backtest.${colors.reset}`)
 
 
     if (candles.length > 0) {
-        const firstCandleTime = candles[0].time;
-        const lastCandleTime = candles[candles.length - 1].time;
-        const elapsedMs = lastCandleTime - firstCandleTime;
+        // Calculate total elapsed time using candle count multiplied by interval duration
+        // This is more accurate than using timestamps which might have gaps
+        const candleCount = candles.length;
+        const elapsedMs = candleCount * candleDurationMs;
 
         const days = Math.floor(elapsedMs / (1000 * 60 * 60 * 24));
         const hours = Math.floor((elapsedMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));

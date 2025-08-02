@@ -1,5 +1,150 @@
 # Issues and Solutions Log
 
+## 39. Incorrect Time Calculations for Variable Candle Intervals
+
+**Date:** August 2, 2025
+
+**Problem:** Trade durations and elapsed time calculations in pivotBacktester.js did not respect the candle interval setting in config.js, leading to incorrect time statistics when using intervals other than '1m'. When switching to larger intervals like '1h' or '1d', the backtest summary would incorrectly report trade durations as if all candles were 1-minute candles.
+
+**Root Cause:** Two main issues were identified:
+
+1. The duration calculation used raw timestamp differences without scaling by the actual candle interval:
+   ```javascript
+   // Before: Using raw timestamps without respect to interval
+   const tradeDurations = regularTrades.map(trade => trade.exitTime - trade.entryTime);
+   ```
+
+2. The candle limit calculation in config.js always assumed 1-minute candles:
+   ```javascript
+   // Before: Static calculation assuming 1-minute candles
+   const monthlimit = 1;
+   const weeklimit = monthlimit * 4;
+   const daylimit = weeklimit * 7;
+   const hourlimit = daylimit * 24;
+   const minlimit = hourlimit * 60; // Always converting to minutes
+   ```
+
+**Fix:**
+
+1. Added a utility function to convert interval strings to milliseconds:
+   ```javascript
+   // Function to convert interval string to milliseconds
+   const intervalToMs = (interval) => {
+       const unit = interval.slice(-1);
+       const value = parseInt(interval.slice(0, -1));
+       
+       switch(unit) {
+           case 'm': return value * 60 * 1000;             // minutes
+           case 'h': return value * 60 * 60 * 1000;        // hours
+           case 'd': return value * 24 * 60 * 60 * 1000;   // days
+           case 'w': return value * 7 * 24 * 60 * 60 * 1000; // weeks
+           default: return value * 60 * 1000;              // default to minutes
+       }
+   };
+   ```
+
+2. Modified trade duration calculations to use candle index differences multiplied by the interval duration:
+   ```javascript
+   // Get durations in number of candles for each trade
+   const tradeDurations = regularTrades.map(trade => trade.exitIndex - trade.entryIndex);
+   
+   // Convert candle count to actual time duration based on interval
+   const tradeDurationsMs = tradeDurations.map(candles => candles * candleDurationMs);
+   ```
+
+3. Updated the elapsed time calculation to use candle count instead of timestamps:
+   ```javascript
+   // Calculate total elapsed time using candle count multiplied by interval duration
+   const candleCount = candles.length;
+   const elapsedMs = candleCount * candleDurationMs;
+   ```
+
+4. Completely revamped the candle limit calculation in config.js to dynamically adjust based on the interval:
+   ```javascript
+   // Helper function to convert interval string to number of candles per time period
+   const getIntervalMultiplier = (intervalStr) => {
+       // Parse the interval string and calculate appropriate multipliers
+       // ...
+   };
+   
+   // Get the multipliers based on current interval
+   const multiplier = getIntervalMultiplier(time);
+   
+   // Calculate limits in terms of number of candles
+   const monthlimit = 1; // Base unit - 1 month
+   const minlimit = Math.floor(monthlimit * multiplier.perMonth); // Total candles for the month
+   ```
+
+**Benefits:**
+- Accurate trade duration statistics regardless of candle interval (1m, 5m, 15m, 1h, 4h, 1d, etc.)
+- Consistent and reliable time elapsed reporting for backtest periods
+- Proper calculation of candle limits when setting monthlimit, ensuring the correct number of candles are loaded
+- Dynamically adapts to any candle interval specified in config.js
+- Eliminates misleading duration statistics in backtest summaries
+
+## 38. Limited Data Source Flexibility in pivotBacktester.js
+
+**Date:** August 1, 2025
+
+**Problem:** The pivotBacktester.js file was hardcoded to only use pre-computed candle data with edges from a JSON file. This limited flexibility for testing and development, especially when users wanted to work with standard candle data without pre-computing edges.
+
+**Root Cause:** The data loading logic in pivotBacktester.js had no conditional path to choose between different data sources:
+
+```javascript
+// Before: Hardcoded to use only pre-computed edge data from JSON file
+console.log(`${colors.cyan}--- Instant Pivot Detection Test with Pre-Computed Edge Data ---${colors.reset}`);
+
+// Load candles with pre-computed edges from JSON file
+const { candles, edges } = loadCandlesWithEdges(CANDLES_WITH_EDGES_FILE);
+```
+
+**Fix:** 
+1. Added a new configuration flag `useEdges` in config.js
+2. Created a new function `loadCandlesFromCSV()` to load standard candle data
+3. Modified the main code to conditionally use either data source based on the config flag
+
+```javascript
+// In config.js
+export const useEdges = true;  // Toggle between pre-computed edges (true) and standard CSV (false)
+
+// In pivotBacktester.js - Import the flag
+import { useEdges } from './config/config.js';
+
+// Define both possible data source paths
+const CANDLES_WITH_EDGES_FILE = path.join(__dirname, 'data', `${symbol}_${interval}_${limit}_candles_with_edges.json`);
+const CSV_FILE_PATH = path.join(__dirname, 'data', symbol, `${interval}.csv`);
+
+// Add new function to load candles from CSV
+const loadCandlesFromCSV = (filePath) => {
+    try {
+        // Implementation details for CSV parsing
+        const data = fs.readFileSync(filePath, 'utf8');
+        // ... CSV parsing code ...
+        return { candles, edges: {} }; // Return empty edges object
+    } catch (error) {
+        console.error(`Failed to load candles from CSV ${filePath}:`, error);
+        process.exit(1);
+    }
+};
+
+// Conditional data loading based on config
+let candles, edges;
+if (useEdges) {
+    console.log(`${colors.cyan}--- Using Pre-Computed Edge Data ---${colors.reset}`);
+    ({ candles, edges } = loadCandlesWithEdges(CANDLES_WITH_EDGES_FILE));
+} else {
+    console.log(`${colors.cyan}--- Using Standard CSV Candle Data (No Edges) ---${colors.reset}`);
+    ({ candles, edges } = loadCandlesFromCSV(CSV_FILE_PATH));
+}
+```
+
+**Benefits:**
+- Added flexibility to work with either pre-computed edge data or standard CSV candle data
+- Made the system more developer-friendly with a simple configuration toggle
+- Improved code organization with dedicated loading functions for each data source
+- Clear console output indicating which data source is being used
+- Maintained backward compatibility with existing edge-based workflows
+
 ## 35. Function Reference Error in Precomputed Edge Data Implementation
 
 **Date:** July 30, 2025

@@ -576,4 +576,17 @@ The `tradeconfig.js` file contains settings for trade execution:
       - **Average Trade**: The mean duration across all completed trades.
       - These metrics help optimize trading frequency and holding period strategies.
 
+#### Interval-Aware Time Calculation (August 2025)
+- **Issue**: Previously, trade durations and elapsed times were calculated assuming all candles represented 1-minute intervals, regardless of the actual interval setting in config.js. This resulted in misleading duration statistics when using larger intervals like 1h or 1d.
+- **Fix**: Enhanced the time calculation system in `pivotBacktester.js` to dynamically adjust for the candle interval specified in config.js.
+- **Implementation**:
+  - Added `intervalToMs()` function to convert interval strings (e.g., '1m', '1h', '1d') into millisecond durations
+  - Updated duration calculations to use actual candle index differences multiplied by the interval duration
+  - Modified elapsed time calculation to use candle count instead of raw timestamps, eliminating potential gaps in historical data
+  - The `formatDuration()` function was preserved but now works with correctly scaled time values
+- **Benefits**:
+  - Accurate trade duration statistics regardless of candle interval (1m, 5m, 15m, 1h, 4h, 1d, etc.)
+  - Consistent and reliable time elapsed reporting for backtest periods
+  - Proper scaling of all time-based metrics when changing candle interval in config.js
+
 This tool is essential for validating the end-to-end profitability of a pivot-based trading strategy, including the critical impact of leverage and fees.

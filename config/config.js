@@ -2,20 +2,66 @@
 
 // Data source settings
 export const useLocalData = true;  // Force API data fetching
+export const useEdges = false;    // Use pre-computed edge data; if false, use standard CSV candles
 
 // API settings
 export const api = 'bybit'; // 'binance' or 'bybit'
 // export const api = 'binance'; // 'binance' or 'bybit'
-export const time = '1m';
+export const time = '4h';
 export const symbol = 'BTCUSDT';
 
 // candle limit below
 
-const weeklimit = 4;
+// Helper function to convert interval string to number of candles per time period
+const getIntervalMultiplier = (intervalStr) => {
+    // Parse the interval string to get the unit and value
+    const unit = intervalStr.slice(-1);
+    const value = parseInt(intervalStr.slice(0, -1)) || 1;
+    
+    // Calculate how many candles represent each time unit based on the interval
+    switch(unit) {
+        case 'm': // minutes
+            return {
+                perHour: 60 / value,
+                perDay: (24 * 60) / value,
+                perWeek: (7 * 24 * 60) / value,
+                perMonth: (30 * 24 * 60) / value
+            };
+        case 'h': // hours
+            return {
+                perHour: 1 / value,
+                perDay: 24 / value,
+                perWeek: (7 * 24) / value,
+                perMonth: (30 * 24) / value
+            };
+        case 'd': // days
+            return {
+                perHour: 1 / (value * 24),
+                perDay: 1 / value,
+                perWeek: 7 / value,
+                perMonth: 30 / value
+            };
+        default: // default to minutes if unknown
+            return {
+                perHour: 60,
+                perDay: 24 * 60,
+                perWeek: 7 * 24 * 60,
+                perMonth: 30 * 24 * 60
+            };
+    }
+};
+
+// Get the multipliers based on current interval
+const multiplier = getIntervalMultiplier(time);
+
+// Calculate limits in terms of number of candles
+const monthlimit = 5; // Base unit - 1 month
+const weeklimit = monthlimit * multiplier.perMonth / multiplier.perWeek;
+// const weeklimit = 8;
 const daylimit = weeklimit * 7;
 // const daylimit = 7;
 const hourlimit = daylimit * 24;
-const minlimit = hourlimit * 60;
+const minlimit = Math.floor(monthlimit * multiplier.perMonth); // Total candles for the month
  
 export const limit = minlimit;
 // export const limit = 110;

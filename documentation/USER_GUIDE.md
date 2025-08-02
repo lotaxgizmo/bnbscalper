@@ -5,6 +5,20 @@ A comprehensive trading toolkit for BNB/USDT scalping, featuring real-time price
 
 ## Configuration
 
+### Multiple Concurrent Trades (New!)
+You can now configure the backtester to handle multiple trades simultaneously:
+- Set `maxConcurrentTrades` in `tradeconfig.js` to control how many trades can be open at once
+  - Default: `1` (original behavior)
+  - Example: `3` allows up to three trades to be open simultaneously
+
+### Position Sizing Options (New!)
+Control how trade sizes are calculated with these options in `tradeconfig.js`:
+- `positionSizingMode`: Choose between:
+  - `'percent'`: Each trade uses X% of capital (uses `riskPerTrade` setting)
+  - `'fixed'`: Each trade uses a consistent amount of capital
+- `amountPerTrade`: Fixed USDT amount per trade when using fixed mode
+  - Example: `10` will use exactly 10 USDT per trade (if available)
+
 ### Data Source Settings
 - Set `useLocalData` in `config.js` to control data source:
   - `false`: Live data from Bybit/Binance API (default)

@@ -10,20 +10,36 @@ export const tradeConfig = {
     direction: 'both',
 
     // Profit and loss settings (in %)
-    takeProfit: 0.2,    // Take profit at 0.2%
-    stopLoss: 5,      // Stop loss at 0.1%
+    takeProfit: 0.6,    // Take profit at 0.2%
+    stopLoss: 1,      // Stop loss at 0.1%
 
     // Leverage multiplier
-    leverage: 30,        // 1x leverage (spot trading)
+    leverage: 1,        // 1x leverage (spot trading)
     
     // Trading fees
     totalMakerFee: 0.06, // 0.04% maker fee
     
     // Capital settings
-    initialCapital: 100,  // Starting capital in USDT
-    riskPerTrade: 100,   // Percentage of capital to risk per trade (100 = full capital)
+    // initialCapital = Starting capital in USDT
     
-
+    // Multi-trade settings
+    maxConcurrentTrades: 1, // Number of trades that can be open at once (default: 1)
+    positionSizingMode: 'percent', // 'percent' or 'fixed'
+    amountPerTrade: 100,    // Fixed amount per trade in USDT (only used if positionSizingMode is 'fixed')
+    
+    // riskPerTrade = Percentage of capital to risk per trade (100 = full capital)
+    // initialCapital: 1000, 
+    // riskPerTrade: 10,   
+    // initialCapital: 300, 
+    // riskPerTrade: 54.39,   
+    // initialCapital: 200, 
+    // riskPerTrade: 67.235,   
+    initialCapital: 100, 
+    riskPerTrade: 100,   
+    // initialCapital: 200, 
+    // riskPerTrade: 50,   
+    
+// 2110
 
     // Trade timeout (in minutes) - set to 0 to disable
     maxTradeTimeMinutes: minute,   // Close trade after this many minutes if neither TP nor SL is hit

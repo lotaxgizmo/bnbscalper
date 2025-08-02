@@ -33,6 +33,20 @@ To maximize effectiveness for scalping, the pivot detection logic has been optim
 
 ## Testing Tools
 
+### Configurable Data Source (Added August 1, 2025)
+
+You can now choose between using pre-computed edge data or standard CSV candle data by setting the `useEdges` flag in `config.js`:
+
+```javascript
+// In config.js
+export const useEdges = true;    // Use pre-computed edge data; if false, use standard CSV candles
+```
+
+- When `useEdges` is `true`: Uses pre-computed edge data from JSON file
+- When `useEdges` is `false`: Uses standard CSV candle data without edges
+
+This provides flexibility in backtesting and development, allowing you to work with either detailed edge analysis or simpler candle data depending on your needs.
+
 ### Pre-computed Edge Data for Faster Backtesting (Added July 30, 2025)
 
 The system now supports loading pre-computed candle data with edge calculations from a JSON file, eliminating the need to recalculate edges during backtesting:
@@ -421,6 +435,14 @@ When `showLimits` is enabled in config:
 #### Setup
 1. Run `node generators/generateEdgePivots.js` to calculate edge data
 2. Run `node backtestWithEdges.js` to backtest with edge analysis
+
+#### Interval-Aware Calculations
+
+The system now correctly handles time calculations for any candle interval ('1m', '5m', '15m', '30m', '1h', '4h', '1d'):
+
+- **Dynamic Time Calculation**: Trade durations and elapsed time are now correctly calculated based on the candle interval set in `config.js`
+- **Accurate Limits**: Candle limits automatically adjust based on the interval (e.g., '1d' interval will use 30 candles for 1 month instead of 43,200 candles)
+- **Proper Duration Statistics**: The trade duration statistics (shortest, longest, average) now correctly reflect real-world time regardless of interval
 
 #### Edge Timeframe Calculations & Performance Optimization
 
