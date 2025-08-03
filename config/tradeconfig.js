@@ -11,10 +11,10 @@ export const tradeConfig = {
 
     // Profit and loss settings (in %)
     takeProfit: 0.2,     
-    stopLoss: 1,       
+    stopLoss: 0.5,       
 
     // Leverage multiplier
-    leverage: 25,        // 1x leverage (spot trading)
+    leverage: 1,        // 1x leverage (spot trading)
     
     // Trading fees
     totalMakerFee: 0.06, // 0.04% maker fee

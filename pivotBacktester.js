@@ -820,6 +820,14 @@ async function runTest() {
                 const pnl = grossPnl - fee;
                 
                 capital += pnl;
+                
+                // Check if account is liquidated
+                if (capital <= 0) {
+                    capital = 0; // Ensure capital never goes negative
+                    
+                    // Log liquidation event
+                    console.log(`  ${colors.red}${colors.bold}[LIQUIDATION] Account liquidated! Trading stopped.${colors.reset}`);
+                }
 
                 const resultColor = result === 'TP' ? colors.green : colors.red;
                 const tradeType = trade.type.toUpperCase();
@@ -904,8 +912,8 @@ async function runTest() {
                             tradeSize = availableCapital * (tradeConfig.riskPerTrade / 100);
                         }
                         
-                        // Only open trade if we have enough capital
-                        if (tradeSize > 0) {
+                        // Only open trade if we have enough capital and account is not liquidated
+                        if (tradeSize > 0 && capital > 0) {
                             const trade = createTrade('short', currentCandle, lastPivot, i, tradeSize, tradeConfig);
                             openTrades.push(trade);
                             
@@ -971,8 +979,8 @@ async function runTest() {
                             tradeSize = availableCapital * (tradeConfig.riskPerTrade / 100);
                         }
                         
-                        // Only open trade if we have enough capital
-                        if (tradeSize > 0) {
+                        // Only open trade if we have enough capital and account is not liquidated
+                        if (tradeSize > 0 && capital > 0) {
                             const trade = createTrade('long', candles[i], lastPivot, i, tradeSize, tradeConfig);
                             openTrades.push(trade);
                             
@@ -998,8 +1006,14 @@ async function runTest() {
     const totalUpwardChange = ((highestHigh - firstPrice) / firstPrice) * 100;
     const totalDownwardChange = ((lowestLow - firstPrice) / firstPrice) * 100;
     const netPriceRange = ((highestHigh - lowestLow) / lowestLow) * 100;
-
-
+    
+    // --- Check for liquidation (capital <= 0) ---
+    // If capital is ever 0 or negative, account is liquidated
+    const isLiquidated = capital <= 0;
+    if (isLiquidated) {
+        // Ensure capital is exactly 0 if liquidated
+        capital = 0;
+    }
 
     // --- Trade Summary --- 
     let finalCapital = capital;
@@ -1011,14 +1025,28 @@ async function runTest() {
         console.log(`
 ${colors.yellow}Closing ${openTrades.length} open trade${openTrades.length > 1 ? 's' : ''} at end of backtest.${colors.reset}`);
         
-        // Process each open trade
+        // Check if account is already liquidated before processing EOB trades
+        const alreadyLiquidated = capital <= 0;
+        
+        // Process each open trade only if not already liquidated
         openTrades.forEach(trade => {
             const pnlPct = (trade.type === 'long' ? (endPrice - trade.entryPrice) / trade.entryPrice : (trade.entryPrice - endPrice) / trade.entryPrice) * tradeConfig.leverage;
             const grossPnl = trade.size * pnlPct;
             const fee = (trade.size * tradeConfig.leverage * (tradeConfig.totalMakerFee / 100));
             const pnl = grossPnl - fee;
             
-            capital += pnl;
+            // Only update capital if not already liquidated
+            if (!alreadyLiquidated) {
+                capital += pnl;
+                
+                // Check if this trade caused liquidation
+                if (capital <= 0) {
+                    capital = 0; // Ensure capital never goes negative
+                    
+                    // Log liquidation event
+                    console.log(`  ${colors.red}${colors.bold}[LIQUIDATION] Account liquidated! Trading stopped.${colors.reset}`);
+                }
+            }
             
             // Only show details if showTradeDetails is enabled
             if (tradeConfig.showTradeDetails) {

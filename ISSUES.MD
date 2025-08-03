@@ -1,5 +1,190 @@
 # Issues and Solutions Log
 
+## 42. Unrealistic Account Behavior with Negative Capital [FIXED]
+
+**Date:** August 2025
+
+**Problem:** The backtesting system allowed trading accounts to reach negative capital values and continue trading, which is unrealistic as real trading accounts would be liquidated when capital reaches zero.
+
+**Evidence:**
+```
+Capital: -25.36
+Opening new trade with size: 5.00
+```
+
+**Root Cause:**
+- After trade losses, capital was updated without checking if it had fallen below zero
+- No mechanism existed to prevent new trades from being opened when account was effectively liquidated
+- This created unrealistic scenarios where trading continued with negative capital
+
+**Fix Implemented:**
+```javascript
+// Check if account is liquidated after updating capital
+capital += pnl;
+
+// Check if account is liquidated
+if (capital <= 0) {
+    capital = 0; // Ensure capital never goes negative
+    
+    // Log liquidation event
+    console.log(`  ${colors.red}${colors.bold}[LIQUIDATION] Account liquidated! Trading stopped.${colors.reset}`);
+}
+
+// Only open new trades if account is not liquidated
+if (tradeSize > 0 && capital > 0) {
+    const trade = createTrade('long', candles[i], lastPivot, i, tradeSize, tradeConfig);
+    openTrades.push(trade);
+}
+```
+
+**Additional Improvements:**
+
+1. Added final liquidation check before end-of-backtest summary:
+```javascript
+// --- Check for liquidation (capital <= 0) ---
+// If capital is ever 0 or negative, account is liquidated
+const isLiquidated = capital <= 0;
+if (isLiquidated) {
+    // Ensure capital is exactly 0 if liquidated
+    capital = 0;
+}
+```
+
+2. Enhanced EOB trade handling to respect liquidation state:
+```javascript
+// Check if account is already liquidated before processing EOB trades
+const alreadyLiquidated = capital <= 0;
+
+// Process each open trade only if not already liquidated
+openTrades.forEach(trade => {
+    // ... calculate PnL ...
+    
+    // Only update capital if not already liquidated
+    if (!alreadyLiquidated) {
+        capital += pnl;
+        
+        // Check if this trade caused liquidation
+        if (capital <= 0) {
+            capital = 0; // Ensure capital never goes negative
+            // ... liquidation message ...
+        }
+    }
+});
+```
+
+**Benefits:**
+- More realistic backtesting that matches how real trading accounts behave
+- Clear indication when a strategy would lead to liquidation
+- Prevents misleading performance metrics that assume trading can continue with negative capital
+- Better risk assessment by showing true account failure scenarios
+
+## 41. Inconsistent EOB Trade Handling in pivotBacktester.js and pivotOptimizer.js [FIXED]
+
+**Date:** August 2, 2025
+
+**Problem:** pivotBacktester.js and pivotOptimizer.js produce different results with the same TP/SL settings due to inconsistent handling of open trades at the end of backtest (EOB trades).
+
+**Evidence:**
+- pivotBacktester.js output:
+```
+Total Closed Trades: 8 (excluding 1 EOB trade)
+Trade Results: TP: 6 | SL: 2 | TIMEOUT: 0
+Wins: 6 | Losses: 2
+Win Rate: 75.00%
+Total PnL: 18.50 (after 0.52 in fees)
+Initial Capital: 100.00
+Final Capital: 118.50 (excluding EOB trades)
+Overall Profit: 18.50% (excluding EOB trades)
+```
+
+- pivotOptimizer.js output (with same TP: 4%, SL: 3%):
+```
+Total Trades: 9, Win Rate: 77.78%, Profit Factor: 4.20, Net Gain: 21.63%
+```
+
+**Root Cause:** 
+- pivotBacktester.js explicitly identifies and excludes EOB trades (open trades at end of backtest) from its win rate and profit calculations
+- pivotOptimizer.js includes all trades in its metrics, including those that would be EOB trades
+- This results in different trade counts (8 vs 9) and different profit figures (18.50% vs 21.63%) despite using identical TP/SL settings
+
+**Fix Implemented:**
+- Modified pivotOptimizer.js to handle EOB trades the same way as pivotBacktester.js:
+```javascript
+// In runBacktest function of pivotOptimizer.js
+// Identify EOB trades (trades still open at end of backtest)
+const eobTrades = closedTrades.filter(trade => trade.status === 'EOB');
+const regularTrades = closedTrades.filter(trade => trade.status !== 'EOB');
+
+// Calculate metrics excluding EOB trades
+const winRate = regularTrades.length > 0 ? 
+    (regularTrades.filter(t => t.profit > 0).length / regularTrades.length) * 100 : 0;
+
+// Adjust final capital to exclude EOB trades
+const eobPnl = eobTrades.reduce((acc, t) => acc + t.pnl, 0);
+const adjustedFinalCapital = finalCapital - eobPnl;
+```
+
+**Benefits:**
+- Consistent metrics between backtester and optimizer tools
+- More accurate comparison of different TP/SL combinations
+- Prevents misleading optimization results caused by including unresolved trades
+- Helps ensure strategy optimization decisions are based on comparable data
+
+## 40. Memory Management in pivotOptimizer.js for Large Parameter Ranges
+
+**Date:** August 15, 2025
+
+**Problem:** When running pivotOptimizer.js with very fine-grained parameter ranges (small step values), the script might consume excessive memory due to the large number of backtests and results being stored in memory before writing to CSV.
+
+**Root Cause:** The pivotOptimizer.js script stores all optimization results in an array before writing them to CSV at the end of execution:
+
+```javascript
+// Before: Stores all results in memory before writing to CSV
+const results = [];
+
+// In nested loops
+for (let tp = tpRange.start; tp <= tpRange.end; tp += tpRange.step) {
+  for (let sl = slRange.start; sl <= slRange.end; sl += slRange.step) {
+    // Run backtest and store result
+    const result = runBacktest(tp, sl);
+    results.push(result);
+  }
+}
+
+// Write all results at once
+writeResultsToCsv(results);
+```
+
+**Fix:** Modified the script to write results to CSV incrementally after each backtest completes, rather than storing all results in memory:
+
+```javascript
+// After: Create CSV file and headers at the beginning
+const csvFilePath = path.join(process.cwd(), `pivot_optimization_${timestamp}.csv`);
+const csvHeaders = 'takeProfit,stopLoss,winRate,profitFactor,netGainPct,avgWinPct,avgLossPct,totalTrades\n';
+fs.writeFileSync(csvFilePath, csvHeaders, 'utf8');
+
+// In nested loops
+for (let tp = tpRange.start; tp <= tpRange.end; tp += tpRange.step) {
+  for (let sl = slRange.start; sl <= slRange.end; sl += slRange.step) {
+    // Run backtest and get result
+    const result = runBacktest(tp, sl);
+    
+    // Write single result immediately to CSV
+    appendResultToCsv(csvFilePath, result);
+    
+    // Store only top results in memory for final summary
+    updateTopResults(result, topResults);
+  }
+}
+```
+
+**Benefits:**
+- Significantly reduced memory consumption for large optimization runs
+- No limit to the number of parameter combinations that can be tested
+- Results are saved incrementally, so data isn't lost if the process is interrupted
+- CSV file can be analyzed while the optimization is still running
+- Maintains a small in-memory array of only the top-performing combinations for the final summary
+
 ## 39. Incorrect Time Calculations for Variable Candle Intervals
 
 **Date:** August 2, 2025

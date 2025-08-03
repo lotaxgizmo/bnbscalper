@@ -193,8 +193,54 @@ The EnhancedPivotTracker class is designed for real-time operation with these fe
 - Complete pivot data with price, time, and move percentage information
 - Proper handling of closing price confirmation when `confirmOnClose` is true
 
+### Pivot Parameter Optimizer
+
+A powerful tool for systematically finding optimal take profit and stop loss values for your pivot trading strategy:
+
+```bash
+node pivotOptimizer.js
+```
+
+This optimizer:
+- Runs multiple backtests with different TP/SL combinations based on ranges in `optimizerConfig.js`
+- Suppresses verbose output during individual backtests for clarity
+- Shows progress percentage and estimated completion time
+- Saves all results to a timestamped CSV file (e.g., `pivot_optimization_2025-08-15_142735.csv`)
+- Displays a summary of top 5 best performing parameter combinations at the end
+- Shows profit in both percentage and absolute dollar amounts for better financial analysis
+- Displays final capital values to easily assess total account growth
+
+#### How to Use:
+
+1. Configure your optimization ranges in `optimizerConfig.js`:
+```javascript
+export const takeProfitRange = {
+  start: 0.10,   // Starting TP value (percentage)
+  end: 0.30,     // Ending TP value (percentage)
+  step: 0.05     // Step size between values
+};
+
+export const stopLossRange = {
+  start: 0.05,   // Starting SL value (percentage)
+  end: 0.25,     // Ending SL value (percentage)
+  step: 0.05     // Step size between values
+};
+
+2. Run the optimizer:
+```bash
+node pivotOptimizer.js
+```
+
+3. Review the results:
+   - Check the console summary for the top 5 combinations
+   - Detailed CSV results are saved in the `data/optimization/` folder
+   - Files are named with the format: `optimization_results_[symbol]_[interval]_[timestamp].csv`
+
+> **TIP**: For faster optimization, consider reducing the date range by adjusting the `limit` parameter in `config/config.js` or using a larger `step` value in your ranges.
+
 ### Market Order Edge Data Test
 
+{{ ... }}
 A specialized testing tool for verifying market order edge data functionality without synthetic pivot data:
 
 ```bash
@@ -309,6 +355,18 @@ This is the primary tool for validating whether your pivot strategy is profitabl
 ### Sequential Trading: One Trade at a Time
 
 The backtesting engine is designed to simulate trading realistically by handling only **one trade at a time**. It will not open a new position if another one is already active.
+
+### Account Liquidation Simulation
+
+The backtester now includes realistic account liquidation simulation:
+
+- When capital reaches zero or becomes negative after a trade, the account is considered liquidated
+- Capital is clamped to exactly zero when liquidation occurs
+- All further trading is automatically stopped
+- A clear **[LIQUIDATION]** message appears in the console
+- This applies to both regular trades and end-of-backtest (EOB) trade closing
+
+This feature allows you to accurately assess strategies for potential liquidation risk and prevents unrealistic scenarios where trading continues with negative capital.
 
 A trade must be fully completed (either by hitting its take-profit, stop-loss, or being cancelled) before the system will look for the next trading opportunity. This ensures the backtest results accurately reflect a strategy that doesn't manage multiple concurrent positions.
 

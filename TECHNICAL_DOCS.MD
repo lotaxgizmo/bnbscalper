@@ -98,6 +98,49 @@
   - Implemented `createTrade()` function to standardize trade creation for both long and short positions
   - Updated all instances of pivot detection to use the new helper functions
   - Fixed math in edge calculation to properly handle absolute values for downward movements
+
+#### Pivot Optimizer Implementation (August 15, 2025)
+- **Implementation**: Created a dedicated script (`pivotOptimizer.js`) for systematically testing multiple take profit and stop loss combinations.
+- **Key Components**:
+  - Uses configuration ranges from `optimizerConfig.js` to define take profit and stop loss values to test
+  - Runs multiple backtests, iterating through all TP/SL combinations using nested loops
+  - Supports both edge-enhanced JSON and standard CSV candle data sources
+  - Suppresses verbose output during individual backtests for clarity
+  - Shows progress percentage during optimization runs
+  - Saves all results to a timestamped CSV file for external analysis
+  - Displays a summary of top 5 best performing combinations upon completion
+  - Shows comprehensive metrics including profit in both percentage and dollar terms
+  - Organized CSV output in `data/optimization/` folder for better file management
+
+#### End Of Backtest (EOB) Trade Handling Fix (August 2, 2025)
+- **Issue Fixed**: Modified `pivotOptimizer.js` to handle EOB trades consistently with `pivotBacktester.js`
+- **Implementation Details**:
+  - Changed trades still open at the end of backtest from 'END' to 'EOB' designation
+  - Added filtering to exclude EOB trades when calculating performance metrics:
+    ```javascript
+    // Filter out EOB trades to match pivotBacktester.js behavior
+    const regularTrades = closedTrades.filter(t => t.result !== 'EOB');
+    ```
+  - Updated all metrics calculations to use regularTrades instead of closedTrades
+  - Properly adjusted final capital calculation to exclude PnL from EOB trades:
+    ```javascript
+    // Adjust final capital by removing the impact of EOB trades
+    const eobPnl = eobTrades.reduce((acc, t) => acc + t.pnl, 0);
+    const adjustedFinalCapital = capital - eobPnl;
+    ```
+  - Enhanced output to display both percentage gains and absolute dollar amounts
+  - Modified CSV output to maintain consistency with the new metrics
+- **Benefits**:
+  - Consistent metrics between backtester and optimizer tools
+  - Proper comparison of different TP/SL combinations using the same standards
+  - More realistic performance evaluation by excluding unresolved trades
+  - Better understanding of actual profit amounts through dollar value display
+- **Benefits**:
+  - Enables data-driven parameter selection based on historical performance
+  - Provides systematic approach to strategy optimization
+  - Maintains consistent backtesting logic with `pivotBacktester.js`
+  - Creates a permanent record of test results for later reference and comparison
+  - Progress tracking gives estimated completion time for long-running optimization tests
   - Ensured pivot data objects are properly copied when creating trades to avoid reference issues
   - **Updated (July 30, 2025)**: Added `formatPercentageWithColor()` helper function to standardize color formatting for all percentage values
   - **Updated (July 30, 2025)**: Applied consistent color formatting to all edge data displays (main edges, breakout ranges, and average breakout ranges)
@@ -590,3 +633,22 @@ The `tradeconfig.js` file contains settings for trade execution:
   - Proper scaling of all time-based metrics when changing candle interval in config.js
 
 This tool is essential for validating the end-to-end profitability of a pivot-based trading strategy, including the critical impact of leverage and fees.
+
+#### Account Liquidation Simulation (August 2025)
+- **Issue**: Previously, the backtesting system allowed capital to become negative after losses, which is unrealistic as real trading accounts would be liquidated.
+- **Fix**: Added realistic account liquidation simulation to the backtester.
+- **Implementation**:
+  - Added checks after calculating P&L and updating capital to ensure capital never goes below zero
+  - If capital reaches zero or negative, it is clamped to exactly zero
+  - A clear "[LIQUIDATION]" message is shown in the console when liquidation occurs
+  - Trading is automatically stopped once liquidation occurs (no new trades will be opened)
+  - Enhanced end-of-backtest (EOB) trade handling to respect liquidation state
+  - Added final liquidation check before generating summary statistics
+  - For EOB trades, capital is only updated if the account has not already been liquidated
+  - If account was previously liquidated, EOB trades are still closed but don't affect capital
+- **Benefits**:
+  - More realistic backtesting that accurately simulates real-world trading conditions
+  - Better risk assessment by showing true account liquidation scenarios
+  - Clear indication in logs when liquidation occurs for easier analysis of failure points
+  - Prevents unrealistic scenarios where trading continues with negative capital
+  - Ensures final capital is always exactly zero after liquidation, regardless of subsequent EOB trades
