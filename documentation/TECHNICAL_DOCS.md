@@ -2,6 +2,31 @@
 
 ## Recent Updates
 
+### Refactored fronttest.js for Better Code Organization (2025-08-04)
+- Removed unused take profit and stop loss logic
+- Simplified trade management functions
+- Fixed redundant intervalValue declaration
+- Refactored WebSocket handler into smaller, focused functions:
+  * processInitialPrice: Handles the first price update
+  * handleIntervalEnd: Manages interval boundary transitions
+  * processRegularUpdate: Processes regular price updates
+- Simplified candle formatting to improve performance
+
+### Enhanced Progress Display and Time Metrics Added (2025-08-03)
+- Added percentage-based progress bar in pivotOptimizer.js
+- Implemented detailed execution time tracking and reporting
+- Added historical data timespan calculation and display
+- Reduced console output noise during backtesting
+- Supports extended historical data periods (now 3 months by default)
+
+### Parallel Processing for Pivot Optimizer Added (2025-08-03)
+- Implemented Node.js Worker Threads in pivotOptimizer.js
+- Distributes backtest combinations across multiple CPU cores
+- Automatically detects available CPU cores (leaves one core free for system)
+- Significantly improves performance for large parameter sweeps
+- Maintains same accuracy and output format as sequential version
+- Includes real-time progress tracking across all workers
+
 ### Edge Mode Toggle Added (2025-08-01)
 - Added `useEdges` flag to config.js for data source selection
 - When `true`: Uses pre-computed edge data from JSON file

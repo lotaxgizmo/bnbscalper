@@ -46,10 +46,12 @@ You can now configure the chart's timeframe in `config.js`:
 
 
 ### 1. Real-Time Price Tracking
-- Live BNB/USDT price updates
+- Live BNB/USDT price updates via fronttest.js
+- Optimized WebSocket processing for better performance
 - 24-hour high/low tracking
-- Volume monitoring
+- Volume monitoring with detailed candle information
 - Choice of Binance or Bybit data feeds
+- Simplified price tracking without unused TP/SL functionality
 
 ### 2. Renko Chart Visualization
 - Dynamic block formation based on price movements
@@ -69,6 +71,14 @@ You can now configure the chart's timeframe in `config.js`:
 - Dynamic thresholds based on market volatility
 - Protection against adverse price movements
 - Configurable cancellation sensitivity
+
+### 5. Optimization Tools
+- Parallel backtest optimization with `pivotOptimizer.js`
+- Multi-core processing for faster parameter sweeps
+- Automatically uses all available CPU cores
+- Generates comprehensive CSV result files
+- Finds optimal take-profit and stop-loss combinations
+- Displays top 5 most profitable parameter sets
 
 ## Quick Start
 

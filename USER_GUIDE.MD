@@ -1,5 +1,65 @@
 # User Guide
 
+## Recent Updates
+
+### 2025-08-05: Real-Time Pivot Trading System (Updated)
+
+**New Feature**: `pivotFronttester.js` - Live pivot detection and trading system
+
+**What it does**: 
+- Connects to live market data via WebSocket
+- Shows last 10 historical pivots for context on startup
+- Detects pivots in real-time as new candles complete
+- Automatically opens and manages trades based on pivot signals
+- Provides live monitoring of positions and capital
+
+**How to use**:
+1. Configure your trading parameters in `config/tradeconfig.js`
+2. Set pivot detection settings in `config/config.js`
+3. Run: `node pivotFronttester.js`
+4. System loads quickly (2 seconds) and shows historical pivots
+5. Monitor real-time candles as they complete each minute
+6. System will automatically execute trades when pivots are detected
+
+**Key Features**:
+- **Fast startup**: Loads in ~2 seconds (optimized from 30+ seconds)
+- **Historical context**: Shows last 10 pivots from loaded data
+- **Real-time operation**: Live candle display and pivot detection
+- **Smart display**: Respects hideCandle setting (hides price updates, shows candles)
+- **Live trade execution**: Actual position management
+- **WebSocket reliability**: Automatic reconnection
+- **Capital protection**: Liquidation monitoring
+- **Heartbeat monitoring**: Shows system status every 30 seconds
+
+**Display Behavior**:
+- **hideCandle = true**: Hides frequent price updates, shows completed candles
+- **hideCandle = false**: Shows all price updates and system heartbeat
+- Always shows: Historical pivots, completed candles, trade executions
+
+**Safety Notes**:
+- This executes real trades - use appropriate position sizing
+- Monitor capital levels and open positions
+- System includes funding rate and slippage simulation
+- All backtester settings apply to live trading
+
+### 2025-08-05: Fixed Live Monitoring Display
+
+**Issue Resolved**: The "Next candle close at" indicator in `fronttest.js` was showing incorrect timing information.
+
+**What was wrong**: When a new candle completed, the system would show the same time for both the current candle and the "next" candle close time.
+
+**What was fixed**: The timing calculation order was corrected so that:
+1. The system first calculates the next interval boundary
+2. Then displays the completed candle information
+3. Shows the correct "Next candle close at" time
+
+**User Impact**: 
+- Live monitoring now shows accurate countdown information
+- "Next candle close at" properly indicates when the next candle will complete
+- Better user experience during live trading sessions
+
+**Usage**: No configuration changes needed - the fix is automatic when running `node fronttest.js`
+
 ## Code Structure
 
 ### Pivot Backtester Architecture
@@ -7,7 +67,8 @@
 The `pivotBacktester.js` file has been refactored to improve code maintainability and reduce duplication:
 
 - **Helper Functions**:
-  - `detectPivot()`: A unified function for detecting both high and low pivots based on lookback period
+  - `detectPivot()`: A unified function for detecting both high and low pivots based on lookback period and configurable price mode
+  - `getPivotPrice()`: Helper function to extract the correct price based on detection mode (close vs extreme)
   - `formatEdgeData()`: Formats edge data consistently for display with consolidated output of closest edges, average edges, and range/total edges all on a single line for improved readability
     - Closest Edges: Shows current distance to nearest price boundaries (color-coded by direction)
     - Average Edges: Displays historical averages of total ranges (7-day for daily, 4-period for weekly/biweekly/monthly)
@@ -24,6 +85,94 @@ The `pivotBacktester.js` file has been refactored to improve code maintainabilit
 
 ## Core Trading Logic
 
+### Funding Rate and Slippage Simulation
+
+The system now includes comprehensive funding rate and slippage simulation for more realistic backtesting:
+
+#### Funding Rate Configuration
+
+```javascript
+// In tradeconfig.js
+enableFundingRate: true,        // Enable funding rate simulation
+fundingRateHours: 8,           // Funding charged every 8 hours
+fundingRatePercent: 0.01,      // 0.01% funding rate
+fundingRateMode: 'fixed',      // 'fixed' or 'variable'
+variableFundingMin: -0.05,     // Min rate for variable mode
+variableFundingMax: 0.05,      // Max rate for variable mode
+```
+
+**Funding Rate Modes**:
+- **Fixed**: Uses a constant funding rate percentage
+- **Variable**: Random funding rate between min/max range for each period
+
+#### Slippage Configuration
+
+```javascript
+// In tradeconfig.js
+enableSlippage: true,           // Enable slippage simulation
+slippagePercent: 0.02,         // Base slippage (2 basis points)
+slippageMode: 'fixed',         // 'fixed', 'variable', or 'market_impact'
+variableSlippageMin: 0.01,     // Min slippage for variable mode
+variableSlippageMax: 0.05,     // Max slippage for variable mode
+marketImpactFactor: 0.001,     // Additional slippage per 1000 USDT
+```
+
+**Slippage Modes**:
+- **Fixed**: Constant slippage percentage on all trades
+- **Variable**: Random slippage between min/max range
+- **Market Impact**: Base slippage + additional impact based on trade size
+
+#### Cost Impact
+
+**Funding Costs**: 
+- Calculated based on position size × leverage × funding rate × time periods
+- Applied automatically for positions held across funding periods
+- Displayed separately in trade details and summary
+
+**Slippage Impact**:
+- Applied to both entry and exit prices
+- Always works against the trader (reduces profits/increases losses)
+- Shows original vs slippage-adjusted prices in detailed view
+
+### Trading Direction Modes
+
+The system supports multiple trading direction modes that can be configured in `tradeconfig.js`:
+
+#### Available Modes
+
+- **'buy'**: Only opens LONG trades at low pivots
+- **'sell'**: Only opens SHORT trades at high pivots  
+- **'both'**: Opens both LONG and SHORT trades at each pivot
+- **'alternate'**: **NEW** - Inverts normal trading logic
+  - Opens LONG trades at high pivots (instead of SHORT)
+  - Opens SHORT trades at low pivots (instead of LONG)
+
+#### Alternate Mode Benefits
+
+**Strategy Testing**: 
+- Compare contrarian vs momentum strategies
+- Test mean reversion vs trend following approaches
+- Evaluate different market condition responses
+
+**Market Adaptation**:
+- Switch between strategies based on market conditions
+- Different risk profiles for volatile vs stable markets
+- Flexible approach to changing market dynamics
+
+**Usage**:
+```javascript
+// In tradeconfig.js
+export const tradeConfig = {
+    direction: 'alternate', // Enable inverted trading logic
+    // ... other settings
+};
+```
+
+**Display**: When alternate mode is active, the configuration display shows:
+```
+Direction: alternate (LONG at highs, SHORT at lows)
+```
+
 ### High-Speed Pivot Confirmation
 
 To maximize effectiveness for scalping, the pivot detection logic has been optimized for **speed**.
@@ -31,7 +180,192 @@ To maximize effectiveness for scalping, the pivot detection logic has been optim
 - **Immediate Confirmation**: The system no longer waits for a candle to close to confirm a pivot. Instead, a pivot is confirmed the moment the price moves significantly against the trend, even within the same candle.
 - **Why this matters**: This change eliminates confirmation lag, allowing for much faster trade entries at prices closer to the actual pivot point. This is crucial for capturing small, rapid price movements.
 
+### Backtesting with Time Travel (Delay Factor)
+
+The backtester now supports a "time travel" feature that allows you to simulate running the backtest as if you were at a specific point in the past. This is useful for testing your strategy in different historical market environments without changing your strategy parameters.
+
+#### Configuration
+
+In `config.js`, you can configure the time travel using a single parameter that represents the number of candles to shift back in time:
+
+```javascript
+// Delay configuration - number of candles to shift the backtest into the past
+// For example, if set to 180 on 4h candles, it simulates running the backtest from 30 days ago
+// (180 candles × 4 hours = 720 hours = 30 days)
+export const delay = 0; // Number of candles to shift back in time (0 = use latest data)
+```
+
+To disable time travel, simply set the value to 0.
+
+#### How It Works
+
+When you specify a delay, the backtester will:
+
+1. Load all available historical candles from your data source
+2. Determine the point in time to travel back to (latest candle minus delay candles)
+3. Use only candles up to that point in time, discarding any later candles
+4. Calculate and display the exact time difference (days, hours, minutes) this represents
+5. Show which candle range is being used (e.g., positions 0-500 out of 1000 total)
+
+For example, if you're using 4-hour candles and set a delay of 180 candles, the system will travel back 720 hours (30 days) in time. If your data goes back several years, you'll see what trades would have been made when running from that exact point in time, using only data available up to that point.
+
+#### Benefits
+
+- True historical simulation - see exactly what would have happened at a specific point in the past
+- Test how your strategy would have performed during specific market events
+- Validate that your strategy works consistently across different time periods
+- Perfect for back-in-time scenario analysis ("What if I had run this strategy 1 month ago?")
+- Accounts for both the limit setting and time travel when selecting the window of data
+- Shows the precise time difference in a human-readable format
+
+To use this feature, simply configure the delay parameters in `config.js` and run the backtest normally with `node pivotBacktester.js`.
+
+### Enhanced Trade Execution with 1-Minute Candles
+
+The `pivotBacktester.js` now uses **1-minute candles for trade execution** while maintaining the original timeframe for pivot detection. This provides much more accurate backtesting results.
+
+#### How It Works
+
+**Dual-Timeframe System**:
+- **Pivot Detection**: Uses your configured timeframe (e.g., 4h candles for 4h pivots)
+- **Trade Execution**: Uses 1-minute candles for precise TP/SL tracking
+
+**Example Scenario**:
+1. You configure 4-hour candles for pivot detection
+2. System detects a pivot on a 4-hour candle close
+3. Trade is opened based on the 4-hour pivot signal
+4. **Trade tracking switches to 1-minute candles** for accurate TP/SL execution
+5. System monitors every 1-minute candle until trade closes
+
+#### Benefits
+
+**Increased Accuracy**:
+- TP/SL levels can be hit with 1-minute precision instead of waiting for the next 4-hour candle
+- More realistic representation of actual trading conditions
+- Better simulation of intracandle price movements
+
+**Maintains Strategy Integrity**:
+- Pivot signals still based on your chosen timeframe strategy
+- No change to pivot detection logic or timing
+- Only trade execution becomes more precise
+
+#### Requirements and Fallback
+
+**Data Requirements**:
+- Requires 1-minute historical data in `data/historical/{symbol}/1m.csv`
+- System automatically detects if 1-minute data is available
+
+**Intelligent Fallback**:
+- If 1-minute data not available: Uses pivot timeframe for trade execution
+- If using live API data: Uses pivot timeframe (1-minute API data not implemented)
+- If interval is already 1m: Uses same candles for both pivot detection and execution
+
+**Status Display**:
+- Shows clear indication when 1-minute candles are used
+- Displays fallback message when using pivot timeframe
+- Reports total 1-minute candles used in final summary
+
+### Pivot Detection Mode Configuration
+
+The system now supports two different pivot detection modes that can be configured in `config.js`:
+
+```javascript
+// Pivot detection mode: 'close' uses candle close prices, 'extreme' uses high/low prices
+export const pivotDetectionMode = 'close';  // 'close' or 'extreme'
+```
+
+#### Detection Modes
+
+**Close Mode (`'close'`)** - Default behavior:
+- Uses candle **close prices** for pivot detection
+- More conservative approach, waits for candle completion
+- Reduces false signals from intracandle wicks
+- Better for longer timeframes and trend-following strategies
+- Maintains the original system behavior
+
+**Extreme Mode (`'extreme'`)** - Aggressive detection:
+- Uses candle **high prices** for high pivots, **low prices** for low pivots
+- More aggressive pivot detection, catches intracandle extremes
+- May generate more signals but also more false positives
+- Better for scalping and quick reversal strategies
+- Captures pivot points that might be missed with close-only detection
+
+#### Usage
+
+1. Set `pivotDetectionMode = 'close'` for conservative, close-based pivot detection
+2. Set `pivotDetectionMode = 'extreme'` for aggressive, high/low-based pivot detection
+3. Run your backtest to compare results between the two modes
+4. The system will display the active detection mode in both the title and configuration output
+
+#### Impact on Trading
+
+- **Pivot Prices**: The system stores and uses the actual detected pivot price (close or extreme)
+- **Trade Entries**: Still use candle close prices for realistic trade execution
+- **Edge Calculations**: Use the detected pivot price for edge proximity analysis
+- **Display**: All pivot information shows the actual detected price
+
+This allows you to test different pivot detection strategies while maintaining realistic trade execution.
+
+#### Verification Results
+
+The pivot detection mode has been thoroughly tested and verified:
+- **Close Mode**: Detected 5 pivots using candle close prices (e.g., LOW @ 113283.60)
+- **Extreme Mode**: Detected 4 pivots using actual high/low prices (e.g., LOW @ 113153.90)
+- **Different Results**: Each mode produces distinct pivot points and counts, confirming proper functionality
+- **Test Tool**: Use `node testPivotModes.js` to compare both modes side-by-side with clear output
+
 ## Testing Tools
+
+### Real-time Price and Candle Data Monitoring (Updated August 2025)
+
+A comprehensive real-time market monitoring tool for tracking price movements and candle data:
+
+```bash
+node fronttest.js
+```
+
+This tool provides the following functionality:
+
+- **Price Monitoring**:
+  - Displays real-time price updates with color-coded indicators
+  - Shows price changes in both absolute and percentage terms
+  - Tracks candle formations and displays complete OHLCV data
+
+- **Trade Management**:
+  - Manages position sizing based on capital and risk settings
+  - Handles take profit and stop loss events
+  - Calculates P&L including leverage and fees
+  - Tracks capital changes throughout the trading session
+
+- **Configuration Options**:
+  - Uses the same configuration files as the backtester for consistency
+  - Configurable output verbosity with the `hideCandle` option in config.js:
+  - When `false` (default): Shows all price updates and candle fetch operations
+  - When `true`: Only shows the main candle display and critical messages
+  - Error messages will always be displayed regardless of this setting
+
+#### Real-time Price Updates
+- Connects to Bybit WebSocket API to receive real-time price updates
+
+**Requirements:**
+- Node.js environment
+- Internet connection
+- WebSocket support
+
+#### Pivot Removal and Candle / Trade Log Order (Updated Aug 4, 2025)
+
+The fronttest.js script has been updated with two major changes:
+
+1. **Removal of Pivot-Related Code**:
+   - All pivot detection functionality has been removed
+   - Simplified code focuses solely on price monitoring and trade management
+   - Cleaner, more focused implementation without pivot detection complexity
+
+2. **Improved Log Order**:
+   - The live monitor now guarantees that completed candle data (and any trade updates they trigger) are displayed **before** the countdown to the next candle close appears
+   - This provides a clearer, chronological flow when reading the console
+
+_No configuration change is required — this is automatic._
 
 ### Configurable Data Source (Added August 1, 2025)
 
@@ -109,6 +443,56 @@ Requirements:
 - Node.js environment
 
 The output will show detailed information about pivot timestamps, prices, and any discrepancies found.
+
+### Historical Data Fetching System
+
+A robust tool for downloading and maintaining historical price data for backtesting and analysis:
+
+```bash
+node generators/generateHistoricalData.js
+```
+
+This utility:
+- Downloads and maintains historical price data for configured trading pairs and timeframes
+- Intelligently detects and fills gaps in existing data
+- Creates backups of existing files before modifications
+- Validates data integrity before saving
+
+#### Key Features
+
+- **Smart Gap Detection**: Only downloads missing data rather than the entire history
+- **Multiple Timeframes**: Supports all standard intervals (1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d)
+- **Error Resilience**: Implements retry mechanism with increasing delays
+- **Configurable History**: Adjust the `months` parameter in `config/historicalDataConfig.js` to control how far back to fetch
+
+#### Configuration
+
+In `config/historicalDataConfig.js`:
+```javascript
+export const historicalDataConfig = {
+    pairs: ['BTCUSDT'],                               // Trading pairs to download
+    intervals: ['1', '3', '5', '15', '30', '1h', '4h', '1d'],  // Time intervals
+    months: 1,                                        // How many months of history
+    dataPath: './data/historical/',                   // Where to save data
+    lastUpdated: {}                                   // Tracks update timestamps
+};
+```
+
+#### Usage
+
+Run the script whenever you need to update your historical data:
+```bash
+node generators/generateHistoricalData.js
+```
+
+The system will:
+1. Check existing data files in the configured path
+2. Calculate what data ranges are missing
+3. Download only the necessary data from the exchange API
+4. Validate and merge with existing data
+5. Save the combined data to CSV files
+
+> **TIP**: The data is organized in `./data/historical/[SYMBOL]/[INTERVAL].csv` format for easy access by backtesting tools.
 
 ### Realistic Pivot Detection Test (No Lookahead)
 
@@ -203,6 +587,7 @@ node pivotOptimizer.js
 
 This optimizer:
 - Runs multiple backtests with different TP/SL combinations based on ranges in `optimizerConfig.js`
+- Uses close prices for pivot detection and trade execution (consistent with pivotBacktester.js)
 - Suppresses verbose output during individual backtests for clarity
 - Shows progress percentage and estimated completion time
 - Saves all results to a timestamped CSV file (e.g., `pivot_optimization_2025-08-15_142735.csv`)
@@ -298,35 +683,54 @@ Requirements:
 - Configuration in `config/config.js` (symbol and interval)
 - Node.js environment
 
-The output shows comprehensive edge data for each market order including daily, weekly, and monthly metrics with positional changes over time.
-- Storage of both extreme and confirmation candle data for validation
 
-To adapt for real-time use:
-1. Replace the historical data source with a WebSocket connection
-2. Process incoming candles through the EnhancedPivotTracker.update() method
-3. Add signal handling code to act on pivot detections
+#### Configuration Options
 
-### Full Trading Backtest (`pivotBacktester.js`)
+- In `config/config.js`:
+  - Symbol and interval settings
+  - WebSocket price update settings
+  - Candle check frequency
+  - Output verbosity controls
+  - Historical data limit
+  - API settings
+  - Pivot detection parameters (`pivotLookback`, `minSwingPct`, `minLegBars`)
 
-For a complete evaluation of your trading strategy, including profitability with leverage and fees, use the pivot backtester.
+- In `config/tradeconfig.js`:
+  - Take profit and stop loss percentages
+  - Leverage settings
+  - Risk per trade (capital percentage)
+  - Trading direction preferences (long/short/both)
 
-```bash
-node pivotBacktester.js
-```
+#### Pivot Trading Features
 
-This tool:
-- Loads historical candle data
-- Detects pivots in real-time (no lookahead)
-- Simulates trades based on pivot signals
-- Calculates detailed statistics
-- Provides a complete trade-by-trade breakdown
-- Shows summary metrics including:
-  - **Win Rate**: The percentage of trades that were profitable.
-  - **Total PnL**: Your total profit or loss after all fees.
-  - **Overall Profit**: Your final percentage profit/loss after accounting for all trades and fees.
-  - **Overall Profit %**: The percentage return on your initial capital.
+- **Historical Context Initialization**:
+  - Automatic loading of sufficient historical candles (3x pivot lookback) on startup
+  - Initial pivot context establishment before live trading begins
+  - Proper pivot state initialization (high/low pivots, counters, last pivot tracking)
 
-#### Display Settings
+- **Real-time Pivot Detection**:
+  - Accurate pivot detection on each new candle close
+  - Detection based on configurable lookback period and close prices
+  - Support for both high and low pivot types
+  - Minimum leg bar requirements to reduce noise
+  - Clear pivot event logging with price and movement details
+
+- **Trade Management**:
+  - Automatic trade creation on pivot signals
+  - Direction-based trading (long on low pivots, short on high pivots)
+  - Dynamic position sizing based on capital and risk settings
+  - Real-time trade updates on every price tick
+  - Take profit and stop loss monitoring
+  - Fee calculation and accounting
+  - Capital updates as trades close
+
+- **Dual Data Sources**:
+  - Real-time price ticks via WebSocket for immediate price updates
+  - Complete candle data via REST API for accurate OHLCV information
+  - Automatic synchronization between the two data sources
+  - Proper handling of candle close events
+
+### Display Settings
 
 You can control the verbosity of the backtester output using the following toggles in `config/tradeconfig.js`:
 
@@ -358,12 +762,13 @@ The backtesting engine is designed to simulate trading realistically by handling
 
 ### Account Liquidation Simulation
 
-The backtester now includes realistic account liquidation simulation:
+Both the backtester and optimizer now include realistic account liquidation simulation:
 
 - When capital reaches zero or becomes negative after a trade, the account is considered liquidated
 - Capital is clamped to exactly zero when liquidation occurs
-- All further trading is automatically stopped
-- A clear **[LIQUIDATION]** message appears in the console
+- All further trading is automatically stopped (no new trades will be opened)
+- A clear **[LIQUIDATION]** message appears in the console (in pivotBacktester.js only)
+- Liquidation messages are suppressed in pivotOptimizer.js to keep optimization output clean
 - This applies to both regular trades and end-of-backtest (EOB) trade closing
 
 This feature allows you to accurately assess strategies for potential liquidation risk and prevents unrealistic scenarios where trading continues with negative capital.
