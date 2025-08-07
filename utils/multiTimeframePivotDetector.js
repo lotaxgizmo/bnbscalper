@@ -98,21 +98,65 @@ export class MultiTimeframePivotDetector {
                     console.warn(`${colors.yellow}[${interval}] CSV file not found: ${csvPath}${colors.reset}`);
                 }
             } else {
-                // Load from API
-                const rawCandles = await getCandles(this.symbol, interval, 1000);
-                candles = Array.from(new Map(rawCandles.map(c => [c.time, c])).values())
-                    .sort((a, b) => a.time - b.time);
-                
                 // Calculate appropriate limit for this timeframe (1 month of data)
                 const timeframeLimit = this.calculateTimeframeLimit(interval);
                 
-                // Apply candle limit (use most recent candles)
-                if (candles.length > timeframeLimit) {
-                    const originalLength = candles.length;
-                    candles = candles.slice(-timeframeLimit); // Keep most recent candles
-                    if (this.debug.showTimeframeAnalysis) {
-                        console.log(`${colors.yellow}[${interval}] Limiting to ${timeframeLimit} most recent candles out of ${originalLength} available${colors.reset}`);
+                // Multi-batch API fetching to get required number of candles
+                let allCandles = [];
+                let endTime = Date.now();
+                let consecutiveErrors = 0;
+                const MAX_RETRIES = 3;
+                const BATCH_SIZE = 1000; // Bybit API limit per request
+                
+                if (this.debug.showTimeframeAnalysis) {
+                    console.log(`${colors.cyan}[${interval}] Fetching ${timeframeLimit} candles via multi-batch API calls${colors.reset}`);
+                }
+                
+                while (allCandles.length < timeframeLimit && consecutiveErrors < MAX_RETRIES) {
+                    try {
+                        const batchCandles = await getCandles(this.symbol, interval, BATCH_SIZE, endTime);
+                        
+                        if (!batchCandles || batchCandles.length === 0) {
+                            if (this.debug.showTimeframeAnalysis) {
+                                console.log(`${colors.yellow}[${interval}] No more data available, got ${allCandles.length} total candles${colors.reset}`);
+                            }
+                            break;
+                        }
+                        
+                        // Add new candles to collection (prepend since we're going backwards)
+                        allCandles = [...batchCandles, ...allCandles];
+                        
+                        // Update endTime to fetch next batch (go backwards in time)
+                        endTime = batchCandles[0].time - 1;
+                        
+                        if (this.debug.showTimeframeAnalysis) {
+                            console.log(`${colors.cyan}[${interval}] Fetched batch of ${batchCandles.length} candles, total: ${allCandles.length}/${timeframeLimit}${colors.reset}`);
+                        }
+                        
+                        // Reset error counter on successful fetch
+                        consecutiveErrors = 0;
+                        
+                        // Small delay to avoid rate limits
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        
+                    } catch (error) {
+                        consecutiveErrors++;
+                        if (this.debug.showTimeframeAnalysis) {
+                            console.error(`${colors.red}[${interval}] Batch fetch error (attempt ${consecutiveErrors}/${MAX_RETRIES}): ${error.message}${colors.reset}`);
+                        }
+                        if (consecutiveErrors < MAX_RETRIES) {
+                            await new Promise(resolve => setTimeout(resolve, 1000 * consecutiveErrors));
+                        }
                     }
+                }
+                
+                // Remove duplicates and sort
+                candles = Array.from(new Map(allCandles.map(c => [c.time, c])).values())
+                    .sort((a, b) => a.time - b.time);
+                
+                // Apply final limit (keep most recent candles)
+                if (candles.length > timeframeLimit) {
+                    candles = candles.slice(-timeframeLimit);
                 }
                 
                 if (this.debug.showTimeframeAnalysis) {

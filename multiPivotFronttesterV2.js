@@ -48,9 +48,13 @@ class CleanTimeProgressiveFronttester {
     }
 
     async initialize() {
+        const dataSource = useLocalData ? 'CSV Files (Local)' : `${api.toUpperCase()} API (Live)`;
+        const dataMode = useLocalData ? 'Historical Simulation' : 'Live Market Data';
+        
         console.log(`${colors.cyan}=== CLEAN TIME-PROGRESSIVE FRONTTESTER V2 ===${colors.reset}`);
         console.log(`${colors.yellow}Symbol: ${symbol}${colors.reset}`);
-        console.log(`${colors.yellow}Mode: Clean Time Progression${colors.reset}`);
+        console.log(`${colors.yellow}Data Source: ${dataSource}${colors.reset}`);
+        console.log(`${colors.yellow}Mode: ${dataMode}${colors.reset}`);
         console.log(`${colors.yellow}Method: Step-by-step minute progression${colors.reset}`);
         console.log(`${'='.repeat(60)}\n`);
 
@@ -67,7 +71,8 @@ class CleanTimeProgressiveFronttester {
     }
 
     async loadAllTimeframeData() {
-        console.log(`${colors.cyan}=== LOADING RAW CANDLE DATA ===${colors.reset}`);
+        const dataSourceType = useLocalData ? 'CSV FILES' : `${api.toUpperCase()} API`;
+        console.log(`${colors.cyan}=== LOADING RAW CANDLE DATA FROM ${dataSourceType} ===${colors.reset}`);
         
         const detector = new MultiTimeframePivotDetector(symbol, multiPivotConfig);
         
@@ -76,7 +81,8 @@ class CleanTimeProgressiveFronttester {
             const candles = detector.timeframeData.get(tf.interval) || [];
             this.timeframeCandles.set(tf.interval, candles);
             
-            console.log(`${colors.yellow}[${tf.interval.padEnd(4)}] Loaded ${candles.length.toString().padStart(4)} candles${colors.reset}`);
+            const sourceIndicator = useLocalData ? 'CSV' : 'API';
+            console.log(`${colors.yellow}[${tf.interval.padEnd(4)}] Loaded ${candles.length.toString().padStart(4)} candles from ${sourceIndicator}${colors.reset}`);
         }
         
         // Get 1-minute candles for time progression
@@ -145,19 +151,21 @@ class CleanTimeProgressiveFronttester {
         if (this.lastLoggedTime !== timeKey) {
             this.lastLoggedTime = timeKey;
             
-            const timeString = currentDate.toLocaleString('en-US', {
+            const timeString12 = currentDate.toLocaleString('en-US', {
                 weekday: 'short',
                 month: 'short', 
                 day: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit',
-                hour12: false
+                hour12: true
             });
+            
+            const timeString24 = currentDate.toLocaleTimeString('en-GB', { hour12: false });
             
             const price = this.oneMinuteCandles[this.currentMinute]?.close || 0;
             const progress = ((this.currentMinute / this.oneMinuteCandles.length) * 100).toFixed(1);
             
-            console.log(`${colors.brightCyan}⏰ ${timeString} | BTC: $${price.toLocaleString()} | Progress: ${progress}% (${this.currentMinute}/${this.oneMinuteCandles.length})${colors.reset}`);
+            console.log(`${colors.brightCyan}⏰ ${timeString12} (${timeString24}) | BTC: $${price.toFixed(1)} | Progress: ${progress}% (${this.currentMinute}/${this.oneMinuteCandles.length})${colors.reset}`);
         }
     }
 
@@ -288,12 +296,12 @@ class CleanTimeProgressiveFronttester {
         
         this.activeWindows.set(windowId, window);
         
-        const timeString = new Date(primaryPivot.time).toLocaleString();
+        const timeString12 = new Date(primaryPivot.time).toLocaleString();
         const time24 = new Date(primaryPivot.time).toLocaleTimeString('en-GB', { hour12: false });
         const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
         
         console.log(`\n${colors.brightYellow}🟡 PRIMARY WINDOW OPENED [${windowId}]: ${primaryPivot.timeframe} ${primaryPivot.signal.toUpperCase()} pivot detected${colors.reset}`);
-        console.log(`${colors.yellow}   Time: ${timeString} (${time24}) | Price: $${primaryPivot.price.toFixed(1)}${colors.reset}`);
+        console.log(`${colors.yellow}   Time: ${timeString12} (${time24}) | Price: $${primaryPivot.price.toFixed(1)}${colors.reset}`);
         console.log(`${colors.yellow}   Waiting for confirmations within ${confirmationWindow}min window...${colors.reset}`);
         console.log(`${colors.yellow}   Required: ${minRequired} total timeframes (primary + ${minRequired-2} confirmations + execution)${colors.reset}`);
     }
@@ -404,11 +412,11 @@ class CleanTimeProgressiveFronttester {
         }
         
         // Enhanced execution logging
-        const timeString = new Date(executionTime).toLocaleString();
+        const timeString12 = new Date(executionTime).toLocaleString();
         const time24 = new Date(executionTime).toLocaleTimeString('en-GB', { hour12: false });
         
         console.log(`\n${colors.brightCyan}🎯 CASCADE EXECUTION [${window.id}]: All confirmations met${colors.reset}`);
-        console.log(`${colors.cyan}   Execution Time: ${timeString} (${time24})${colors.reset}`);
+        console.log(`${colors.cyan}   Execution Time: ${timeString12} (${time24})${colors.reset}`);
         console.log(`${colors.cyan}   Entry Price: $${executionPrice.toFixed(1)} | Strength: ${(cascadeResult.strength * 100).toFixed(0)}% | Total wait: ${minutesAfterPrimary}min${colors.reset}`);
         
         this.displayCascade(cascadeInfo);
@@ -419,13 +427,13 @@ class CleanTimeProgressiveFronttester {
         for (const [windowId, window] of this.activeWindows) {
             if (window.status === 'active' && currentTime > window.windowEndTime) {
                 window.status = 'expired';
-                const timeString = new Date(window.windowEndTime).toLocaleString();
+                const timeString12 = new Date(window.windowEndTime).toLocaleString();
                 const time24 = new Date(window.windowEndTime).toLocaleTimeString('en-GB', { hour12: false });
                 const totalConfirmed = 1 + window.confirmations.length;
                 const minRequiredTFs = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
                 
                 console.log(`\n${colors.red}❌ PRIMARY WINDOW EXPIRED [${windowId}]: ${window.primaryPivot.timeframe} ${window.primaryPivot.signal.toUpperCase()}${colors.reset}`);
-                console.log(`${colors.red}   Expired at: ${timeString} (${time24})${colors.reset}`);
+                console.log(`${colors.red}   Expired at: ${timeString12} (${time24})${colors.reset}`);
                 console.log(`${colors.red}   Final confirmations: ${totalConfirmed}/${minRequiredTFs} (insufficient for execution)${colors.reset}`);
             }
         }

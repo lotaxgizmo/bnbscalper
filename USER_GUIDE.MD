@@ -1,5 +1,76 @@
 # User Guide
 
+## 🔴 LIVE TRADING SYSTEM
+
+### multiPivotFronttesterLive.js - Real-Time Cascade Detection ✅ OPERATIONAL
+
+**Purpose**: Live multi-timeframe cascade detection system that monitors real market data and detects cascades as they form in real-time using Bybit API and WebSocket feeds.
+
+**Key Features**:
+- **Live API Integration**: Fetches historical data from Bybit API, receives real-time prices via WebSocket
+- **Real-Time Pivot Detection**: Detects pivots as new candles complete
+- **Live Cascade Formation**: Monitors cascade windows and confirmations in real-time
+- **Current Market Prices**: Uses live WebSocket prices for accurate execution timing
+- **Automatic Data Updates**: Fetches new candles automatically as timeframes complete
+- **Production Ready**: Foundation for actual live trading implementation
+
+**Setup Requirements**:
+1. **Enable API Data**: Set `useLocalData = false` in `config/config.js`
+2. **Internet Connection**: Required for Bybit API and WebSocket connections
+3. **No Authentication**: Uses public Bybit endpoints (no API keys needed)
+
+**Usage**:
+```bash
+node multiPivotFronttesterLive.js
+```
+
+**Configuration**:
+- Uses `multiPivotConfig.js` for timeframe settings (same as backtester)
+- Uses `fronttesterconfig.js` for debug output control
+- **Debug Control**: Set various flags in fronttesterconfig.js to control output:
+  - `showHeartbeat: true` - Shows periodic system status
+  - `showSystemStatus: true` - Shows connection and candle updates
+  - `showDebug: true` - Shows detailed pivot detection logs
+
+**Live Features**:
+- **Real-Time Price Display**: Shows current BTC price from WebSocket every 10 seconds
+- **Heartbeat Monitoring**: System status updates every 30 seconds
+- **Live Candle Updates**: Automatically detects and fetches new completed candles
+- **Dynamic Window Management**: Opens/closes cascade windows based on live market action
+- **Live Cascade Execution**: Executes with actual market prices at the moment of confirmation
+
+**Output Example**:
+```
+💰 Live Price: $67,234.50
+🟡 PRIMARY WINDOW OPENED [W1]: 4h SHORT pivot detected
+🟠 SECONDARY WINDOW [W1]: 1h SHORT pivot detected
+🔵 EXECUTION WINDOW [W1]: 1m SHORT pivot detected
+✅ EXECUTING CASCADE - All confirmations + execution window ready!
+🎯 LIVE CASCADE EXECUTION [W1]: All confirmations met
+   Entry Price: $67,198.30 | Live Price: $67,201.40
+```
+
+**Benefits Over Simulation**:
+- **True Market Timing**: Real market conditions and timing
+- **No Lookahead Bias**: Only uses data available at current moment
+- **Live Price Accuracy**: Actual market prices for execution
+- **Real-Time Confirmation**: Cascades form based on live market movement
+- **Production Foundation**: Can be extended for actual trade execution
+
+**Monitoring**:
+- System shows live connectivity status
+- Displays active cascade windows count
+- Shows real-time price updates
+- Monitors WebSocket connection health
+
+**⚠️ Important Notes**:
+- Requires stable internet connection
+- Uses Bybit public API (rate limits apply)
+- WebSocket auto-reconnects on disconnection
+- Keep terminal open for continuous monitoring
+
+---
+
 ## Multi-Timeframe Pivot System
 
 ### multiPivotBacktesterWithTrades.js - Complete Trading System ✅ OPERATIONAL

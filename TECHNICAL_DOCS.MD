@@ -1,5 +1,57 @@
 # Technical Documentation
 
+## 🔴 LIVE TRADING SYSTEM - multiPivotFronttesterLive.js
+
+### 2025-08-07: 🚀 LIVE API INTEGRATION - Real-Time Multi-Timeframe Cascade Detection
+- **NEW SYSTEM**: multiPivotFronttesterLive.js - Complete live trading implementation
+- **FEATURES IMPLEMENTED**:
+  * **Live API Data Integration**: Uses Bybit API for historical data + WebSocket for real-time prices
+  * **Real-Time Candle Updates**: Automatically fetches new candles as they complete
+  * **Live Pivot Detection**: Detects pivots in real-time as new candles arrive
+  * **WebSocket Price Feed**: Continuous live price updates for accurate execution
+  * **Dynamic Window Management**: Opens/closes cascade windows based on live market data
+  * **Live Cascade Execution**: Executes trades with current market prices
+
+- **ARCHITECTURE COMPONENTS**:
+  * **Historical Data Loading**: `loadInitialData()` - Loads recent historical data for all timeframes
+  * **WebSocket Integration**: `connectWebSocket()` - Real-time price feed from Bybit
+  * **Candle Monitoring**: `checkForNewCandles()` - Periodic checks for new completed candles
+  * **Live Pivot Detection**: `checkForNewPivots()` - Real-time pivot formation detection
+  * **Window-Based Cascades**: Same proven window system from V2 but with live data
+  * **Live Execution**: Uses current WebSocket price for trade execution
+
+- **LIVE DATA FLOW**:
+  1. **Initialization**: Load historical data for all timeframes via API
+  2. **WebSocket Connection**: Connect to live price feed
+  3. **Candle Monitoring**: Check every minute for new completed candles
+  4. **Pivot Detection**: Analyze new candles for pivot formation
+  5. **Window Management**: Open primary windows, track confirmations
+  6. **Live Execution**: Execute cascades with real-time prices
+
+- **CONFIGURATION REQUIREMENTS**:
+  * Set `useLocalData = false` in config.js to enable API data
+  * Ensure Bybit API access (no authentication required for public data)
+  * Configure timeframes in multiPivotConfig.js
+  * Set debug options in fronttesterconfig.js
+
+- **LIVE FEATURES**:
+  * **Real-Time Price Display**: Shows current BTC price from WebSocket
+  * **Live Cascade Execution**: Uses actual market price at execution time
+  * **Heartbeat Monitoring**: Shows system status and connectivity
+  * **Dynamic Buffer Management**: Maintains rolling candle buffers
+  * **Automatic Reconnection**: WebSocket auto-reconnects on disconnection
+
+- **BENEFITS OVER SIMULATION**:
+  * **True Market Conditions**: Real market timing and price movements
+  * **No Lookahead Bias**: Only uses data available at current time
+  * **Live Price Execution**: Actual market prices for trade entries
+  * **Real-Time Confirmation**: Cascades form based on live market action
+  * **Production Ready**: Can be extended for actual trade execution
+
+- **USAGE**: `node multiPivotFronttesterLive.js` - Starts live cascade detection system
+
+---
+
 ## 🚨 CRITICAL SYSTEM FIXES
 
 ### 2025-08-07: 🎯 EXECUTION WINDOW LOGIC FIXED - Duplicate Cascade Elimination
