@@ -1,5 +1,78 @@
 # Issues and Solutions Log
 
+## 68. 🐛 CRITICAL TRAILING TAKE PROFIT BUG - SHORT Trades Logic Error
+
+**Date:** August 7, 2025
+
+**Issue:** SHORT trades trailing take profit was calculated incorrectly, causing premature exits and wrong profit capture.
+
+**Root Cause Analysis:**
+- In `multiPivotBacktesterWithTrades.js` line 403, trailing TP calculation used wrong formula
+- Used `trade.bestPrice * (1 - (trailingTakeProfitDistance / 100))` for SHORT trades
+- This made trailing TP go BELOW the best price instead of ABOVE it
+- For SHORT trades, when price goes DOWN (favorable), trailing TP should trail DOWN but stay ABOVE best price
+
+**Example of Bug:**
+- SHORT entry: $108,166.50
+- Best price achieved: $107,616.60 (favorable move down)
+- With 0.3% trailing distance:
+  - **WRONG**: $107,616.60 × (1 - 0.003) = $107,294.35 (below best price)
+  - **CORRECT**: $107,616.60 × (1 + 0.003) = $107,938.89 (above best price)
+
+**Solution Implemented:**
+```javascript
+// Before: WRONG formula for SHORT trades
+const newTrailingTP = trade.bestPrice * (1 - (tradeConfig.trailingTakeProfitDistance / 100));
+
+// After: CORRECT formula for SHORT trades  
+const newTrailingTP = trade.bestPrice * (1 + (tradeConfig.trailingTakeProfitDistance / 100));
+```
+
+**Logic Explanation:**
+- SHORT trades profit when price goes DOWN
+- When best price moves down (favorable), trailing TP should move down too
+- But trailing TP must stay ABOVE the best price by the trailing distance
+- Exit triggers when price moves back UP and hits the trailing TP level
+
+**Impact:**
+- SHORT trades will now properly trail their take profit levels
+- Prevents premature exits at incorrect price levels
+- Allows proper profit capture as price moves favorably
+- Ensures realistic trailing TP behavior matching actual market conditions
+
+**Status**: ✅ RESOLVED - SHORT trade trailing take profit now uses correct calculation formula
+
+## 67. 🐛 PNL COLOR DISPLAY BUG - Visual Output Issue
+
+**Date:** August 7, 2025
+
+**Issue:** All PnL values in trade output were displaying in red color regardless of whether they were profits or losses.
+
+**Root Cause Analysis:**
+- In `multiPivotBacktesterWithTrades.js` line 466, color determination was based on exit result type
+- Logic used `result === 'TP' ? colors.green : colors.red` instead of actual PnL value
+- This meant only Take Profit exits showed green, while Trailing TP exits (which are profitable) showed red
+- Stop Loss exits correctly showed red, but this was coincidental, not based on actual loss
+
+**Solution Implemented:**
+```javascript
+// Before: Incorrect color logic based on exit type
+const resultColor = result === 'TP' ? colors.green : colors.red;
+const pnlText = `${resultColor}${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}${colors.reset}`;
+
+// After: Correct color logic based on actual PnL value
+const pnlColor = pnl >= 0 ? colors.green : colors.red;
+const pnlText = `${pnlColor}${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}${colors.reset}`;
+```
+
+**Results After Fix:**
+- **Positive PnL**: Now displays in green (e.g., +143.56, +422.07, +918.25)
+- **Negative PnL**: Displays in red (e.g., -26.00, -166.30, -1063.72)
+- **Visual Clarity**: Immediate identification of profitable vs losing trades
+- **Consistency**: Matches the end-of-backtest section which already had correct logic
+
+**Status**: ✅ RESOLVED - Trade output now correctly shows green for profits, red for losses
+
 ## 66. 🔧 MULTI-TIMEFRAME CASCADE CONFIRMATION OPTIMIZATION
 
 **Date:** August 6, 2025

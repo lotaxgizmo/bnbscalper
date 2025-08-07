@@ -8,15 +8,15 @@ const minute = hour * 60;
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell' or 'both' or 'alternate')
     direction: 'alternate',
-    
+
     // Profit and loss settings (in %)
 
     takeProfit: 1,
-    stopLoss: 0.2,
+    stopLoss: 0.3,
     
     // Trailing stop settings
-    enableTrailingStop: true,     // Enable trailing stop loss
-    trailingStopDistance: 0.3,   // Distance to trail behind best price (in %)
+    enableTrailingStop: false,     // Enable trailing stop loss
+    trailingStopDistance: 0.4,   // Distance to trail behind best price (in %)
     enableTrailingTakeProfit: false, // Enable trailing take profit
     trailingTakeProfitTrigger: 1, // Trigger trailing TP when profit reaches this % (must be > takeProfit)
     trailingTakeProfitDistance: 0.3, // Distance to trail behind best price for TP (in %)

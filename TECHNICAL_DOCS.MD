@@ -34,6 +34,54 @@
 
 - **Status**: ✅ FULLY OPERATIONAL - Multi-timeframe cascade system with clean backtester implementation
 
+### 2025-08-07: 🐛 PNL COLOR DISPLAY FIX - Visual Output Correction
+- **Issue**: PnL values in trade output were all showing in red color regardless of profit/loss
+- **Root Cause**: Color determination was based on exit result type ('TP' vs others) instead of actual PnL value
+- **Fix Applied**: Changed color logic to use `pnl >= 0` condition for green/red coloring
+- **Code Changes**:
+  * Removed `resultColor = result === 'TP' ? colors.green : colors.red`
+  * Added `pnlColor = pnl >= 0 ? colors.green : colors.red`
+  * Updated `pnlText` to use `pnlColor` instead of `resultColor`
+- **Result**: Positive PnL values now display in green, negative in red as intended
+- **Status**: ✅ FIXED - Trade output now correctly shows green for profits, red for losses
+
+### 2025-08-07: 🚨 CRITICAL BUG FIX - SHORT Trade Trailing Take Profit Logic
+- **Issue**: SHORT trades were exiting at incorrect prices due to wrong trailing TP calculation
+- **Problem Identified**: Entry $108,166.50, Best Price $107,616.60, but exited at $106,003.17 instead of near best price
+- **Root Cause**:
+  * **Wrong Formula**: SHORT trade trailing TP was using `bestPrice * (1 - distance)` instead of `bestPrice * (1 + distance)`
+  * **Logic Error**: Formula made trailing TP go BELOW best price instead of ABOVE it
+- **Logic Explanation**: 
+  * For SHORT trades, when price goes DOWN (favorable), trailing TP should trail DOWN but stay ABOVE best price
+  * Example: Best price $107,616.60, with 0.3% distance should be $107,938.89 (above), not $107,294.35 (below)
+- **Fix Applied**:
+  * **Calculation Fix**: Changed `bestPrice * (1 - trailingTakeProfitDistance / 100)` to `bestPrice * (1 + trailingTakeProfitDistance / 100)` for SHORT trades
+  * **Code Location**: Line 403 in multiPivotBacktesterWithTrades.js
+- **Impact**: SHORT trades now properly trail their take profit levels as price moves favorably
+- **Status**: ✅ FIXED - SHORT trade trailing take profit now uses correct calculation formula
+
+### 2025-08-07: 💰 ENHANCED TRADE DETAILS & NUMBER FORMATTING - Improved User Experience
+- **Feature**: Enhanced trade details display with additional financial information and comma-separated number formatting
+- **New Trade Information Added**:
+  * **Trade Amount**: Original capital allocated to the trade
+  * **Trade Loss**: Absolute loss amount (displayed only for losing trades)
+  * **Trade Remainder**: Amount remaining after trade completion (original amount + P&L)
+- **Number Formatting Enhancement**:
+  * **formatNumberWithCommas()**: New utility function for comma-separated number display
+  * **Applied To**: All financial values including prices, amounts, P&L, fees, and costs
+  * **Format**: Uses US locale formatting with 2 decimal places (e.g., 1,000,000.00)
+- **Implementation Details**:
+  * Added `formatNumberWithCommas()` helper function using `toLocaleString('en-US')`
+  * Enhanced trade details section with trade amount, loss, and remainder calculations
+  * Updated all price displays, cost breakdowns, and financial summaries
+  * Applied formatting to entry/exit prices, trailing stop prices, and slippage impacts
+- **Benefits**:
+  * **Improved Readability**: Large numbers are easier to read with comma separators
+  * **Better Financial Tracking**: Clear display of trade amounts and remainders
+  * **Professional Appearance**: Consistent formatting across all financial displays
+  * **Enhanced Analysis**: Easy identification of trade losses and remaining capital
+- **Status**: ✅ FULLY IMPLEMENTED - All trade details now include comprehensive financial information with professional number formatting
+
 ### 2025-08-07: 🚀 MULTI-TIMEFRAME TRADING ENGINE - Complete Implementation
 - **Feature**: Created multiPivotBacktesterWithTrades.js - Full trading engine with multi-timeframe cascade confirmation
 - **Core Innovation**: Combines cascade signal detection with actual trade execution like pivotBacktester.js

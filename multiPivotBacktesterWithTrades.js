@@ -40,6 +40,12 @@ const colors = {
     bold: '\x1b[1m'
 };
 
+// Utility function to format numbers with commas
+const formatNumberWithCommas = (num) => {
+    if (typeof num !== 'number') return num;
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 // Utility function to format duration in milliseconds to a readable string
 const formatDuration = (ms) => {
     const days = Math.floor(ms / (1000 * 60 * 60 * 24));
@@ -401,7 +407,7 @@ async function runMultiTimeframeBacktest() {
                             
                             // Check for exits
                             // First check trailing take profit (if active)
-                            if (trade.trailingTakeProfitActive && tradeCandle.high >= trade.trailingTakeProfitPrice) {
+                            if (trade.trailingTakeProfitActive && tradeCandle.low <= trade.trailingTakeProfitPrice) {
                                 tradeClosed = true;
                                 exitPrice = trade.trailingTakeProfitPrice;
                                 result = 'TRAILING_TP';
@@ -463,12 +469,12 @@ async function runMultiTimeframeBacktest() {
                     console.log(`  ${colors.red}${colors.bold}[LIQUIDATION] Account liquidated! Trading stopped.${colors.reset}`);
                 }
 
-                const resultColor = result === 'TP' ? colors.green : colors.red;
                 const tradeType = trade.type.toUpperCase();
-                const pnlText = `${resultColor}${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}${colors.reset}`;
+                const pnlColor = pnl >= 0 ? colors.green : colors.red;
+                const pnlText = `${pnlColor}${pnl >= 0 ? '+' : ''}${formatNumberWithCommas(pnl)}${colors.reset}`;
                 
                 if (tradeConfig.showTradeDetails) {
-                    console.log(`  \x1b[35;1m└─> [${result}] ${tradeType} trade closed @ ${exitPrice.toFixed(2)}. PnL: ${pnlText}${colors.reset}`);
+                    console.log(`  \x1b[35;1m└─> [${result}] ${tradeType} trade closed @ ${formatNumberWithCommas(exitPrice)}. PnL: ${pnlText}${colors.reset}`);
                 }
 
                 trades.push({
@@ -512,7 +518,7 @@ async function runMultiTimeframeBacktest() {
                 
                 console.log(`${colors.green}🎯 CASCADE #${cascadeNumber} CONFIRMED: ${primaryPivot.signal.toUpperCase()}${colors.reset}`);
                 console.log(`${colors.cyan}   Primary: ${primaryTime12} (${primaryTime24Only}) | Execution: ${executionTime12} (${executionTime24Only}) (+${cascadeResult.minutesAfterPrimary}min)${colors.reset}`);
-                console.log(`${colors.cyan}   Entry Price: ${cascadeResult.executionPrice} | Strength: ${(cascadeResult.strength * 100).toFixed(0)}% | Confirming TFs: ${confirmingTFs}${colors.reset}`);
+                console.log(`${colors.cyan}   Entry Price: ${formatNumberWithCommas(cascadeResult.executionPrice)} | Strength: ${(cascadeResult.strength * 100).toFixed(0)}% | Confirming TFs: ${confirmingTFs}${colors.reset}`);
             }
             
             // TRADE EXECUTION LOGIC
@@ -560,7 +566,7 @@ async function runMultiTimeframeBacktest() {
                         
                         if (tradeConfig.showLimits) {
                             const tradeLabel = tradeType.toUpperCase();
-                            console.log(`  ${colors.yellow}└─> [${tradeLabel}] Entry: ${trade.entryPrice.toFixed(2)} | Size: ${trade.size.toFixed(2)} | TP: ${trade.takeProfitPrice.toFixed(2)} | SL: ${trade.stopLossPrice.toFixed(2)}${colors.reset}`);
+                            console.log(`  ${colors.yellow}└─> [${tradeLabel}] Entry: ${formatNumberWithCommas(trade.entryPrice)} | Size: ${formatNumberWithCommas(trade.size)} | TP: ${formatNumberWithCommas(trade.takeProfitPrice)} | SL: ${formatNumberWithCommas(trade.stopLossPrice)}${colors.reset}`);
                         }
                     }
                 }
@@ -617,7 +623,7 @@ async function runMultiTimeframeBacktest() {
             }
             
             if (tradeConfig.showTradeDetails) {
-                console.log(`  └─> [EOB] ${trade.type.toUpperCase()} trade closed @ ${endPrice.toFixed(2)}. PnL: ${(pnl >= 0 ? colors.green : colors.red)}${pnl.toFixed(2)}${colors.reset}`);
+                console.log(`  └─> [EOB] ${trade.type.toUpperCase()} trade closed @ ${formatNumberWithCommas(endPrice)}. PnL: ${(pnl >= 0 ? colors.green : colors.red)}${formatNumberWithCommas(pnl)}${colors.reset}`);
             }
             
             trades.push({
@@ -686,9 +692,25 @@ async function runMultiTimeframeBacktest() {
                 // Format the trade header - entire line in result color
                 console.log(`${resultColor}[TRADE ${(index + 1).toString().padStart(2, ' ')}] ${trade.type.toUpperCase()} | P&L: ${pnlPct}% | ${resultText} | Result: ${trade.result}${colors.reset}`);
                 console.log();
-                console.log(`${colors.cyan}  Entry: ${entryDateStr} at $${trade.entryPrice.toFixed(4)}${colors.reset}`);
-                console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${trade.exitPrice.toFixed(4)}${colors.reset}`);
+                console.log(`${colors.cyan}  Entry: ${entryDateStr} at $${trade.entryPrice.toFixed(2)}${colors.reset}`);
+                console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${trade.exitPrice.toFixed(2)}${colors.reset}`);
                 console.log(`${colors.cyan}  Duration: ${durationStr}${colors.reset}`);
+                
+                // Add trade amount, loss, and remainder information
+                const tradeAmount = trade.size;
+                const tradeLoss = trade.pnl < 0 ? Math.abs(trade.pnl) : 0;
+                const tradeRemainder = tradeAmount + trade.pnl; // Original amount + P&L = what's left
+                
+                console.log(`${colors.yellow}  Trade Amount: $${formatNumberWithCommas(tradeAmount)}${colors.reset}`);
+                
+                // Add TRADE PROFIT/LOSS line
+                if (trade.pnl >= 0) {
+                    console.log(`${colors.green}  Trade Profit: $${formatNumberWithCommas(trade.pnl)}${colors.reset}`);
+                } else {
+                    console.log(`${colors.red}  Trade Loss: $${formatNumberWithCommas(Math.abs(trade.pnl))}${colors.reset}`);
+                }
+                
+                console.log(`${colors.cyan}  Trade Remainder: $${formatNumberWithCommas(tradeRemainder)}${colors.reset}`);
                 
                 // Display maximum favorable and unfavorable movements
                 const favorableColor = trade.maxFavorable >= 0 ? colors.green : colors.red;
@@ -700,7 +722,7 @@ async function runMultiTimeframeBacktest() {
                 const priceDiff = trade.exitPrice - trade.entryPrice;
                 const priceDiffPct = (priceDiff / trade.entryPrice * 100).toFixed(4);
                 const priceColor = priceDiff >= 0 ? colors.green : colors.red;
-                console.log(`  Price Movement: ${priceColor}${priceDiff > 0 ? '+' : ''}${priceDiffPct}%${colors.reset} (${priceColor}$${priceDiff.toFixed(4)}${colors.reset})`);
+                console.log(`  Price Movement: ${priceColor}${priceDiff > 0 ? '+' : ''}${priceDiffPct}%${colors.reset} (${priceColor}$${formatNumberWithCommas(priceDiff)}${colors.reset})`);
                 
                 // Display slippage information if enabled
                 if (tradeConfig.enableSlippage && (trade.entrySlippage || trade.exitSlippage)) {
@@ -715,14 +737,14 @@ async function runMultiTimeframeBacktest() {
                     if (trade.originalExitPrice && Math.abs(trade.originalExitPrice - trade.exitPrice) > 0.0001) {
                         const slippageDiff = trade.originalExitPrice - trade.exitPrice;
                         const slippageDiffColor = slippageDiff >= 0 ? colors.red : colors.green;
-                        console.log(`  Exit Price Impact: $${trade.originalExitPrice.toFixed(4)} → $${trade.exitPrice.toFixed(4)} (${slippageDiffColor}${slippageDiff > 0 ? '-' : '+'}$${Math.abs(slippageDiff).toFixed(4)}${colors.reset})`);
+                        console.log(`  Exit Price Impact: $${formatNumberWithCommas(trade.originalExitPrice)} → $${formatNumberWithCommas(trade.exitPrice)} (${slippageDiffColor}${slippageDiff > 0 ? '-' : '+'}$${formatNumberWithCommas(Math.abs(slippageDiff))}${colors.reset})`);
                     }
                 }
                 
                 // Display funding cost information if enabled
                 if (tradeConfig.enableFundingRate && trade.fundingCost && Math.abs(trade.fundingCost) > 0.01) {
                     const fundingColor = trade.fundingCost >= 0 ? colors.red : colors.green;
-                    console.log(`  Funding Cost: ${fundingColor}${trade.fundingCost >= 0 ? '-' : '+'}$${Math.abs(trade.fundingCost).toFixed(2)}${colors.reset}`);
+                    console.log(`  Funding Cost: ${fundingColor}${trade.fundingCost >= 0 ? '-' : '+'}$${formatNumberWithCommas(Math.abs(trade.fundingCost))}${colors.reset}`);
                 }
                 
                 // Display trailing stop information if used
@@ -732,29 +754,29 @@ async function runMultiTimeframeBacktest() {
                     if (trade.trailingStopActive) {
                         const trailingStopTriggered = trade.result === 'TRAILING_SL';
                         const trailingStopColor = trailingStopTriggered ? colors.red : colors.yellow;
-                        console.log(`    ${trailingStopColor}• Trailing SL: ${trailingStopTriggered ? 'TRIGGERED' : 'ACTIVE'} at $${trade.trailingStopPrice.toFixed(4)}${colors.reset}`);
+                        console.log(`    ${trailingStopColor}• Trailing SL: ${trailingStopTriggered ? 'TRIGGERED' : 'ACTIVE'} at $${formatNumberWithCommas(trade.trailingStopPrice)}${colors.reset}`);
                     }
                     
                     if (trade.trailingTakeProfitActive) {
                         const trailingTPTriggered = trade.result === 'TRAILING_TP';
                         const trailingTPColor = trailingTPTriggered ? colors.green : colors.yellow;
-                        console.log(`    ${trailingTPColor}• Trailing TP: ${trailingTPTriggered ? 'TRIGGERED' : 'ACTIVE'} at $${trade.trailingTakeProfitPrice.toFixed(4)}${colors.reset}`);
+                        console.log(`    ${trailingTPColor}• Trailing TP: ${trailingTPTriggered ? 'TRIGGERED' : 'ACTIVE'} at $${formatNumberWithCommas(trade.trailingTakeProfitPrice)}${colors.reset}`);
                     }
                     
                     // Show best price achieved
                     const bestPriceColor = trade.type === 'long' ? 
                         (trade.bestPrice > trade.entryPrice ? colors.green : colors.red) :
                         (trade.bestPrice < trade.entryPrice ? colors.green : colors.red);
-                    console.log(`    ${bestPriceColor}• Best Price: $${trade.bestPrice.toFixed(4)}${colors.reset}`);
+                    console.log(`    ${bestPriceColor}• Best Price: $${formatNumberWithCommas(trade.bestPrice)}${colors.reset}`);
                     
                     // Show original vs trailing prices
-                    console.log(`    ${colors.cyan}• Original TP/SL: $${trade.originalTakeProfitPrice.toFixed(4)} / $${trade.originalStopLossPrice.toFixed(4)}${colors.reset}`);
+                    console.log(`    ${colors.cyan}• Original TP/SL: $${formatNumberWithCommas(trade.originalTakeProfitPrice)} / $${formatNumberWithCommas(trade.originalStopLossPrice)}${colors.reset}`);
                 }
                 
                 // Display cost breakdown
                 if (trade.tradingFee || trade.fundingCost) {
-                    const tradingFeeText = trade.tradingFee ? `Trading: $${trade.tradingFee.toFixed(2)}` : '';
-                    const fundingText = (trade.fundingCost && Math.abs(trade.fundingCost) > 0.01) ? `Funding: $${Math.abs(trade.fundingCost).toFixed(2)}` : '';
+                    const tradingFeeText = trade.tradingFee ? `Trading: $${formatNumberWithCommas(trade.tradingFee)}` : '';
+                    const fundingText = (trade.fundingCost && Math.abs(trade.fundingCost) > 0.01) ? `Funding: $${formatNumberWithCommas(Math.abs(trade.fundingCost))}` : '';
                     const costBreakdown = [tradingFeeText, fundingText].filter(Boolean).join(' | ');
                     if (costBreakdown) {
                         console.log(`  ${colors.yellow}Cost Breakdown: ${costBreakdown}${colors.reset}`);
@@ -776,9 +798,9 @@ async function runMultiTimeframeBacktest() {
         console.log(`${colors.yellow}Winning Trades: ${colors.green}${winningTrades.length}${colors.reset}`);
         console.log(`${colors.yellow}Losing Trades: ${colors.red}${losingTrades.length}${colors.reset}`);
         console.log(`${colors.yellow}Win Rate: ${colors.green}${winRate}%${colors.reset}`);
-        console.log(`${colors.yellow}Total P&L: ${totalPnl >= 0 ? colors.green : colors.red}${totalPnl.toFixed(2)} USDT${colors.reset}`);
-        console.log(`${colors.yellow}Total Return: ${totalReturn >= 0 ? colors.green : colors.red}${totalReturn}%${colors.reset}`);
-        console.log(`${colors.yellow}Final Capital: ${capital >= 0 ? colors.green : colors.red}${capital.toFixed(2)} USDT${colors.reset}`);
+        console.log(`${colors.yellow}Total P&L: ${totalPnl >= 0 ? colors.green : colors.red}${formatNumberWithCommas(totalPnl)} USDT${colors.reset}`);
+        console.log(`${colors.yellow}Total Return: ${totalReturn >= 0 ? colors.green : colors.red}${formatNumberWithCommas(parseFloat(totalReturn))}%${colors.reset}`);
+        console.log(`${colors.yellow}Final Capital: ${capital >= 0 ? colors.green : colors.red}${formatNumberWithCommas(capital)} USDT${colors.reset}`);
         
        
     }

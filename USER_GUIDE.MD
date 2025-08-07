@@ -40,6 +40,9 @@ node multiPivotBacktesterWithTrades.js
 - Complete trading performance statistics
 - Win/loss analysis and duration statistics
 - Capital tracking and profit/loss reporting
+- **Visual Indicators**: Positive PnL values display in green, negative in red for easy identification
+
+**⚠️ CRITICAL BUG FIX (2025-08-07)**: Fixed major issue with SHORT trade trailing take profit calculation. Previously, the formula `bestPrice * (1 - distance)` made trailing TP go BELOW the best price instead of ABOVE it, causing premature exits. Now uses correct formula `bestPrice * (1 + distance)` so SHORT trades properly trail their take profit levels above the best price achieved.
 
 ---
 
