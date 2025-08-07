@@ -1,5 +1,46 @@
 # User Guide
 
+## 🔴 CRITICAL FIX: REAL-TIME LOGIC
+
+### multiPivotFronttesterV2.js - Fixed Real-Time Simulation ✅ OPERATIONAL
+
+**CRITICAL FIX APPLIED**: System now properly simulates real-time conditions without accessing future data.
+
+**What Was Fixed**:
+- **Problem**: System was looking at future candles that wouldn't exist at current time
+- **Example**: At 1:00 AM, system was trying to see 2:00 AM candles (impossible in real trading)
+- **Solution**: Only analyze completed candles with `time <= currentTime`
+
+**Real-Time Principle**:
+- Every minute, system re-analyzes ALL data available up to that point
+- Detects new pivots only from completed candles
+- Opens/manages cascade windows based on current time
+- **NO FUTURE DATA ACCESS** - maintains true real-time behavior
+- **HIERARCHICAL EXECUTION** - respects timeframe hierarchy for proper cascade confirmation
+
+**Usage**:
+```bash
+node multiPivotFronttesterV2.js
+```
+
+**Hierarchical Execution Logic**:
+The system now properly respects timeframe hierarchy when confirming cascades:
+
+- **Primary Window**: 4h timeframe opens cascade window
+- **Confirmation Timeframes**: 1h and 15m provide confirmations
+- **Execution Timeframe**: 1m provides final execution signal (optional)
+
+**Execution Rules**:
+1. **CRITICAL**: 1m execution can ONLY execute if at least one confirmation timeframe (1h or 15m) is present
+2. **With Execution**: If 1m + confirmation(s) + minimum total → Execute immediately
+3. **Without Execution**: If all confirmation timeframes (1h + 15m) confirm → Execute on lowest available
+4. **Minimum Required**: Must have at least 3 total timeframes (configurable)
+
+**Example**: 4h opens window, then:
+- ✅ 4h + 1h + 1m = Execute (has execution + confirmation)
+- ✅ 4h + 1h + 15m = Execute (all confirmations present)
+- ❌ 4h + 1m only = BLOCKED (execution without confirmation - door is closed!)
+
 ## 🔴 LIVE TRADING SYSTEM
 
 ### multiPivotFronttesterLive.js - Real-Time Cascade Detection ✅ OPERATIONAL

@@ -7,7 +7,7 @@ const minute = hour * 60;
 
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell' or 'both' or 'alternate')
-    direction: 'alternate',
+    direction: 'both',
 
     // Profit and loss settings (in %)
 

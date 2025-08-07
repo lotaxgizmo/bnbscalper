@@ -25,7 +25,7 @@ export const fronttesterconfig = {
     
     // Real-time Operation Settings
     refreshInterval: 5,        // Seconds between cascade checks (5-10 recommended)
-    executionMode: 'signal',    // 'signal' = show signals only, 'trade' = execute trades
+    executionMode: 'trade',     // 'signal' = show signals only, 'trade' = execute trades
     maxRecentCascades: 3,       // Number of recent cascades to display
     
     // Data Range Settings

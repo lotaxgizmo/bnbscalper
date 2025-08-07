@@ -40,7 +40,8 @@ class CleanTimeProgressiveFronttester {
         this.currentMinute = 0;            // Current 1-minute index we're processing
         this.oneMinuteCandles = [];        // 1-minute candles for time progression
         this.cascadeCounter = 0;
-        this.recentCascades = [];
+        this.recentCascades = [];      // Limited to 3 for live display
+        this.allCascades = [];         // Store ALL cascades for final summary
         this.isRunning = false;
         this.lastLoggedTime = null;        // Track last logged time for progression
         this.activeWindows = new Map();    // Track active cascade windows
@@ -174,18 +175,33 @@ class CleanTimeProgressiveFronttester {
             const candles = this.timeframeCandles.get(tf.interval) || [];
             const knownPivots = this.timeframePivots.get(tf.interval) || [];
             
-            // Find candle at current time for this timeframe
-            const candleIndex = this.findCandleIndexAtTime(candles, currentTime, tf.interval);
-            if (candleIndex === -1 || candleIndex < tf.lookback) continue;
+            // REAL-TIME FIX: Only analyze candles that are completed (time <= currentTime)
+            // Find the latest completed candle for this timeframe
+            let latestCandleIndex = -1;
+            for (let i = candles.length - 1; i >= 0; i--) {
+                if (candles[i].time <= currentTime) {
+                    latestCandleIndex = i;
+                    break;
+                }
+            }
+            
+            if (latestCandleIndex === -1 || latestCandleIndex < tf.lookback) continue;
             
             // Check if we already detected a pivot at this candle
-            const candleTime = candles[candleIndex].time;
+            const candleTime = candles[latestCandleIndex].time;
             const alreadyExists = knownPivots.some(p => p.time === candleTime);
             if (alreadyExists) continue;
             
-            // Detect pivot at this candle
-            const pivot = this.detectPivotAtCandle(candles, candleIndex, tf);
+            // Detect pivot at this candle (only using data up to currentTime)
+            const pivot = this.detectPivotAtCandle(candles, latestCandleIndex, tf);
             if (pivot) {
+                // REAL-TIME FIX: Only allow pivots that occur during simulation (not before start)
+                const simulationStartTime = this.oneMinuteCandles[0]?.time || 0;
+                if (pivot.time < simulationStartTime) {
+                    // Skip pivots that occurred before simulation started
+                    continue;
+                }
+                
                 knownPivots.push(pivot);
                 this.timeframePivots.set(tf.interval, knownPivots);
                 
@@ -204,29 +220,7 @@ class CleanTimeProgressiveFronttester {
         }
     }
 
-    findCandleIndexAtTime(candles, targetTime, timeframe) {
-        // Find the candle that matches the current time for this timeframe
-        const tolerance = this.getTimeframeTolerance(timeframe);
-        
-        for (let i = 0; i < candles.length; i++) {
-            if (Math.abs(candles[i].time - targetTime) <= tolerance) {
-                return i;
-            }
-        }
-        return -1;
-    }
 
-    getTimeframeTolerance(interval) {
-        const unit = interval.slice(-1);
-        const value = parseInt(interval.slice(0, -1));
-        
-        switch(unit) {
-            case 'm': return (value * 60 * 1000) / 2; // Half the timeframe
-            case 'h': return (value * 60 * 60 * 1000) / 2;
-            case 'd': return (value * 24 * 60 * 60 * 1000) / 2;
-            default: return 30 * 1000; // 30 seconds default
-        }
-    }
 
     detectPivotAtCandle(candles, index, timeframe) {
         if (index < timeframe.lookback) return null;
@@ -236,7 +230,7 @@ class CleanTimeProgressiveFronttester {
             { high: currentCandle.high, low: currentCandle.low } : 
             { high: currentCandle.close, low: currentCandle.close };
         
-        // Check for high pivot (SHORT signal)
+        // Check for high pivot (LONG signal - CONTRARIAN)
         let isHighPivot = true;
         for (let j = 1; j <= timeframe.lookback; j++) {
             const compareCandle = candles[index - j];
@@ -247,7 +241,7 @@ class CleanTimeProgressiveFronttester {
             }
         }
         
-        // Check for low pivot (LONG signal)
+        // Check for low pivot (SHORT signal - CONTRARIAN)
         let isLowPivot = true;
         for (let j = 1; j <= timeframe.lookback; j++) {
             const compareCandle = candles[index - j];
@@ -262,7 +256,7 @@ class CleanTimeProgressiveFronttester {
             return {
                 time: currentCandle.time,
                 price: currentPrice.high,
-                signal: 'short',
+                signal: 'long',  // INVERTED: High pivot = LONG signal
                 type: 'high',
                 timeframe: timeframe.interval
             };
@@ -270,7 +264,7 @@ class CleanTimeProgressiveFronttester {
             return {
                 time: currentCandle.time,
                 price: currentPrice.low,
-                signal: 'long',
+                signal: 'short', // INVERTED: Low pivot = SHORT signal
                 type: 'low',
                 timeframe: timeframe.interval
             };
@@ -303,7 +297,18 @@ class CleanTimeProgressiveFronttester {
         console.log(`\n${colors.brightYellow}🟡 PRIMARY WINDOW OPENED [${windowId}]: ${primaryPivot.timeframe} ${primaryPivot.signal.toUpperCase()} pivot detected${colors.reset}`);
         console.log(`${colors.yellow}   Time: ${timeString12} (${time24}) | Price: $${primaryPivot.price.toFixed(1)}${colors.reset}`);
         console.log(`${colors.yellow}   Waiting for confirmations within ${confirmationWindow}min window...${colors.reset}`);
-        console.log(`${colors.yellow}   Required: ${minRequired} total timeframes (primary + ${minRequired-2} confirmations + execution)${colors.reset}`);
+        
+        // Get confirmation and execution timeframes from config
+        const confirmationTFs = multiPivotConfig.timeframes.filter(tf => tf.role === 'confirmation').map(tf => tf.interval);
+        const executionTFs = multiPivotConfig.timeframes.filter(tf => tf.role === 'execution').map(tf => tf.interval);
+        
+        console.log(`${colors.yellow}   Hierarchical Requirements:${colors.reset}`);
+        console.log(`${colors.yellow}   • Primary: ${primaryPivot.timeframe} ✅${colors.reset}`);
+        console.log(`${colors.yellow}   • Confirmations: ${confirmationTFs.join(', ')} (need any ${minRequired-1})${colors.reset}`);
+        if (executionTFs.length > 0) {
+            console.log(`${colors.yellow}   • Execution: ${executionTFs.join(', ')} (optional but preferred)${colors.reset}`);
+        }
+        console.log(`${colors.yellow}   • Total Required: ${minRequired}/${multiPivotConfig.timeframes.length} timeframes${colors.reset}`);
     }
     
     checkWindowConfirmations(pivot, timeframe, currentTime) {
@@ -322,22 +327,19 @@ class CleanTimeProgressiveFronttester {
             const alreadyConfirmed = window.confirmations.some(c => c.timeframe === timeframe.interval);
             if (alreadyConfirmed) continue;
             
-            // Check if this is 1m execution window - only allow AFTER confirmations are met
-            const nonExecutionConfirmations = window.confirmations.filter(c => c.timeframe !== '1m');
-            const minRequiredTFs = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
-            const confirmationsNeeded = minRequiredTFs - 1; // -1 for primary
-            
-            if (timeframe.interval === '1m') {
-                // For 1m execution window, we need enough non-1m confirmations first
-                if (nonExecutionConfirmations.length < (confirmationsNeeded - 1)) {
-                    // Not enough confirmations yet, skip this 1m pivot
-                    return;
-                }
-                // Also check that this 1m pivot comes AFTER the latest confirmation
-                const latestConfirmationTime = Math.max(...window.confirmations.map(c => c.pivot.time));
-                if (pivot.time < latestConfirmationTime) {
-                    // This 1m pivot is before latest confirmation, skip it
-                    return;
+            // CRITICAL VALIDATION: Execution timeframe (1m) can ONLY confirm if at least one confirmation timeframe is already present
+            const timeframeRole = multiPivotConfig.timeframes.find(tf => tf.interval === timeframe.interval)?.role;
+            if (timeframeRole === 'execution') {
+                // Check if we have any confirmation timeframes already
+                const hasConfirmation = window.confirmations.some(c => {
+                    const role = multiPivotConfig.timeframes.find(tf => tf.interval === c.timeframe)?.role;
+                    return role === 'confirmation';
+                });
+                
+                if (!hasConfirmation) {
+                    // Block execution timeframe from confirming without confirmation timeframes
+                    console.log(`${colors.red}   🚫 BLOCKED: ${timeframe.interval} execution cannot confirm without confirmation timeframes (1h or 15m)${colors.reset}`);
+                    continue; // Skip this confirmation
                 }
             }
             
@@ -348,36 +350,90 @@ class CleanTimeProgressiveFronttester {
                 confirmTime: currentTime
             });
             
+            const minRequiredTFs = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
             const totalConfirmed = 1 + window.confirmations.length; // +1 for primary
             const timeString = new Date(pivot.time).toLocaleString();
             const time24 = new Date(pivot.time).toLocaleTimeString('en-GB', { hour12: false });
             
-            if (timeframe.role === 'secondary') {
-                console.log(`${colors.brightMagenta}🟠 SECONDARY WINDOW [${windowId}]: ${timeframe.interval} ${pivot.signal.toUpperCase()} pivot detected${colors.reset}`);
-            } else if (timeframe.interval === '1m') {
-                console.log(`${colors.brightYellow}🔵 EXECUTION WINDOW [${windowId}]: ${timeframe.interval} ${pivot.signal.toUpperCase()} pivot detected${colors.reset}`);
-            } else {
-                console.log(`${colors.brightGreen}🟢 CONFIRMATION WINDOW [${windowId}]: ${timeframe.interval} ${pivot.signal.toUpperCase()} pivot detected${colors.reset}`);
-            }
+            console.log(`${colors.brightGreen}🟢 CONFIRMATION WINDOW [${windowId}]: ${timeframe.interval} ${pivot.signal.toUpperCase()} pivot detected${colors.reset}`);
             console.log(`${colors.cyan}   Time: ${timeString} (${time24}) | Price: $${pivot.price.toFixed(1)}${colors.reset}`);
             console.log(`${colors.cyan}   Confirmations: ${totalConfirmed}/${minRequiredTFs} (${[window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)].join(' + ')})${colors.reset}`);
             
-            // Check if ready for execution (must have 1m execution window AND other confirmations)
-            const hasExecutionWindow = window.confirmations.some(c => c.timeframe === '1m');
-            const hasOtherConfirmations = window.confirmations.some(c => c.timeframe !== '1m');
-            
-            // Only execute if this is the 1m execution window AND we have enough confirmations
-            if (timeframe.interval === '1m' && totalConfirmed >= minRequiredTFs && hasOtherConfirmations && window.status !== 'executed') {
-                console.log(`${colors.brightGreen}   ✅ EXECUTING CASCADE - All confirmations + execution window ready!${colors.reset}`);
-                window.status = 'ready';
-                this.executeWindow(window, currentTime);
-            } else if (totalConfirmed >= minRequiredTFs && !hasExecutionWindow) {
-                console.log(`${colors.yellow}   ⏳ WAITING FOR EXECUTION WINDOW (1m pivot needed)${colors.reset}`);
-                window.status = 'awaiting_execution';
-            } else if (hasExecutionWindow && !hasOtherConfirmations) {
-                console.log(`${colors.yellow}   ⏳ EXECUTION WINDOW READY - Waiting for confirmations${colors.reset}`);
+            // HIERARCHICAL EXECUTION LOGIC
+            if (totalConfirmed >= minRequiredTFs && window.status !== 'executed') {
+                const canExecute = this.checkHierarchicalExecution(window);
+                if (canExecute) {
+                    console.log(`${colors.brightGreen}   ✅ EXECUTING CASCADE - Hierarchical confirmation complete!${colors.reset}`);
+                    window.status = 'ready';
+                    this.executeWindow(window, currentTime);
+                } else {
+                    // Show why execution is blocked
+                    const confirmedTFs = [window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)];
+                    const roles = confirmedTFs.map(tf => {
+                        const role = multiPivotConfig.timeframes.find(t => t.interval === tf)?.role || 'unknown';
+                        return `${tf}(${role})`;
+                    });
+                    console.log(`${colors.yellow}   ⏳ WAITING - Hierarchical requirements not met: ${roles.join(' + ')}${colors.reset}`);
+                }
             }
         }
+    }
+    
+    checkHierarchicalExecution(window) {
+        // Get all confirmed timeframes (primary + confirmations)
+        const confirmedTimeframes = [window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)];
+        
+        // Get timeframe roles from config
+        const timeframeRoles = new Map();
+        multiPivotConfig.timeframes.forEach(tf => {
+            timeframeRoles.set(tf.interval, tf.role);
+        });
+        
+        // Count confirmations and execution timeframes
+        let hasExecution = false;
+        let confirmationCount = 0;
+        const confirmationTFs = [];
+        const executionTFs = [];
+        
+        for (const tf of confirmedTimeframes) {
+            const role = timeframeRoles.get(tf);
+            if (role === 'execution') {
+                hasExecution = true;
+                executionTFs.push(tf);
+            } else if (role === 'confirmation') {
+                confirmationCount++;
+                confirmationTFs.push(tf);
+            }
+            // Primary is always counted (role === 'primary')
+        }
+        
+        const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
+        
+        // CRITICAL RULE: Execution timeframe (1m) can ONLY execute if there's at least one confirmation timeframe
+        if (hasExecution && confirmationCount === 0) {
+            // 1m cannot execute without confirmation timeframes (1h or 15m)
+            return false; // Door is closed without confirmation
+        }
+        
+        // EXECUTION RULES:
+        // 1. If we have execution timeframe + at least one confirmation -> EXECUTE
+        // 2. If no execution but we have all confirmation timeframes -> EXECUTE
+        // 3. Must have at least minRequired total timeframes
+        
+        if (confirmedTimeframes.length >= minRequired) {
+            // Rule 1: Has execution timeframe AND at least one confirmation
+            if (hasExecution && confirmationCount >= 1) {
+                return true; // Execute with execution + confirmation(s)
+            }
+            
+            // Rule 2: No execution, but has all confirmation timeframes
+            const totalConfirmationTFs = multiPivotConfig.timeframes.filter(tf => tf.role === 'confirmation').length;
+            if (!hasExecution && confirmationCount >= totalConfirmationTFs) {
+                return true; // Execute on lowest available timeframe (all confirmations present)
+            }
+        }
+        
+        return false; // Not ready for execution
     }
     
     executeWindow(window, currentTime) {
@@ -406,7 +462,11 @@ class CleanTimeProgressiveFronttester {
             windowId: window.id
         };
         
+        // Store in both arrays
         this.recentCascades.push(cascadeInfo);
+        this.allCascades.push(cascadeInfo);  // Keep ALL cascades for final summary
+        
+        // Limit recent cascades to 3 for live display
         if (this.recentCascades.length > 3) {
             this.recentCascades.shift();
         }
@@ -580,6 +640,25 @@ class CleanTimeProgressiveFronttester {
         console.log(`${colors.magenta}└${'─'.repeat(60)}${colors.reset}\n`);
     }
 
+    displayAllCascades() {
+        if (this.allCascades.length === 0) return;
+        
+        console.log(`\n${colors.magenta}┌─ All Cascades (${this.allCascades.length}/${this.cascadeCounter}) ${'─'.repeat(30)}${colors.reset}`);
+        
+        this.allCascades.forEach(cascade => {
+            const { id, primaryPivot, cascadeResult } = cascade;
+            const time = new Date(cascadeResult.executionTime).toLocaleTimeString();
+            const time24 = new Date(cascadeResult.executionTime).toLocaleTimeString('en-GB', { hour12: false });
+            const signal = primaryPivot.signal.toUpperCase();
+            const strength = (cascadeResult.strength * 100).toFixed(0);
+            const price = cascadeResult.executionPrice.toFixed(1);
+            
+            console.log(`${colors.magenta}│${colors.reset} ${colors.yellow}[${id.toString().padStart(3)}] ${time.padEnd(11)} (${time24}) | ${signal.padEnd(5)} | ${strength.padStart(2)}% | $${price}${colors.reset}`);
+        });
+        
+        console.log(`${colors.magenta}└${'─'.repeat(60)}${colors.reset}\n`);
+    }
+
     finishSimulation() {
         console.log(`\n${colors.green}🏁 Clean simulation completed!${colors.reset}`);
         console.log(`${colors.cyan}${'─'.repeat(40)}${colors.reset}`);
@@ -587,9 +666,9 @@ class CleanTimeProgressiveFronttester {
         console.log(`${colors.yellow}Minutes Processed:       ${colors.green}${this.currentMinute}${colors.reset}`);
         console.log(`${colors.cyan}${'─'.repeat(40)}${colors.reset}`);
         
-        if (this.recentCascades.length > 0) {
+        if (this.allCascades.length > 0) {
             console.log(`\nFinal Cascades:`);
-            this.displayRecentCascades();
+            this.displayAllCascades();
         }
     }
 

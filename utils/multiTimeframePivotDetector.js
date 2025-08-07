@@ -205,7 +205,7 @@ export class MultiTimeframePivotDetector {
                         index: i,
                         timeframe: interval,
                         swingPct: swingPct * 100,
-                        signal: 'short' // High pivot suggests short opportunity
+                        signal: 'long' // High pivot suggests LONG opportunity (contrarian)
                     };
                     
                     pivots.push(pivot);
@@ -228,7 +228,7 @@ export class MultiTimeframePivotDetector {
                         index: i,
                         timeframe: interval,
                         swingPct: swingPct * 100,
-                        signal: 'long' // Low pivot suggests long opportunity
+                        signal: 'short' // INVERTED: Low pivot suggests SHORT opportunity (contrarian)
                     };
                     
                     pivots.push(pivot);

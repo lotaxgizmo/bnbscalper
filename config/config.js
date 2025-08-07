@@ -1,7 +1,7 @@
 // config.js
 
 // Data source settings
-export const useLocalData = true;  // Force API data fetching
+export const useLocalData = true; // true = use CSV files, false = use live API data fetching
 export const useEdges = false;    // Use pre-computed edge data; if false, use standard CSV candles
 
 // API settings

@@ -1,5 +1,68 @@
 # Technical Documentation
 
+## 🔴 CRITICAL FIX: REAL-TIME LOGIC - multiPivotFronttesterV2.js
+
+### 2025-08-07: ⚡ REAL-TIME LOGIC FIX - No Future Data Access
+- **CRITICAL ISSUE FIXED**: System was accessing future candles that don't exist at current time
+- **PROBLEM**: `findCandleIndexAtTime()` was looking for exact time matches, allowing future data
+- **SOLUTION**: Only analyze candles with `time <= currentTime` (completed candles only)
+- **REAL-TIME PRINCIPLE**: At 1:00 AM, you CANNOT see 2:00 AM candles - they don't exist yet!
+
+- **IMPLEMENTATION FIX**:
+  ```javascript
+  // OLD (WRONG): Looking for exact time matches
+  const candleIndex = this.findCandleIndexAtTime(candles, currentTime, tf.interval);
+  
+  // NEW (CORRECT): Only use completed candles
+  let latestCandleIndex = -1;
+  for (let i = candles.length - 1; i >= 0; i--) {
+      if (candles[i].time <= currentTime) {
+          latestCandleIndex = i;
+          break;
+      }
+  }
+  ```
+
+- **KEY PRINCIPLE**: **REAL-TIME SIMULATION**
+  * Every minute, system re-analyzes ALL available data up to that point
+  * Detects new pivots from completed candles only
+  * Opens/manages cascade windows based on current time
+  * NO FUTURE DATA ACCESS - maintains true real-time behavior
+  * NO HISTORICAL PIVOTS - only detects pivots that occur during simulation
+  * HIERARCHICAL EXECUTION - respects timeframe hierarchy for proper cascade confirmation
+
+### 🎯 HIERARCHICAL EXECUTION LOGIC - Smart Cascade Confirmation
+- **PROBLEM SOLVED**: Previous logic executed on any 3 timeframes (e.g., 4h + 1m + 1h)
+- **NEW LOGIC**: Respects proper timeframe hierarchy and role-based confirmation
+
+- **EXECUTION RULES**:
+  1. **CRITICAL RULE**: Execution timeframe (1m) can ONLY execute if at least one confirmation timeframe (1h or 15m) is present
+  2. **Rule 1**: If execution timeframe (1m) + confirmation(s) + minimum total → EXECUTE
+  3. **Rule 2**: If all confirmation timeframes (1h, 15m) confirm → EXECUTE on lowest available
+  4. **Hierarchy**: Always respects 4h → 1h → 15m → 1m order
+
+- **EXAMPLE SCENARIOS**:
+  * **Scenario 1**: 4h (primary) + 1h (confirmation) + 1m (execution) → ✅ EXECUTE (has execution + confirmation)
+  * **Scenario 2**: 4h (primary) + 1h (confirmation) + 15m (confirmation) → ✅ EXECUTE (all confirmations)
+  * **Scenario 3**: 4h (primary) + 1m (execution) only → ❌ BLOCKED (execution without confirmation)
+  * **Scenario 4**: 4h (primary) + 15m (confirmation) + 1m (execution) → ✅ EXECUTE (has execution + confirmation)
+  * **Scenario 5**: 4h (primary) + 1m (execution) + 1h (confirmation) → ✅ EXECUTE (order doesn't matter, has both)
+
+- **CONFIGURATION MAPPING**:
+  ```javascript
+  // multiPivotConfig.js roles:
+  '4h': 'primary'      // Always required (window opener)
+  '1h': 'confirmation' // Confirmation timeframe
+  '15m': 'confirmation' // Confirmation timeframe  
+  '1m': 'execution'    // Execution timeframe (preferred but optional)
+  ```
+
+- **SMART LOGIC BENEFITS**:
+  * **Proper Hierarchy**: Respects timeframe order (big to small)
+  * **Flexible Execution**: Works with or without execution timeframe
+  * **Quality Control**: Ensures meaningful cascade confirmation
+  * **Realistic Trading**: Matches real-world trading decision flow
+
 ## 🔴 LIVE TRADING SYSTEM - multiPivotFronttesterLive.js
 
 ### 2025-08-07: 🚀 LIVE API INTEGRATION - Real-Time Multi-Timeframe Cascade Detection
@@ -138,6 +201,40 @@
   * Removed comma formatting from entry prices for cleaner output
 - **Result**: Fronttester now properly waits for adequate confirmations like backtester
 - **Status**: ✅ IMPROVED - Fronttester respects minimum timeframe requirements
+
+## API Data Consistency Fix
+
+### Problem Solved
+Previously, there was a discrepancy between CSV and API data volumes:
+- **CSV Mode**: Used calculated limit from config.js (1,296 candles for 1m interval)
+- **API Mode**: Limited to single API call (1,000 candles maximum)
+
+This caused different cascade detection results between modes.
+
+### Solution: Multi-Batch API Fetching
+Implemented multi-batch API fetching in `multiTimeframePivotDetector.js`:
+
+```javascript
+// Multi-batch fetching logic
+while (allCandles.length < timeframeLimit && consecutiveErrors < MAX_RETRIES) {
+    const batchCandles = await getCandles(symbol, interval, BATCH_SIZE, endTime);
+    allCandles = [...batchCandles, ...allCandles];
+    endTime = batchCandles[0].time - 1; // Go backwards in time
+}
+```
+
+**Key Features:**
+- **Batch Size**: 1,000 candles per API call (respects Bybit limits)
+- **Backwards Fetching**: Uses `endTime` parameter to fetch historical data
+- **Error Handling**: 3 retries with exponential backoff (100ms → 1s → 2s)
+- **Rate Limiting**: 100ms delay between successful requests
+- **Deduplication**: Removes duplicate candles by timestamp
+- **Consistent Limits**: Both modes now use same `calculateTimeframeLimit()` logic
+
+**Results:**
+- ✅ **CSV Mode**: 1,296 candles
+- ✅ **API Mode**: 1,296 candles  
+- ✅ **Identical Cascade Detection**: Both modes produce same results
 
 ## Multi-Timeframe Pivot System Updates
 

@@ -1,5 +1,225 @@
 # Issues and Solutions Log
 
+## 73. 🚫 CRITICAL: Block 1m Execution Without Confirmation Timeframes
+
+**Date:** August 7, 2025
+
+**Issue:** 1m execution timeframe was confirming BEFORE confirmation timeframes (1h, 15m), violating hierarchical order and allowing invalid cascades.
+
+**Root Cause Analysis:**
+- **Invalid Sequence**: System allowed 4h + 1m confirmation, then waited for 1h
+- **Broken Hierarchy**: 1m should NEVER confirm without at least one confirmation timeframe present
+- **Door Logic**: Without confirmation timeframes, the execution door should be CLOSED
+- **User Expectation**: "1m cannot appear unless the 15m or the 1h appears"
+
+**Example Problem:**
+```
+4h (primary) + 1m (execution) = Invalid cascade
+Should be BLOCKED until 1h or 15m confirms first
+```
+
+**Solution Implemented:**
+```javascript
+// CRITICAL VALIDATION: Block execution without confirmation
+const timeframeRole = multiPivotConfig.timeframes.find(tf => tf.interval === timeframe.interval)?.role;
+if (timeframeRole === 'execution') {
+    const hasConfirmation = window.confirmations.some(c => {
+        const role = multiPivotConfig.timeframes.find(tf => tf.interval === c.timeframe)?.role;
+        return role === 'confirmation';
+    });
+    
+    if (!hasConfirmation) {
+        console.log('🚫 BLOCKED: 1m execution cannot confirm without confirmation timeframes');
+        continue; // Skip this confirmation
+    }
+}
+```
+
+**Fixed Behavior:**
+- ❌ 4h + 1m = BLOCKED (execution without confirmation)
+- ✅ 4h + 1h + 1m = ALLOWED (confirmation first, then execution)
+- ✅ 4h + 15m + 1m = ALLOWED (confirmation first, then execution)
+- ✅ 4h + 1h + 15m = ALLOWED (both confirmations present)
+
+**Files Modified:**
+- multiPivotFronttesterV2.js (lines 330-344): Added execution validation logic
+- TECHNICAL_DOCS.MD: Updated execution rules with critical validation
+- USER_GUIDE.md: Updated with door logic explanation
+
+**Status:** ✅ RESOLVED - 1m execution timeframe now properly blocked without confirmation timeframes
+
+## 72. 🎯 Execution Logic: Remove 1m "Execution Window" Requirement
+
+**Date:** August 7, 2025
+
+**Issue:** System was treating 1m timeframe as special "execution window" that was required for trade execution, causing unnecessary delays.
+
+**Root Cause Analysis:**
+- **Special Treatment**: 1m timeframe was treated as "execution window" instead of regular confirmation
+- **Execution Delay**: System waited for 1m pivot even when it had enough confirmations from other timeframes
+- **Complex Logic**: Separate logic paths for "execution window" vs "confirmation window"
+- **User Expectation**: System should execute when it has minimum required confirmations (any combination)
+
+**Example Problem:**
+```
+4h + 1h + 15m = 3 confirmations (should execute)
+But system waited for 1m "execution window" instead
+```
+
+**Solution Implemented:**
+```javascript
+// OLD: Complex execution window logic
+if (timeframe.interval === '1m' && totalConfirmed >= minRequiredTFs && hasOtherConfirmations) {
+    // Execute only if 1m is the trigger
+}
+
+// NEW: Simple confirmation counting
+if (totalConfirmed >= minRequiredTFs && window.status !== 'executed') {
+    // Execute when minimum confirmations met (any combination)
+    this.executeWindow(window, currentTime);
+}
+```
+
+**Key Changes:**
+1. **Removed Special 1m Logic**: All timeframes treated equally as confirmations
+2. **Simplified Execution**: Execute when `totalConfirmed >= minRequiredTFs`
+3. **Any Combination**: Primary + any 2 confirmations = execution (e.g., 4h + 1h + 15m)
+4. **Unified Display**: All confirmations show as "CONFIRMATION WINDOW"
+5. **Removed Complex Checks**: No more "execution window" vs "confirmation window" logic
+
+**Benefits:**
+- **Faster Execution**: No waiting for specific timeframe
+- **Flexible Combinations**: Any timeframes can provide confirmations
+- **Simpler Logic**: Unified confirmation handling
+- **User Expectation**: Executes when logically ready
+
+**Status:** ✅ RESOLVED - System now executes trades when minimum confirmations met, regardless of timeframe combination
+
+---
+
+## 71. ⚡ CRITICAL: Real-Time Logic Accessing Future Data
+
+**Date:** August 7, 2025
+
+**Issue:** multiPivotFronttesterV2.js was accessing future candles that don't exist at current simulation time, violating real-time principles.
+
+**Root Cause Analysis:**
+- **Problem Method**: `findCandleIndexAtTime()` was looking for exact time matches
+- **Future Data Access**: System could see candles with timestamps AFTER current time
+- **Real-Time Violation**: At 1:00 AM, system was trying to access 2:00 AM candles
+- **Unrealistic Behavior**: This would be impossible in actual live trading
+
+**Specific Problems:**
+1. **Exact Time Matching**: `findCandleIndexAtTime()` used tolerance-based matching
+2. **Future Candle Access**: Could access `candles[i].time > currentTime`
+3. **Unrealistic Simulation**: Violated "you can't see future" principle
+4. **Timing Issues**: Cascade detection based on non-existent future data
+
+**Example of Problem:**
+```javascript
+// WRONG: Could access future candles
+const candleIndex = this.findCandleIndexAtTime(candles, currentTime, tf.interval);
+if (Math.abs(candles[i].time - targetTime) <= tolerance) {
+    return i; // Could return future candle index
+}
+```
+
+**Solution Implemented:**
+```javascript
+// CORRECT: Only use completed candles
+let latestCandleIndex = -1;
+for (let i = candles.length - 1; i >= 0; i--) {
+    if (candles[i].time <= currentTime) { // ONLY completed candles
+        latestCandleIndex = i;
+        break;
+    }
+}
+```
+
+**Key Fixes:**
+1. **Removed Future Access**: Only analyze `candles[i].time <= currentTime`
+2. **Real-Time Compliance**: System now truly simulates real-time conditions
+3. **Backward Search**: Find latest completed candle, not future ones
+4. **Deleted Methods**: Removed `findCandleIndexAtTime()` and `getTimeframeTolerance()`
+
+**Real-Time Principle Enforced:**
+- **Every minute**: Re-analyze ALL available data up to current time
+- **No future data**: Only use completed candles
+- **True simulation**: Matches actual live trading conditions
+- **Realistic timing**: Cascade detection based on available data only
+
+**Status:** ✅ RESOLVED - System now maintains strict real-time behavior without future data access
+
+**ADDITIONAL FIX**: Added check to prevent historical pivots from before simulation start:
+```javascript
+// Only allow pivots that occur during simulation (not before start)
+const simulationStartTime = this.oneMinuteCandles[0]?.time || 0;
+if (pivot.time < simulationStartTime) {
+    continue; // Skip pre-simulation pivots
+}
+```
+
+---
+
+## 70. 📊 API Data Volume Inconsistency - CSV vs API Mode Discrepancy
+
+**Date:** August 7, 2025
+
+**Issue:** Different amounts of historical data between CSV and API modes caused inconsistent cascade detection results.
+
+**Root Cause Analysis:**
+- **CSV Mode**: Used calculated limit from config.js (1,296 candles for 1m interval)
+- **API Mode**: Limited to single API call maximum (1,000 candles)
+- **Result**: Different data volumes led to different cascade detection outcomes
+
+**Specific Problems:**
+1. **Single API Call Limit**: Line 102 in multiTimeframePivotDetector.js used hardcoded 1000 limit
+2. **Inconsistent Results**: CSV mode found 3 cascades, API mode found different results
+3. **Unfair Comparison**: Couldn't reliably compare CSV simulation vs live API performance
+
+**Example of Problem:**
+```javascript
+// WRONG: Single API call with hardcoded limit
+const rawCandles = await getCandles(this.symbol, interval, 1000);
+// Result: Only 1000 candles regardless of config.js calculation
+```
+
+**Solution Implemented:**
+```javascript
+// NEW: Multi-batch API fetching
+const timeframeLimit = this.calculateTimeframeLimit(interval);
+let allCandles = [];
+let endTime = Date.now();
+
+while (allCandles.length < timeframeLimit && consecutiveErrors < MAX_RETRIES) {
+    const batchCandles = await getCandles(this.symbol, interval, BATCH_SIZE, endTime);
+    allCandles = [...batchCandles, ...allCandles];
+    endTime = batchCandles[0].time - 1; // Go backwards in time
+    await new Promise(resolve => setTimeout(resolve, 100)); // Rate limiting
+}
+```
+
+**Key Features of Fix:**
+- **Batch Size**: 1,000 candles per API call (respects Bybit limits)
+- **Loop Logic**: Continues until required limit reached
+- **Error Handling**: 3 retries with exponential backoff
+- **Rate Limiting**: 100ms delay between requests
+- **Backwards Fetching**: Uses endTime parameter to fetch historical data
+- **Deduplication**: Removes duplicate candles by timestamp
+
+**Results After Fix:**
+- ✅ **CSV Mode**: 1,296 candles → 3 cascades detected
+- ✅ **API Mode**: 1,296 candles → 3 cascades detected (identical results)
+- ✅ **Consistent Detection**: Both modes now produce same cascade results
+- ✅ **Fair Comparison**: Can switch between data sources without result differences
+
+**Files Modified:**
+- `utils/multiTimeframePivotDetector.js`: Lines 100-120 (multi-batch API fetching)
+- `TECHNICAL_DOCS.MD`: Added API consistency documentation
+- `USER_GUIDE.md`: Added user-facing explanation of fix
+
+**Status:** ✅ RESOLVED - Both CSV and API modes now use identical data volumes
+
 ## 69. 🚨 CRITICAL FUTURE LOOK BIAS - multiPivotFronttester.js System Architecture Flaw
 
 **Date:** August 7, 2025
