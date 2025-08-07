@@ -16,16 +16,19 @@ export const fronttesterconfig = {
     // Display Settings
     hideCandle: true,           // When true, hides intermediate candle fetching messages and price updates
     logCandlesInStreamer: true, // Toggle to show/hide individual candle logs in the historical streamer
+    hideTimeDisplay: true,     // Hide time progression display (⏰ Wed, Aug 6, 05:00 PM...)
+    hideProgressDisplay: true, // Hide progress percentage display (Progress: 15.4%...)
     
     // Past Mode Simulation Settings
     pastMode: true,             // Enable past mode simulation (false = live WebSocket mode)
-    speedMultiplier: 10000,     // Simulation speed: 1=normal, 2=2x, 10=10x speed
+    speedMultiplier: 100000,     // Simulation speed: 1=normal, 2=2x, 10=10x speed
     startFromEnd: true,         // Start simulation from most recent data
     simulationLength: null,     // Number of candles to simulate (null = use full limit)
     
     // Real-time Operation Settings
     refreshInterval: 5,        // Seconds between cascade checks (5-10 recommended)
     executionMode: 'trade',     // 'signal' = show signals only, 'trade' = execute trades
+    enableTrading: true,        // Enable/disable actual trade execution
     maxRecentCascades: 3,       // Number of recent cascades to display
     
     // Data Range Settings

@@ -10,30 +10,41 @@ export const tradeConfig = {
     direction: 'both',
 
     // Profit and loss settings (in %)
-
+    takeProfitPercent: 1,
+    stopLossPercent: 0.3,
+    
+    // Legacy names for compatibility
     takeProfit: 1,
     stopLoss: 0.3,
     
     // Trailing stop settings
     enableTrailingStop: false,     // Enable trailing stop loss
-    trailingStopDistance: 0.5,   // Distance to trail behind best price (in %)
+    trailingStopPercent: 0.5,      // Distance to trail behind best price (in %)
+    trailingStopActivationPercent: 1.0,  // Profit % required to activate trailing stop
+    trailingStopDistance: 0.5,   // Distance to trail behind best price (in %) - legacy
     enableTrailingTakeProfit: false, // Enable trailing take profit
     trailingTakeProfitTrigger: 1, // Trigger trailing TP when profit reaches this % (must be > takeProfit)
     trailingTakeProfitDistance: 0.3, // Distance to trail behind best price for TP (in %)
     
  
-    leverage: 1,        
+    leverage: 100,        
     
     
     showCandle: false,
     showPivot: false,
     showLimits: false,
-    showTradeDetails: false,
+    showTradeDetails: true,
     hideCascades: false,  // Hide cascade confirmation logs (keeps trade execution logs)
         
+    // Position sizing settings
+    positionSizeMode: 'percentage',  // 'fixed', 'percentage', or 'minimum'
+    positionSize: 100,               // Fixed position size in USDT (for 'fixed' mode)
+    positionSizePercent: 100,        // Percentage of capital to use (for 'percentage' mode)
+    
     // Multi-trade settings
-    maxConcurrentTrades: 1, // Number of trades that can be open at once (default: 1)
-    positionSizingMode: 'percent', // 'percent', 'fixed', or 'minimum'
+    singleTradeMode: true,      // Only allow one trade at a time (prevents concurrent trades)
+    maxConcurrentTrades: 1,     // Number of trades that can be open at once (default: 1)
+    positionSizingMode: 'percent', // 'percent', 'fixed', or 'minimum' - legacy
     amountPerTrade: 100,    // Fixed amount per trade in USDT (only used if positionSizingMode is 'fixed')
     minimumTradeAmount: 100, // Minimum trade amount in USDT (only used if positionSizingMode is 'minimum')
     

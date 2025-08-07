@@ -33,6 +33,78 @@ const colors = {
     bold: '\x1b[1m'
 };
 
+// Helper function to format numbers with commas
+const formatNumberWithCommas = (num) => {
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+};
+
+// Helper function to calculate slippage
+const calculateSlippage = (tradeSize, tradeConfig) => {
+    if (!tradeConfig.enableSlippage) return 0;
+    
+    let slippagePercent = 0;
+    
+    switch (tradeConfig.slippageMode) {
+        case 'fixed':
+            slippagePercent = tradeConfig.slippagePercent;
+            break;
+        case 'variable':
+            const range = tradeConfig.variableSlippageMax - tradeConfig.variableSlippageMin;
+            slippagePercent = tradeConfig.variableSlippageMin + (Math.random() * range);
+            break;
+        case 'market_impact':
+            const marketImpact = (tradeSize / 1000) * tradeConfig.marketImpactFactor;
+            slippagePercent = tradeConfig.slippagePercent + marketImpact;
+            break;
+        default:
+            slippagePercent = tradeConfig.slippagePercent;
+    }
+    
+    return slippagePercent / 100;
+};
+
+// Helper function to calculate funding rate cost
+const calculateFundingRate = (tradeConfig, currentTime, entryTime, positionSize, leverage) => {
+    if (!tradeConfig.enableFundingRate) return 0;
+    
+    const tradeDurationMs = currentTime - entryTime;
+    const tradeDurationHours = tradeDurationMs / (1000 * 60 * 60);
+    const fundingPeriods = Math.floor(tradeDurationHours / tradeConfig.fundingRateHours);
+    
+    if (fundingPeriods <= 0) return 0;
+    
+    let fundingRatePercent = 0;
+    
+    switch (tradeConfig.fundingRateMode) {
+        case 'fixed':
+            fundingRatePercent = tradeConfig.fundingRatePercent;
+            break;
+        case 'variable':
+            const range = tradeConfig.variableFundingMax - tradeConfig.variableFundingMin;
+            fundingRatePercent = tradeConfig.variableFundingMin + (Math.random() * range);
+            break;
+        default:
+            fundingRatePercent = tradeConfig.fundingRatePercent;
+    }
+    
+    const totalFundingCost = positionSize * leverage * (fundingRatePercent / 100) * fundingPeriods;
+    return totalFundingCost;
+};
+
+// Helper function to apply slippage to price
+const applySlippage = (price, tradeType, slippagePercent) => {
+    if (slippagePercent === 0) return price;
+    
+    if (tradeType === 'long') {
+        return price * (1 + slippagePercent); // Long trades pay higher (worse fill)
+    } else {
+        return price * (1 - slippagePercent); // Short trades get lower (worse fill)
+    }
+};
+
 class CleanTimeProgressiveFronttester {
     constructor() {
         this.timeframeCandles = new Map(); // Raw candle data for each timeframe
@@ -46,6 +118,477 @@ class CleanTimeProgressiveFronttester {
         this.lastLoggedTime = null;        // Track last logged time for progression
         this.activeWindows = new Map();    // Track active cascade windows
         this.windowCounter = 0;            // Counter for window IDs
+        
+        // Pivot tracking for swing filtering (matches backtester)
+        this.lastPivots = new Map();       // Track last pivot per timeframe for swing filtering
+        
+        // Trading variables
+        this.capital = tradeConfig.initialCapital;
+        this.trades = [];
+        this.openTrades = [];
+    }
+
+    // Create a new trade
+    createTrade(signal, candle) {
+        // Check for single trade mode - prevent concurrent trades
+        if (tradeConfig.singleTradeMode && this.openTrades.length > 0) {
+            console.log(`${colors.yellow}⏸️  Single trade mode: Skipping new trade while trade #${this.openTrades[0].id} is open${colors.reset}`);
+            return null;
+        }
+        
+        const slippagePercent = calculateSlippage(tradeConfig.positionSize, tradeConfig);
+        const entryPrice = applySlippage(candle.close, signal.direction, slippagePercent);
+        
+        let positionSize;
+        switch (tradeConfig.positionSizeMode) {
+            case 'fixed':
+                positionSize = tradeConfig.positionSize;
+                break;
+            case 'percentage':
+                positionSize = this.capital * (tradeConfig.positionSizePercent / 100);
+                break;
+            case 'minimum':
+                positionSize = Math.max(tradeConfig.positionSize, this.capital * (tradeConfig.positionSizePercent / 100));
+                break;
+            default:
+                positionSize = tradeConfig.positionSize;
+        }
+        
+        // Check if we have enough capital
+        if (positionSize > this.capital) {
+            console.log(`${colors.red}❌ Insufficient capital: Need $${formatNumberWithCommas(positionSize)}, Have $${formatNumberWithCommas(this.capital)}${colors.reset}`);
+            return null;
+        }
+        
+        const leverage = tradeConfig.leverage;
+        const notionalValue = positionSize * leverage;
+        
+        // Calculate stop loss and take profit
+        const stopLossPrice = signal.direction === 'long' 
+            ? entryPrice * (1 - tradeConfig.stopLossPercent / 100)
+            : entryPrice * (1 + tradeConfig.stopLossPercent / 100);
+            
+        const takeProfitPrice = signal.direction === 'long'
+            ? entryPrice * (1 + tradeConfig.takeProfitPercent / 100)
+            : entryPrice * (1 - tradeConfig.takeProfitPercent / 100);
+        
+        const trade = {
+            id: this.trades.length + 1,
+            direction: signal.direction,
+            entryTime: candle.time,
+            entryPrice: entryPrice,
+            positionSize: positionSize,
+            leverage: leverage,
+            notionalValue: notionalValue,
+            stopLossPrice: stopLossPrice,
+            takeProfitPrice: takeProfitPrice,
+            slippagePercent: slippagePercent * 100,
+            status: 'open',
+            bestPrice: entryPrice,
+            trailingStopPrice: null,
+            trailingStopActivated: false,
+            exitTime: null,
+            exitPrice: null,
+            pnl: 0,
+            pnlPercent: 0,
+            fundingCost: 0,
+            totalCost: positionSize * slippagePercent, // Initial slippage cost
+            signal: signal
+        };
+        
+        // Deduct position size from capital
+        this.capital -= positionSize;
+        
+        this.trades.push(trade);
+        this.openTrades.push(trade);
+        
+        console.log(`\n ${colors.green}🚀 TRADE OPENED: ${trade.direction.toUpperCase()} #${trade.id}${colors.reset}`);
+        console.log(`   Entry: $${formatNumberWithCommas(entryPrice)} | Size: $${formatNumberWithCommas(positionSize)} | Leverage: ${leverage}x`);
+        console.log(`   SL: $${formatNumberWithCommas(stopLossPrice)} | TP: $${formatNumberWithCommas(takeProfitPrice)}`);
+        console.log(`   Capital Remaining: $${formatNumberWithCommas(this.capital)}`);
+        
+        return trade;
+    }
+
+    // Monitor and manage open trades
+    monitorTrades(currentCandle) {
+        if (this.openTrades.length === 0) return;
+        
+        const tradesToClose = [];
+        
+        for (const trade of this.openTrades) {
+            const currentPrice = currentCandle.close;
+            const currentTime = currentCandle.time;
+            
+            // Calculate current PnL
+            let currentPnL = 0;
+            if (trade.direction === 'long') {
+                currentPnL = (currentPrice - trade.entryPrice) * (trade.notionalValue / trade.entryPrice);
+            } else {
+                currentPnL = (trade.entryPrice - currentPrice) * (trade.notionalValue / trade.entryPrice);
+            }
+            
+            // Update best price achieved
+            if (trade.direction === 'long' && currentPrice > trade.bestPrice) {
+                trade.bestPrice = currentPrice;
+            } else if (trade.direction === 'short' && currentPrice < trade.bestPrice) {
+                trade.bestPrice = currentPrice;
+            }
+            
+            // Check for trailing stop activation
+            if (tradeConfig.enableTrailingStop && !trade.trailingStopActivated) {
+                const profitPercent = trade.direction === 'long' 
+                    ? ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100
+                    : ((trade.entryPrice - currentPrice) / trade.entryPrice) * 100;
+                    
+                if (profitPercent >= tradeConfig.trailingStopActivationPercent) {
+                    trade.trailingStopActivated = true;
+                    trade.trailingStopPrice = trade.direction === 'long'
+                        ? currentPrice * (1 - tradeConfig.trailingStopPercent / 100)
+                        : currentPrice * (1 + tradeConfig.trailingStopPercent / 100);
+                    console.log(`${colors.cyan}📈 Trailing stop activated for trade #${trade.id} at $${formatNumberWithCommas(trade.trailingStopPrice)}${colors.reset}`);
+                }
+            }
+            
+            // Update trailing stop price
+            if (trade.trailingStopActivated) {
+                const newTrailingStop = trade.direction === 'long'
+                    ? trade.bestPrice * (1 - tradeConfig.trailingStopPercent / 100)
+                    : trade.bestPrice * (1 + tradeConfig.trailingStopPercent / 100);
+                    
+                if (trade.direction === 'long' && newTrailingStop > trade.trailingStopPrice) {
+                    trade.trailingStopPrice = newTrailingStop;
+                } else if (trade.direction === 'short' && newTrailingStop < trade.trailingStopPrice) {
+                    trade.trailingStopPrice = newTrailingStop;
+                }
+            }
+            
+            // Check exit conditions
+            let exitReason = null;
+            let exitPrice = currentPrice;
+            
+            // Check take profit
+            if ((trade.direction === 'long' && currentPrice >= trade.takeProfitPrice) ||
+                (trade.direction === 'short' && currentPrice <= trade.takeProfitPrice)) {
+                exitReason = 'take_profit';
+                exitPrice = trade.takeProfitPrice;
+            }
+            // Check stop loss
+            else if ((trade.direction === 'long' && currentPrice <= trade.stopLossPrice) ||
+                     (trade.direction === 'short' && currentPrice >= trade.stopLossPrice)) {
+                exitReason = 'stop_loss';
+                exitPrice = trade.stopLossPrice;
+            }
+            // Check trailing stop
+            else if (trade.trailingStopActivated &&
+                     ((trade.direction === 'long' && currentPrice <= trade.trailingStopPrice) ||
+                      (trade.direction === 'short' && currentPrice >= trade.trailingStopPrice))) {
+                exitReason = 'trailing_stop';
+                exitPrice = trade.trailingStopPrice;
+            }
+            // Check maximum trade time
+            else if (tradeConfig.maxTradeTimeMinutes > 0) {
+                const tradeDurationMinutes = (currentTime - trade.entryTime) / (1000 * 60);
+                if (tradeDurationMinutes >= tradeConfig.maxTradeTimeMinutes) {
+                    exitReason = 'max_time';
+                    exitPrice = currentPrice;
+                }
+            }
+            
+            if (exitReason) {
+                this.closeTrade(trade, exitPrice, currentTime, exitReason);
+                tradesToClose.push(trade);
+            }
+        }
+        
+        // Remove closed trades from open trades array
+        for (const closedTrade of tradesToClose) {
+            const index = this.openTrades.indexOf(closedTrade);
+            if (index > -1) {
+                this.openTrades.splice(index, 1);
+            }
+        }
+    }
+
+    // Close a trade
+    closeTrade(trade, exitPrice, exitTime, exitReason) {
+        // Apply exit slippage
+        const exitSlippagePercent = calculateSlippage(trade.positionSize, tradeConfig);
+        const finalExitPrice = applySlippage(exitPrice, trade.direction === 'long' ? 'short' : 'long', exitSlippagePercent);
+        
+        // Calculate funding costs
+        const fundingCost = calculateFundingRate(tradeConfig, exitTime, trade.entryTime, trade.positionSize, trade.leverage);
+        
+        // Calculate final PnL
+        let grossPnL = 0;
+        if (trade.direction === 'long') {
+            grossPnL = (finalExitPrice - trade.entryPrice) * (trade.notionalValue / trade.entryPrice);
+        } else {
+            grossPnL = (trade.entryPrice - finalExitPrice) * (trade.notionalValue / trade.entryPrice);
+        }
+        
+        const exitSlippageCost = trade.positionSize * exitSlippagePercent;
+        const totalCosts = trade.totalCost + exitSlippageCost + fundingCost;
+        const netPnL = grossPnL - totalCosts;
+        const pnlPercent = (netPnL / trade.positionSize) * 100;
+        
+        // Update trade object
+        trade.exitTime = exitTime;
+        trade.exitPrice = finalExitPrice;
+        trade.pnl = netPnL;
+        trade.pnlPercent = pnlPercent;
+        trade.fundingCost = fundingCost;
+        trade.totalCost = totalCosts;
+        trade.status = 'closed';
+        trade.exitReason = exitReason;
+        
+        // Return capital plus/minus PnL
+        this.capital += trade.positionSize + netPnL;
+        
+        // Display trade closure with improved formatting
+        const durationMs = exitTime - trade.entryTime;
+        const formatDuration = (ms) => {
+            const totalMinutes = Math.floor(ms / (1000 * 60));
+            const days = Math.floor(totalMinutes / (24 * 60));
+            const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+            const minutes = totalMinutes % 60;
+            
+            if (days > 0) {
+                return `${days} days, ${hours} hours, ${minutes} minutes`;
+            } else if (hours > 0) {
+                return `${hours} hours, ${minutes} minutes`;
+            } else {
+                return `${minutes} minutes`;
+            }
+        };
+        const durationStr = formatDuration(durationMs);
+        
+        // Format dates to be more readable
+        const entryDate = new Date(trade.entryTime);
+        const exitDate = new Date(exitTime);
+        const entryTime12 = entryDate.toLocaleTimeString();
+        const entryTime24Only = entryDate.toLocaleTimeString('en-GB', { hour12: false });
+        const exitTime12 = exitDate.toLocaleTimeString();
+        const exitTime24Only = exitDate.toLocaleTimeString('en-GB', { hour12: false });
+        const entryDateStr = `${entryDate.toLocaleDateString('en-US', { weekday: 'short' })} ${entryDate.toLocaleDateString()} ${entryTime12} (${entryTime24Only})`;
+        const exitDateStr = `${exitDate.toLocaleDateString('en-US', { weekday: 'short' })} ${exitDate.toLocaleDateString()} ${exitTime12} (${exitTime24Only})`;
+        
+        // Determine result text and color
+        const resultColor = netPnL >= 0 ? colors.green : colors.red;
+        const resultText = netPnL >= 0 ? 'WIN' : 'LOSS';
+        const pnlPct = pnlPercent.toFixed(2);
+        
+        // Map exit reasons to result codes
+        const resultCode = {
+            'take_profit': 'TP',
+            'stop_loss': 'SL', 
+            'trailing_stop': 'TRAIL',
+            'max_time': 'EOB'
+        }[exitReason] || exitReason.toUpperCase();
+        
+        console.log('--------------------------------------------------------------------------------');
+        // Format the trade header - entire line in result color
+        console.log(`\n${resultColor}[TRADE ${trade.id.toString().padStart(2, ' ')}] ${trade.direction.toUpperCase()} | P&L: ${pnlPct}% | ${resultText} | Result: ${resultCode}${colors.reset}`);
+        console.log();
+        console.log(`${colors.cyan}  Entry: ${entryDateStr} at $${formatNumberWithCommas(trade.entryPrice)}${colors.reset}`);
+        console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${formatNumberWithCommas(finalExitPrice)}${colors.reset}`);
+        console.log(`${colors.cyan}  Duration: ${durationStr}${colors.reset}`);
+        
+        // Add trade amount, profit/loss, and remainder information
+        const tradeAmount = trade.positionSize;
+        const tradeRemainder = tradeAmount + netPnL; // Original amount + P&L = what's left
+        
+        console.log(`${colors.yellow}  Trade Amount: $${formatNumberWithCommas(tradeAmount)}${colors.reset}`);
+        
+        // Add TRADE PROFIT/LOSS line
+        if (netPnL >= 0) {
+            console.log(`${colors.green}  Trade Profit: $${formatNumberWithCommas(netPnL)}${colors.reset}`);
+        } else {
+            console.log(`${colors.red}  Trade Loss: $${formatNumberWithCommas(Math.abs(netPnL))}${colors.reset}`);
+        }
+        
+        console.log(`${colors.cyan}  Trade Remainder: $${formatNumberWithCommas(tradeRemainder)}${colors.reset}`);
+        console.log(`${colors.yellow}  Capital: $${formatNumberWithCommas(this.capital)}${colors.reset}`);
+        console.log('--------------------------------------------------------------------------------');
+        
+        return trade;
+    }
+
+    // Check if we should create a trade based on direction settings
+    shouldCreateTrade(signal) {
+        if (!fronttesterconfig.enableTrading) return false;
+        
+        switch (tradeConfig.direction) {
+            case 'buy':
+                return signal === 'long';
+            case 'sell':
+                return signal === 'short';
+            case 'both':
+                return true;
+            case 'alternate':
+                // For alternate mode, we need to track the last trade direction
+                if (this.trades.length === 0) {
+                    return signal === 'long'; // Start with long for alternate mode
+                }
+                const lastTrade = this.trades[this.trades.length - 1];
+                return signal !== lastTrade.direction;
+            default:
+                return false;
+        }
+    }
+
+    // Display comprehensive trading statistics
+    displayTradingStatistics() {
+        const closedTrades = this.trades.filter(t => t.status === 'closed');
+        const openTrades = this.trades.filter(t => t.status === 'open');
+        
+        if (this.trades.length === 0) {
+            console.log(`\n${colors.yellow}--- Trading Performance ---${colors.reset}`);
+            console.log(`${colors.red}No trades executed${colors.reset}`);
+            return;
+        }
+        
+        // Display all trades taken
+        console.log(`\n${colors.cyan}--- All Trades Taken (${this.trades.length}) ---${colors.reset}`);
+        
+        this.trades.forEach((trade, index) => {
+            if (trade.status === 'closed') {
+                // Format dates to be more readable
+                const entryDate = new Date(trade.entryTime);
+                const exitDate = new Date(trade.exitTime);
+                const entryTime12 = entryDate.toLocaleTimeString();
+                const entryTime24Only = entryDate.toLocaleTimeString('en-GB', { hour12: false });
+                const exitTime12 = exitDate.toLocaleTimeString();
+                const exitTime24Only = exitDate.toLocaleTimeString('en-GB', { hour12: false });
+                const entryDateStr = `${entryDate.toLocaleDateString('en-US', { weekday: 'short' })} ${entryDate.toLocaleDateString()} ${entryTime12} (${entryTime24Only})`;
+                const exitDateStr = `${exitDate.toLocaleDateString('en-US', { weekday: 'short' })} ${exitDate.toLocaleDateString()} ${exitTime12} (${exitTime24Only})`;
+                
+                // Calculate duration
+                const durationMs = trade.exitTime - trade.entryTime;
+                const formatDuration = (ms) => {
+                    const totalMinutes = Math.floor(ms / (1000 * 60));
+                    const days = Math.floor(totalMinutes / (24 * 60));
+                    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+                    const minutes = totalMinutes % 60;
+                    
+                    if (days > 0) {
+                        return `${days} days, ${hours} hours, ${minutes} minutes`;
+                    } else if (hours > 0) {
+                        return `${hours} hours, ${minutes} minutes`;
+                    } else {
+                        return `${minutes} minutes`;
+                    }
+                };
+                const durationStr = formatDuration(durationMs);
+                
+                // Determine result text and color
+                const resultColor = trade.pnl >= 0 ? colors.green : colors.red;
+                const resultText = trade.pnl >= 0 ? 'WIN' : 'LOSS';
+                const pnlPct = trade.pnlPercent.toFixed(2);
+                
+                // Map exit reasons to result codes
+                const resultCode = {
+                    'take_profit': 'TP',
+                    'stop_loss': 'SL', 
+                    'trailing_stop': 'TRAIL',
+                    'max_time': 'EOB'
+                }[trade.exitReason] || trade.exitReason?.toUpperCase() || 'CLOSED';
+                
+                // Trade amount and remainder calculations
+                const tradeAmount = trade.positionSize;
+                const tradeRemainder = tradeAmount + trade.pnl; // Original amount + P&L = what's left
+                
+                console.log('--------------------------------------------------------------------------------');
+                // Format the trade header - entire line in result color
+                console.log(`\n${resultColor}[TRADE ${trade.id.toString().padStart(2, ' ')}] ${trade.direction.toUpperCase()} | P&L: ${pnlPct}% | ${resultText} | Result: ${resultCode}${colors.reset}`);
+                console.log();
+                console.log(`${colors.cyan}  Entry: ${entryDateStr} at $${formatNumberWithCommas(trade.entryPrice)}${colors.reset}`);
+                console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${formatNumberWithCommas(trade.exitPrice)}${colors.reset}`);
+                console.log(`${colors.cyan}  Duration: ${durationStr}${colors.reset}`);
+                
+                console.log(`${colors.yellow}  Trade Amount: $${formatNumberWithCommas(tradeAmount)}${colors.reset}`);
+                
+                // Add TRADE PROFIT/LOSS line
+                if (trade.pnl >= 0) {
+                    console.log(`${colors.green}  Trade Profit: $${formatNumberWithCommas(trade.pnl)}${colors.reset}`);
+                } else {
+                    console.log(`${colors.red}  Trade Loss: $${formatNumberWithCommas(Math.abs(trade.pnl))}${colors.reset}`);
+                }
+                
+                console.log(`${colors.cyan}  Trade Remainder: $${formatNumberWithCommas(tradeRemainder)}${colors.reset}`);
+                console.log(`${colors.yellow}  Capital: $${formatNumberWithCommas(this.capital)}${colors.reset}`);
+                console.log('--------------------------------------------------------------------------------');
+                
+            } else {
+                // Display open trades in simplified format
+                const entryDate = new Date(trade.entryTime);
+                const entryTime12 = entryDate.toLocaleTimeString();
+                const entryTime24 = entryDate.toLocaleTimeString('en-GB', { hour12: false });
+                const entryDateStr = `${entryDate.toLocaleDateString('en-US', { weekday: 'short' })} ${entryDate.toLocaleDateString()}`;
+                
+                console.log('--------------------------------------------------------------------------------');
+                console.log(`\n${colors.yellow}[TRADE ${trade.id.toString().padStart(2, ' ')}] ${trade.direction.toUpperCase()} | OPEN${colors.reset}`);
+                console.log();
+                console.log(`${colors.cyan}  Entry: ${entryDateStr} ${entryTime12} (${entryTime24}) at $${formatNumberWithCommas(trade.entryPrice)}${colors.reset}`);
+                console.log(`${colors.yellow}  Trade Amount: $${formatNumberWithCommas(trade.positionSize)}${colors.reset}`);
+                console.log(`${colors.cyan}  Stop Loss: $${formatNumberWithCommas(trade.stopLossPrice)}${colors.reset}`);
+                console.log(`${colors.cyan}  Take Profit: $${formatNumberWithCommas(trade.takeProfitPrice)}${colors.reset}`);
+                console.log(`${colors.yellow}  Capital: $${formatNumberWithCommas(this.capital)}${colors.reset}`);
+                console.log('--------------------------------------------------------------------------------');
+            }
+            
+            if (index < this.trades.length - 1) {
+                console.log(''); // Add spacing between trades
+            }
+        });
+        
+        console.log(`\n${colors.cyan}--- Trading Performance ---${colors.reset}`);
+        
+        // Basic statistics
+        const totalTrades = this.trades.length;
+        const winningTrades = closedTrades.filter(t => t.pnl > 0).length;
+        const losingTrades = closedTrades.filter(t => t.pnl < 0).length;
+        const winRate = closedTrades.length > 0 ? (winningTrades / closedTrades.length) * 100 : 0;
+        
+        console.log(`${colors.yellow}Total Trades: ${colors.brightYellow}${totalTrades}${colors.reset}`);
+        console.log(`${colors.yellow}Winning Trades: ${colors.green}${winningTrades}${colors.reset}`);
+        console.log(`${colors.yellow}Losing Trades: ${colors.red}${losingTrades}${colors.reset}`);
+        console.log(`${colors.yellow}Win Rate: ${colors.cyan}${winRate.toFixed(1)}%${colors.reset}`);
+        
+        // Capital and PnL
+        const totalPnL = closedTrades.reduce((sum, t) => sum + t.pnl, 0);
+        const totalPnLPercent = ((totalPnL / tradeConfig.initialCapital) * 100);
+        const finalCapital = this.capital + openTrades.reduce((sum, t) => sum + t.positionSize, 0);
+        
+        const pnlColor = totalPnL >= 0 ? colors.green : colors.red;
+        const returnColor = totalPnLPercent >= 0 ? colors.green : colors.red;
+        
+        console.log(`${colors.yellow}Initial Capital: ${colors.cyan}${formatNumberWithCommas(tradeConfig.initialCapital)} USDT${colors.reset}`);
+        console.log(`${colors.yellow}Total P&L: ${pnlColor}${formatNumberWithCommas(totalPnL)} USDT${colors.reset}`);
+        console.log(`${colors.yellow}Total Return: ${returnColor}${totalPnLPercent.toFixed(2)}%${colors.reset}`);
+        console.log(`${colors.yellow}Final Capital: ${colors.brightYellow}${formatNumberWithCommas(finalCapital)} USDT${colors.reset}`);
+        
+        // Add cascade statistics
+        console.log(`\n${colors.cyan}=== BACKTESTING RESULTS SUMMARY ===${colors.reset}`);
+        console.log(`${colors.yellow}Total Primary Signals: ${colors.brightYellow}${this.cascadeCounter}${colors.reset}`);
+        console.log(`${colors.yellow}Confirmed Cascade Signals: ${colors.brightYellow}${this.allCascades.length}${colors.reset}`);
+        const confirmationRate = this.cascadeCounter > 0 ? (this.allCascades.length / this.cascadeCounter) * 100 : 0;
+        console.log(`${colors.yellow}Cascade Confirmation Rate: ${colors.cyan}${confirmationRate.toFixed(1)}%${colors.reset}`);
+        
+        // Calculate timespan if we have data
+        if (this.oneMinuteCandles.length > 0) {
+            const startTime = this.oneMinuteCandles[0].time;
+            const endTime = this.oneMinuteCandles[this.oneMinuteCandles.length - 1].time;
+            const timespanDays = (endTime - startTime) / (1000 * 60 * 60 * 24);
+            const signalsPerDay = timespanDays > 0 ? this.cascadeCounter / timespanDays : 0;
+            const confirmedPerDay = timespanDays > 0 ? this.allCascades.length / timespanDays : 0;
+            
+            console.log(`${colors.yellow}Primary Signal Frequency: ${colors.cyan}${signalsPerDay.toFixed(2)} signals/day${colors.reset}`);
+            console.log(`${colors.yellow}Confirmed Signal Frequency: ${colors.cyan}${confirmedPerDay.toFixed(2)} confirmed/day${colors.reset}`);
+            console.log(`${colors.yellow}Data Timespan: ${colors.cyan}${timespanDays.toFixed(1)} days${colors.reset}`);
+        }
+        
+        console.log(`${colors.cyan}${'═'.repeat(50)}${colors.reset}`);
     }
 
     async initialize() {
@@ -57,6 +600,30 @@ class CleanTimeProgressiveFronttester {
         console.log(`${colors.yellow}Data Source: ${dataSource}${colors.reset}`);
         console.log(`${colors.yellow}Mode: ${dataMode}${colors.reset}`);
         console.log(`${colors.yellow}Method: Step-by-step minute progression${colors.reset}`);
+        
+        // Display trading configuration
+        if (fronttesterconfig.enableTrading) {
+            console.log(`\n${colors.cyan}💰 TRADING CONFIGURATION${colors.reset}`);
+            console.log(`${colors.yellow}Trading: ${colors.green}ENABLED${colors.reset}`);
+            console.log(`${colors.yellow}Direction: ${tradeConfig.direction.toUpperCase()}${colors.reset}`);
+            console.log(`${colors.yellow}Initial Capital: $${formatNumberWithCommas(tradeConfig.initialCapital)}${colors.reset}`);
+            const sizeMode = tradeConfig.positionSizeMode || 'percentage';
+            const sizeDisplay = sizeMode === 'fixed' 
+                ? `$${formatNumberWithCommas(tradeConfig.positionSize || 100)}` 
+                : `${tradeConfig.positionSizePercent || tradeConfig.riskPerTrade || 100}%`;
+            console.log(`${colors.yellow}Position Size: ${sizeMode} (${sizeDisplay})${colors.reset}`);
+            console.log(`${colors.yellow}Leverage: ${tradeConfig.leverage}x${colors.reset}`);
+            console.log(`${colors.yellow}Stop Loss: ${tradeConfig.stopLossPercent || tradeConfig.stopLoss}% | Take Profit: ${tradeConfig.takeProfitPercent || tradeConfig.takeProfit}%${colors.reset}`);
+            if (tradeConfig.enableTrailingStop) {
+                console.log(`${colors.yellow}Trailing Stop: ${tradeConfig.trailingStopPercent}% (activates at ${tradeConfig.trailingStopActivationPercent}%)${colors.reset}`);
+            }
+            if (tradeConfig.maxTradeTimeMinutes > 0) {
+                console.log(`${colors.yellow}Max Trade Time: ${tradeConfig.maxTradeTimeMinutes} minutes${colors.reset}`);
+            }
+        } else {
+            console.log(`\n${colors.yellow}Trading: ${colors.red}DISABLED (Signal Detection Only)${colors.reset}`);
+        }
+        
         console.log(`${'='.repeat(60)}\n`);
 
         // Load raw candle data for all timeframes
@@ -65,6 +632,8 @@ class CleanTimeProgressiveFronttester {
         // Initialize pivot tracking
         for (const tf of multiPivotConfig.timeframes) {
             this.timeframePivots.set(tf.interval, []);
+            // Initialize last pivot tracking for swing filtering
+            this.lastPivots.set(tf.interval, { type: null, price: null, time: null, index: 0 });
         }
         
         console.log(`${colors.green}✅ Clean system initialized successfully${colors.reset}`);
@@ -123,8 +692,11 @@ class CleanTimeProgressiveFronttester {
             // Step 3: Check for expired windows
             this.checkExpiredWindows(currentTime);
             
+            // Step 4: Monitor and manage open trades
+            this.monitorTrades(currentCandle);
+            
             // Progress
-            if (this.currentMinute % 100 === 0 && this.currentMinute > 0) {
+            if (this.currentMinute % 100 === 0 && this.currentMinute > 0 && !fronttesterconfig.hideProgressDisplay) {
                 const progress = ((this.currentMinute / this.oneMinuteCandles.length) * 100).toFixed(1);
                 console.log(`${colors.cyan}Progress: ${progress}% (${this.currentMinute}/${this.oneMinuteCandles.length})${colors.reset}`);
             }
@@ -166,7 +738,9 @@ class CleanTimeProgressiveFronttester {
             const price = this.oneMinuteCandles[this.currentMinute]?.close || 0;
             const progress = ((this.currentMinute / this.oneMinuteCandles.length) * 100).toFixed(1);
             
-            console.log(`${colors.brightCyan}⏰ ${timeString12} (${timeString24}) | BTC: $${price.toFixed(1)} | Progress: ${progress}% (${this.currentMinute}/${this.oneMinuteCandles.length})${colors.reset}`);
+            if (!fronttesterconfig.hideTimeDisplay) {
+                console.log(`${colors.brightCyan}⏰ ${timeString12} (${timeString24}) | BTC: $${price.toFixed(1)} | Progress: ${progress}% (${this.currentMinute}/${this.oneMinuteCandles.length})${colors.reset}`);
+            }
         }
     }
 
@@ -226,18 +800,44 @@ class CleanTimeProgressiveFronttester {
         if (index < timeframe.lookback) return null;
         
         const currentCandle = candles[index];
-        const currentPrice = pivotDetectionMode === 'extreme' ? 
-            { high: currentCandle.high, low: currentCandle.low } : 
-            { high: currentCandle.close, low: currentCandle.close };
+        const { minSwingPct, minLegBars } = timeframe;
+        const swingThreshold = minSwingPct / 100;
+        
+        // Get last pivot for this timeframe (for swing filtering)
+        const lastPivot = this.lastPivots.get(timeframe.interval) || { type: null, price: null, time: null, index: 0 };
         
         // Check for high pivot (LONG signal - CONTRARIAN)
         let isHighPivot = true;
         for (let j = 1; j <= timeframe.lookback; j++) {
             const compareCandle = candles[index - j];
             const comparePrice = pivotDetectionMode === 'extreme' ? compareCandle.high : compareCandle.close;
-            if (comparePrice >= currentPrice.high) {
+            const currentPrice = pivotDetectionMode === 'extreme' ? currentCandle.high : currentCandle.close;
+            if (comparePrice >= currentPrice) {
                 isHighPivot = false;
                 break;
+            }
+        }
+        
+        if (isHighPivot) {
+            const pivotPrice = pivotDetectionMode === 'extreme' ? currentCandle.high : currentCandle.close;
+            const swingPct = lastPivot.price ? (pivotPrice - lastPivot.price) / lastPivot.price : 0;
+            const isFirstPivot = lastPivot.type === null;
+            
+            // Apply swing filtering (matches backtester logic)
+            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (index - lastPivot.index) >= minLegBars) {
+                const pivot = {
+                    time: currentCandle.time,
+                    price: pivotPrice,
+                    signal: 'long',  // INVERTED: High pivot = LONG signal
+                    type: 'high',
+                    timeframe: timeframe.interval,
+                    index: index,
+                    swingPct: swingPct * 100
+                };
+                
+                // Update last pivot for this timeframe
+                this.lastPivots.set(timeframe.interval, pivot);
+                return pivot;
             }
         }
         
@@ -246,28 +846,34 @@ class CleanTimeProgressiveFronttester {
         for (let j = 1; j <= timeframe.lookback; j++) {
             const compareCandle = candles[index - j];
             const comparePrice = pivotDetectionMode === 'extreme' ? compareCandle.low : compareCandle.close;
-            if (comparePrice <= currentPrice.low) {
+            const currentPrice = pivotDetectionMode === 'extreme' ? currentCandle.low : currentCandle.close;
+            if (comparePrice <= currentPrice) {
                 isLowPivot = false;
                 break;
             }
         }
         
-        if (isHighPivot) {
-            return {
-                time: currentCandle.time,
-                price: currentPrice.high,
-                signal: 'long',  // INVERTED: High pivot = LONG signal
-                type: 'high',
-                timeframe: timeframe.interval
-            };
-        } else if (isLowPivot) {
-            return {
-                time: currentCandle.time,
-                price: currentPrice.low,
-                signal: 'short', // INVERTED: Low pivot = SHORT signal
-                type: 'low',
-                timeframe: timeframe.interval
-            };
+        if (isLowPivot) {
+            const pivotPrice = pivotDetectionMode === 'extreme' ? currentCandle.low : currentCandle.close;
+            const swingPct = lastPivot.price ? (pivotPrice - lastPivot.price) / lastPivot.price : 0;
+            const isFirstPivot = lastPivot.type === null;
+            
+            // Apply swing filtering (matches backtester logic)
+            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (index - lastPivot.index) >= minLegBars) {
+                const pivot = {
+                    time: currentCandle.time,
+                    price: pivotPrice,
+                    signal: 'short', // INVERTED: Low pivot = SHORT signal
+                    type: 'low',
+                    timeframe: timeframe.interval,
+                    index: index,
+                    swingPct: swingPct * 100
+                };
+                
+                // Update last pivot for this timeframe
+                this.lastPivots.set(timeframe.interval, pivot);
+                return pivot;
+            }
         }
         
         return null;
@@ -338,7 +944,7 @@ class CleanTimeProgressiveFronttester {
                 
                 if (!hasConfirmation) {
                     // Block execution timeframe from confirming without confirmation timeframes
-                    console.log(`${colors.red}   🚫 BLOCKED: ${timeframe.interval} execution cannot confirm without confirmation timeframes (1h or 15m)${colors.reset}`);
+                    // console.log(`${colors.red}   🚫 BLOCKED: ${timeframe.interval} execution cannot confirm without confirmation timeframes (1h or 15m)${colors.reset}`);
                     continue; // Skip this confirmation
                 }
             }
@@ -471,13 +1077,28 @@ class CleanTimeProgressiveFronttester {
             this.recentCascades.shift();
         }
         
-        // Enhanced execution logging
-        const timeString12 = new Date(executionTime).toLocaleString();
-        const time24 = new Date(executionTime).toLocaleTimeString('en-GB', { hour12: false });
+        // Enhanced execution logging - removed duplicate display (displayCascade shows detailed info)
         
-        console.log(`\n${colors.brightCyan}🎯 CASCADE EXECUTION [${window.id}]: All confirmations met${colors.reset}`);
-        console.log(`${colors.cyan}   Execution Time: ${timeString12} (${time24})${colors.reset}`);
-        console.log(`${colors.cyan}   Entry Price: $${executionPrice.toFixed(1)} | Strength: ${(cascadeResult.strength * 100).toFixed(0)}% | Total wait: ${minutesAfterPrimary}min${colors.reset}`);
+        // Create trade if trading is enabled and direction matches
+        if (this.shouldCreateTrade(cascadeResult.signal)) {
+            const tradeSignal = {
+                direction: cascadeResult.signal,
+                strength: cascadeResult.strength,
+                confirmations: cascadeResult.confirmations
+            };
+            
+            const trade = this.createTrade(tradeSignal, executionCandle || {
+                time: executionTime,
+                close: executionPrice,
+                high: executionPrice,
+                low: executionPrice,
+                open: executionPrice
+            });
+            
+            if (trade) {
+                cascadeInfo.tradeId = trade.id;
+            }
+        }
         
         this.displayCascade(cascadeInfo);
         window.status = 'executed';
@@ -628,13 +1249,19 @@ class CleanTimeProgressiveFronttester {
         
         this.recentCascades.forEach(cascade => {
             const { id, primaryPivot, cascadeResult } = cascade;
-            const time = new Date(cascadeResult.executionTime).toLocaleTimeString();
-            const time24 = new Date(cascadeResult.executionTime).toLocaleTimeString('en-GB', { hour12: false });
+            const executionDate = new Date(cascadeResult.executionTime);
+            const dateStr = executionDate.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+            const time = executionDate.toLocaleTimeString();
+            const time24 = executionDate.toLocaleTimeString('en-GB', { hour12: false });
             const signal = primaryPivot.signal.toUpperCase();
             const strength = (cascadeResult.strength * 100).toFixed(0);
             const price = cascadeResult.executionPrice.toFixed(1);
             
-            console.log(`${colors.magenta}│${colors.reset} ${colors.yellow}[${id.toString().padStart(3)}] ${time.padEnd(11)} (${time24}) | ${signal.padEnd(5)} | ${strength.padStart(2)}% | $${price}${colors.reset}`);
+            console.log(`${colors.magenta}│${colors.reset} ${colors.yellow}[${id.toString().padStart(3)}] ${dateStr} ${time.padEnd(11)} (${time24}) | ${signal.padEnd(5)} | ${strength.padStart(2)}% | $${price}${colors.reset}`);
         });
         
         console.log(`${colors.magenta}└${'─'.repeat(60)}${colors.reset}\n`);
@@ -647,29 +1274,43 @@ class CleanTimeProgressiveFronttester {
         
         this.allCascades.forEach(cascade => {
             const { id, primaryPivot, cascadeResult } = cascade;
-            const time = new Date(cascadeResult.executionTime).toLocaleTimeString();
-            const time24 = new Date(cascadeResult.executionTime).toLocaleTimeString('en-GB', { hour12: false });
+            const executionDate = new Date(cascadeResult.executionTime);
+            const dateStr = executionDate.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+            const time = executionDate.toLocaleTimeString();
+            const time24 = executionDate.toLocaleTimeString('en-GB', { hour12: false });
             const signal = primaryPivot.signal.toUpperCase();
             const strength = (cascadeResult.strength * 100).toFixed(0);
             const price = cascadeResult.executionPrice.toFixed(1);
             
-            console.log(`${colors.magenta}│${colors.reset} ${colors.yellow}[${id.toString().padStart(3)}] ${time.padEnd(11)} (${time24}) | ${signal.padEnd(5)} | ${strength.padStart(2)}% | $${price}${colors.reset}`);
+            console.log(`${colors.magenta}│${colors.reset} ${colors.yellow}[${id.toString().padStart(3)}] ${dateStr} ${time.padEnd(11)} (${time24}) | ${signal.padEnd(5)} | ${strength.padStart(2)}% | $${price}${colors.reset}`);
         });
         
         console.log(`${colors.magenta}└${'─'.repeat(60)}${colors.reset}\n`);
     }
 
     finishSimulation() {
+        // Move final summary to the very bottom with colors
         console.log(`\n${colors.green}🏁 Clean simulation completed!${colors.reset}`);
         console.log(`${colors.cyan}${'─'.repeat(40)}${colors.reset}`);
         console.log(`${colors.yellow}Total Cascades Detected: ${colors.green}${this.cascadeCounter}${colors.reset}`);
         console.log(`${colors.yellow}Minutes Processed:       ${colors.green}${this.currentMinute}${colors.reset}`);
         console.log(`${colors.cyan}${'─'.repeat(40)}${colors.reset}`);
-        
+
         if (this.allCascades.length > 0) {
             console.log(`\nFinal Cascades:`);
             this.displayAllCascades();
         }
+
+        // Display trading statistics first
+        if (fronttesterconfig.enableTrading && this.trades.length > 0) {
+            this.displayTradingStatistics();
+        }
+        
+        
     }
 
     stop() {
