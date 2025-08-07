@@ -1,6 +1,6 @@
 // pivotOptimizer.js
 // Runs multiple backtests using different TP/SL combinations from optimizerConfig.js
-// Uses CLOSE PRICES for pivot detection and trade execution
+// Self-sufficient test file for instant pivot detection with configurable price mode (close or extreme) for pivot detection and trade execution.
 
 import {
     symbol,
@@ -11,10 +11,14 @@ import {
     minLegBars,
     useEdges,
     useLocalData,
+    delay,
+    api,
     pivotDetectionMode
 } from './config/config.js'; 
 import { tradeConfig } from './config/tradeconfig.js';
 import { optimizerConfig } from './config/optimizerConfig.js';
+import { getCandles } from './apis/bybit.js';
+import { formatNumber } from './utils/formatters.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -65,118 +69,128 @@ const intervalToMs = (interval) => {
 // Get the candle duration based on the interval
 const candleDurationMs = intervalToMs(interval);
 
-// Function to load candles with pre-computed edges from JSON file
-const loadCandlesWithEdges = (filePath) => {
-    try {
-        // Read the JSON file
-        const jsonData = fs.readFileSync(filePath, 'utf8');
-        const data = JSON.parse(jsonData);
-        
-        // Check if the data is an array (direct candles) or has a candles property
-        let candles = Array.isArray(data) ? data : (data.candles || []);
-        
-        // Apply limit from config if available
-        if (limit > 0 && candles.length > limit) {
-            // console.log(`Limiting to ${limit} most recent candles out of ${candles.length} available`);
-            candles = candles.slice(-limit); // Take the most recent candles based on limit
-        }
-        
-        // console.log(`Loaded ${candles.length} candles with pre-computed edges from ${filePath}`);
-        
-        // Extract edges if available or use an empty object
-        const edges = Array.isArray(data) ? {} : (data.edges || {});
-        
-        // Return both candles and edges
-        return {
-            candles: candles,
-            edges: edges
-        };
-    } catch (error) {
-        console.error(`Failed to load candles with edges from ${filePath}:`, error);
-        process.exit(1);
+// Utility function to format duration in milliseconds to a readable string
+// Adjusted to account for the candle interval
+const formatDuration = (ms) => {
+    // For intervals other than 1m, adjust the calculation
+    // This represents the actual duration, not just timestamp difference
+    
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (days > 0) {
+        return `${days} days, ${hours} hours, ${minutes} minutes`;
+    } else {
+        return `${hours} hours, ${minutes} minutes`;
     }
 };
 
-// Function to load candles from CSV file
-const loadCandlesFromCSV = (filePath) => {
+// Function to load candles with edge data from a JSON file
+const loadCandlesWithEdges = (filePath) => {
     try {
-        // Check if the file exists
         if (!fs.existsSync(filePath)) {
-            console.error(`CSV file not found: ${filePath}`);
+            console.error(`${colors.red}JSON file not found: ${filePath}${colors.reset}`);
             process.exit(1);
         }
         
-        // Read the CSV file
+        // Read the JSON file
         const fileContent = fs.readFileSync(filePath, 'utf8');
-        const lines = fileContent
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line && line !== 'timestamp,open,high,low,close,volume');
+        const data = JSON.parse(fileContent);
         
-        const candles = [];
+        let candles = data.candles || [];
+        const edges = data.edges || {};
         
-        for (const line of lines) {
-            const [time, open, high, low, close, volume] = line.split(',');
+        console.log(`Found ${colors.yellow}${candles.length}${colors.reset} candles in JSON file: ${filePath}`);
+        
+        // Sort candles chronologically (oldest to newest)
+        candles.sort((a, b) => a.time - b.time);
+        
+        // Store total number of candles for reporting
+        const totalCandles = candles.length;
+        
+        // If delay is specified, move back in time by that many candles
+        if (delay > 0) {
+            if (totalCandles <= delay) {
+                console.error(`${colors.red}[ERROR] Delay value (${delay} candles) is greater than or equal to the total number of available candles (${totalCandles}). Cannot apply delay.${colors.reset}`);
+                process.exit(1);
+            }
             
-            const candle = {
-                time: parseInt(time),
-                open: parseFloat(open),
-                high: parseFloat(high),
-                low: parseFloat(low),
-                close: parseFloat(close),
-                volume: parseFloat(volume || '0')
-            };
+            // Calculate what the end position should be after accounting for delay
+            const endPos = totalCandles - delay;
             
-            // Validate the candle data
-            if (!isNaN(candle.time) && 
-                !isNaN(candle.open) && 
-                !isNaN(candle.high) && 
-                !isNaN(candle.low) && 
-                !isNaN(candle.close)) {
-                candles.push(candle);
+            // If we're also limiting the number of candles, ensure we don't go out of bounds
+            const startPos = Math.max(0, endPos - limit);
+            
+            // Get the timestamps for reporting
+            const originalLatestTimestamp = candles[totalCandles - 1].time;
+            const delayedLatestTimestamp = candles[endPos - 1].time;
+            
+            // Calculate time difference for user-friendly output
+            const timeDifferenceMs = originalLatestTimestamp - delayedLatestTimestamp;
+            const timeDifferenceMinutes = Math.floor(timeDifferenceMs / (60 * 1000));
+            const timeDifferenceHours = Math.floor(timeDifferenceMinutes / 60);
+            const timeDifferenceDays = Math.floor(timeDifferenceHours / 24);
+            
+            // Format the time difference for display
+            let timeMessage = '';
+            if (timeDifferenceDays > 0) {
+                timeMessage += `${timeDifferenceDays} day${timeDifferenceDays !== 1 ? 's' : ''}`;
+                const remainingHours = timeDifferenceHours % 24;
+                if (remainingHours > 0) {
+                    timeMessage += ` and ${remainingHours} hour${remainingHours !== 1 ? 's' : ''}`;
+                }
+            } else if (timeDifferenceHours > 0) {
+                timeMessage += `${timeDifferenceHours} hour${timeDifferenceHours !== 1 ? 's' : ''}`;
+                const remainingMinutes = timeDifferenceMinutes % 60;
+                if (remainingMinutes > 0) {
+                    timeMessage += ` and ${remainingMinutes} minute${remainingMinutes !== 1 ? 's' : ''}`;
+                }
+            } else {
+                timeMessage += `${timeDifferenceMinutes} minute${timeDifferenceMinutes !== 1 ? 's' : ''}`;
+            }
+            
+            // Slice the candles to get the right window based on delay and limit
+            candles = candles.slice(startPos, endPos);
+            
+            // Display user-friendly information about the delay
+            console.log(`${colors.yellow}[DELAY MODE] Backtesting with data from ${timeMessage} ago (shifted back by ${delay} candles)${colors.reset}`);
+            console.log(`${colors.yellow}[DELAY] Latest candle date: ${new Date(delayedLatestTimestamp).toLocaleString()}${colors.reset}`);
+            console.log(`${colors.yellow}[DELAY] Using ${candles.length} candles from positions ${startPos} to ${endPos-1} out of ${totalCandles} total${colors.reset}`);
+        } else {
+            // No delay - just apply the limit if specified
+            if (limit > 0 && totalCandles > limit) {
+                console.log(`Limiting to ${colors.yellow}${limit}${colors.reset} most recent candles out of ${totalCandles} available`);
+                candles = candles.slice(-limit);
             }
         }
         
-        // Apply limit from config if available
-        let filteredCandles = candles;
-        if (limit > 0 && filteredCandles.length > limit) {
-            // console.log(`Limiting to ${limit} most recent candles out of ${filteredCandles.length} available`);
-            filteredCandles = filteredCandles.slice(-limit); // Take the most recent candles
-        }
+        console.log(`Loaded ${candles.length} candles with edge data from JSON file: ${filePath}`);
         
-        // Sort by timestamp to ensure chronological order
-        filteredCandles.sort((a, b) => a.time - b.time);
-        
-        // console.log(`Loaded ${filteredCandles.length} candles from CSV file: ${filePath}`);
-        
-        // Return candles and empty edges object
-        return {
-            candles: filteredCandles,
-            edges: {}
-        };
+        return { candles, edges };
     } catch (error) {
-        console.error(`Failed to load candles from CSV file ${filePath}:`, error);
+        console.error(`${colors.red}Failed to load candles from JSON file ${filePath}:${colors.reset}`, error);
         process.exit(1);
     }
 };
 
-// Function to load 1-minute candles from CSV file within a specific time range
-const load1MinuteCandlesFromCSV = (filePath, startTime, endTime) => {
+// Function to load candles with delay - this handles both limit and delay parameters
+const loadCandlesWithDelay = (filePath, candleLimit, delayCandles) => {
     try {
-        // Check if the file exists
         if (!fs.existsSync(filePath)) {
-            console.log(`1-minute CSV file not found: ${filePath}. Using pivot timeframe for trade execution.`);
-            return [];
+            console.error(`${colors.red}CSV file not found: ${filePath}${colors.reset}`);
+            process.exit(1);
         }
         
-        // Read the CSV file
         const fileContent = fs.readFileSync(filePath, 'utf8');
         const lines = fileContent
             .split('\n')
             .map(line => line.trim())
             .filter(line => line && line !== 'timestamp,open,high,low,close,volume');
         
-        const candles = [];
+        console.log(`Found ${colors.yellow}${lines.length}${colors.reset} candles in CSV file: ${filePath}`);
+        
+        let candles = [];
         
         for (const line of lines) {
             const [time, open, high, low, close, volume] = line.split(',');
@@ -190,26 +204,130 @@ const load1MinuteCandlesFromCSV = (filePath, startTime, endTime) => {
                 volume: parseFloat(volume || '0')
             };
             
-            // Validate the candle data and check if it's within the time range
-            if (!isNaN(candle.time) && 
-                !isNaN(candle.open) && 
-                !isNaN(candle.high) && 
-                !isNaN(candle.low) && 
-                !isNaN(candle.close) &&
-                candle.time >= startTime && 
-                candle.time <= endTime) {
+            if (!isNaN(candle.time) && !isNaN(candle.open) && !isNaN(candle.high) && !isNaN(candle.low) && !isNaN(candle.close)) {
                 candles.push(candle);
             }
         }
         
-        // Sort by timestamp to ensure chronological order
+        // Sort candles chronologically (oldest to newest)
         candles.sort((a, b) => a.time - b.time);
         
-        console.log(`Loaded ${candles.length} 1-minute candles for trade execution`);
+        // Store total number of candles for reporting
+        const totalCandles = candles.length;
+        
+        // If delay is specified, move back in time by that many candles
+        if (delayCandles > 0) {
+            if (totalCandles <= delayCandles) {
+                console.error(`${colors.red}[ERROR] Delay value (${delayCandles} candles) is greater than or equal to the total number of available candles (${totalCandles}). Cannot apply delay.${colors.reset}`);
+                process.exit(1);
+            }
+            
+            // Calculate what the end position should be after accounting for delay
+            const endPos = totalCandles - delayCandles;
+            
+            // If we're also limiting the number of candles, ensure we don't go out of bounds
+            const startPos = Math.max(0, endPos - candleLimit);
+            
+            // Get the timestamps for reporting
+            const originalLatestTimestamp = candles[totalCandles - 1].time;
+            const delayedLatestTimestamp = candles[endPos - 1].time;
+            
+            // Calculate time difference for user-friendly output
+            const timeDifferenceMs = originalLatestTimestamp - delayedLatestTimestamp;
+            const timeDifferenceMinutes = Math.floor(timeDifferenceMs / (60 * 1000));
+            const timeDifferenceHours = Math.floor(timeDifferenceMinutes / 60);
+            const timeDifferenceDays = Math.floor(timeDifferenceHours / 24);
+            
+            // Format the time difference for display
+            let timeMessage = '';
+            if (timeDifferenceDays > 0) {
+                timeMessage += `${timeDifferenceDays} day${timeDifferenceDays !== 1 ? 's' : ''}`;
+                const remainingHours = timeDifferenceHours % 24;
+                if (remainingHours > 0) {
+                    timeMessage += ` and ${remainingHours} hour${remainingHours !== 1 ? 's' : ''}`;
+                }
+            } else if (timeDifferenceHours > 0) {
+                timeMessage += `${timeDifferenceHours} hour${timeDifferenceHours !== 1 ? 's' : ''}`;
+                const remainingMinutes = timeDifferenceMinutes % 60;
+                if (remainingMinutes > 0) {
+                    timeMessage += ` and ${remainingMinutes} minute${remainingMinutes !== 1 ? 's' : ''}`;
+                }
+            } else {
+                timeMessage += `${timeDifferenceMinutes} minute${timeDifferenceMinutes !== 1 ? 's' : ''}`;
+            }
+            
+            // Slice the candles to get the right window based on delay and limit
+            candles = candles.slice(startPos, endPos);
+            
+            // Display user-friendly information about the delay
+            console.log(`${colors.yellow}[DELAY MODE] Backtesting with data from ${timeMessage} ago (shifted back by ${delayCandles} candles)${colors.reset}`);
+            console.log(`${colors.yellow}[DELAY] Latest candle date: ${new Date(delayedLatestTimestamp).toLocaleString()}${colors.reset}`);
+            console.log(`${colors.yellow}[DELAY] Using ${candles.length} candles from positions ${startPos} to ${endPos-1} out of ${totalCandles} total${colors.reset}`);
+        } else {
+            // No delay - just apply the limit if specified
+            if (candleLimit > 0 && totalCandles > candleLimit) {
+                console.log(`Limiting to ${colors.yellow}${candleLimit}${colors.reset} most recent candles out of ${totalCandles} available`);
+                candles = candles.slice(-candleLimit);
+            }
+        }
+        
+        return { candles, edges: {} };
+    } catch (error) {
+        console.error(`${colors.red}Failed to load candles from CSV file ${filePath}:${colors.reset}`, error);
+        process.exit(1);
+    }
+};
+
+// Function to load candles from CSV file - this now delegates to loadCandlesWithDelay
+const loadCandlesFromCSV = (filePath) => {
+    // Use the new function that handles both limit and delay
+    const result = loadCandlesWithDelay(filePath, limit, delay);
+    console.log(`Loaded ${result.candles.length} candles from CSV file: ${filePath}`);
+    return result;
+};
+
+// Function to load 1-minute candles for trade execution
+const load1MinuteCandlesFromCSV = (filePath, startTime, endTime) => {
+    try {
+        if (!fs.existsSync(filePath)) {
+            console.error(`${colors.red}1-minute CSV file not found: ${filePath}${colors.reset}`);
+            return [];
+        }
+        
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const lines = fileContent
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line && line !== 'timestamp,open,high,low,close,volume');
+        
+        let candles = [];
+        
+        for (const line of lines) {
+            const [time, open, high, low, close, volume] = line.split(',');
+            
+            const candle = {
+                time: parseInt(time),
+                open: parseFloat(open),
+                high: parseFloat(high),
+                low: parseFloat(low),
+                close: parseFloat(close),
+                volume: parseFloat(volume || '0')
+            };
+            
+            if (!isNaN(candle.time) && !isNaN(candle.open) && !isNaN(candle.high) && !isNaN(candle.low) && !isNaN(candle.close)) {
+                // Only include candles within the specified time range
+                if (candle.time >= startTime && candle.time <= endTime) {
+                    candles.push(candle);
+                }
+            }
+        }
+        
+        // Sort candles chronologically
+        candles.sort((a, b) => a.time - b.time);
         
         return candles;
     } catch (error) {
-        console.error(`Failed to load 1-minute candles from CSV file ${filePath}:`, error);
+        console.error(`${colors.red}Failed to load 1-minute candles from CSV file ${filePath}:${colors.reset}`, error);
         return [];
     }
 };
@@ -245,25 +363,110 @@ const detectPivot = (candles, i, pivotLookback, pivotType) => {
     return isPivot;
 };
 
+// Helper function to calculate slippage based on configuration
+const calculateSlippage = (tradeSize, tradeConfig) => {
+    if (!tradeConfig.enableSlippage) return 0;
+    
+    let slippagePercent = 0;
+    
+    switch (tradeConfig.slippageMode) {
+        case 'fixed':
+            slippagePercent = tradeConfig.slippagePercent;
+            break;
+            
+        case 'variable':
+            // Random slippage between min and max
+            const range = tradeConfig.variableSlippageMax - tradeConfig.variableSlippageMin;
+            slippagePercent = tradeConfig.variableSlippageMin + (Math.random() * range);
+            break;
+            
+        case 'market_impact':
+            // Base slippage + market impact based on trade size
+            const marketImpact = (tradeSize / 1000) * tradeConfig.marketImpactFactor;
+            slippagePercent = tradeConfig.slippagePercent + marketImpact;
+            break;
+            
+        default:
+            slippagePercent = tradeConfig.slippagePercent;
+    }
+    
+    return slippagePercent / 100; // Convert to decimal
+};
+
+// Helper function to calculate funding rate cost
+const calculateFundingRate = (tradeConfig, currentTime, entryTime, positionSize, leverage) => {
+    if (!tradeConfig.enableFundingRate) return 0;
+    
+    const tradeDurationMs = currentTime - entryTime;
+    const tradeDurationHours = tradeDurationMs / (1000 * 60 * 60);
+    const fundingPeriods = Math.floor(tradeDurationHours / tradeConfig.fundingRateHours);
+    
+    if (fundingPeriods <= 0) return 0;
+    
+    let fundingRatePercent = 0;
+    
+    switch (tradeConfig.fundingRateMode) {
+        case 'fixed':
+            fundingRatePercent = tradeConfig.fundingRatePercent;
+            break;
+            
+        case 'variable':
+            // Random funding rate between min and max for each period
+            const range = tradeConfig.variableFundingMax - tradeConfig.variableFundingMin;
+            fundingRatePercent = tradeConfig.variableFundingMin + (Math.random() * range);
+            break;
+            
+        default:
+            fundingRatePercent = tradeConfig.fundingRatePercent;
+    }
+    
+    // Calculate total funding cost: position size * leverage * funding rate * number of periods
+    const totalFundingCost = positionSize * leverage * (fundingRatePercent / 100) * fundingPeriods;
+    
+    return totalFundingCost;
+};
+
+// Helper function to apply slippage to exit price
+const applySlippage = (exitPrice, tradeType, slippagePercent) => {
+    if (slippagePercent === 0) return exitPrice;
+    
+    // Slippage always works against the trader
+    if (tradeType === 'long') {
+        // For long trades, slippage reduces the exit price (worse fill)
+        return exitPrice * (1 - slippagePercent);
+    } else {
+        // For short trades, slippage increases the exit price (worse fill)
+        return exitPrice * (1 + slippagePercent);
+    }
+};
+
 // Helper function to create a trade
-const createTrade = (type, currentCandle, pivotData, i, tradeSize, tradeConfig) => {
-    const entryPrice = currentCandle.close; // Use close price for trade entry
+const createTrade = (type, currentCandle, pivotData, i, tradeSize, takeProfit, stopLoss) => {
+    let entryPrice = currentCandle.close; // Use close price for trade entry
+    
+    // Apply entry slippage
+    const entrySlippage = calculateSlippage(tradeSize, tradeConfig);
+    entryPrice = applySlippage(entryPrice, type, entrySlippage);
+    
     // Use the provided trade size directly instead of calculating from capital
     const size = tradeSize;
     
-    // Calculate TP/SL differently based on trade type
+    // Calculate TP/SL differently based on trade type (using original entry price for calculation)
     const takeProfitPrice = type === 'long'
-        ? entryPrice * (1 + (tradeConfig.takeProfit / 100))
-        : entryPrice * (1 - (tradeConfig.takeProfit / 100));
+        ? entryPrice * (1 + (takeProfit / 100))
+        : entryPrice * (1 - (takeProfit / 100));
         
     const stopLossPrice = type === 'long'
-        ? entryPrice * (1 - (tradeConfig.stopLoss / 100))
-        : entryPrice * (1 + (tradeConfig.stopLoss / 100));
+        ? entryPrice * (1 - (stopLoss / 100))
+        : entryPrice * (1 + (stopLoss / 100));
 
+    // Trade enters at the END of the pivot candle (when pivot is confirmed)
+    const entryTime = currentCandle.time + candleDurationMs;
+    
     return {
         type,
         entryPrice,
-        entryTime: currentCandle.time,
+        entryTime: entryTime,
         entryIndex: i,
         size,
         status: 'open',
@@ -271,7 +474,9 @@ const createTrade = (type, currentCandle, pivotData, i, tradeSize, tradeConfig) 
         stopLossPrice,
         pivot: { ...pivotData },  // Create a copy to avoid reference issues
         maxFavorable: 0,  // Track maximum favorable price movement
-        maxUnfavorable: 0  // Track maximum unfavorable price movement
+        maxUnfavorable: 0,  // Track maximum unfavorable price movement
+        entrySlippage: entrySlippage * 100,  // Store entry slippage percentage for reporting
+        lastFundingTime: entryTime  // Track last funding payment time
     };
 };
 
@@ -297,36 +502,68 @@ let precomputedPivots = null;
 let pivotsComputed = false;
 
 // Function to load candles once and cache them
-function loadCandlesOnce() {
+async function loadCandlesOnce() {
     if (candlesLoaded) return;
     
     console.log('Loading candle data once for all optimizations...');
     
     // Load pivot detection candles based on configuration
+    let pivotCandles, edges;
     if (useEdges) {
-        ({ candles: globalPivotCandles, edges: globalEdges } = loadCandlesWithEdges(CANDLES_WITH_EDGES_FILE));
+        ({ candles: pivotCandles, edges } = loadCandlesWithEdges(CANDLES_WITH_EDGES_FILE));
+    } else if (useLocalData) {
+        ({ candles: pivotCandles, edges } = loadCandlesFromCSV(CSV_DATA_FILE));
     } else {
-        ({ candles: globalPivotCandles, edges: globalEdges } = loadCandlesFromCSV(CSV_DATA_FILE));
+        // Fetch live data from API
+        console.log(`\n=== FETCHING LIVE DATA FROM ${api.toUpperCase()} API ===`);
+        const rawCandles = await getCandles(symbol, interval, limit);
+        
+        // Sort candles chronologically (API may return in reverse order)
+        // Remove duplicates and ensure proper chronological order
+        const uniqueCandles = Array.from(new Map(rawCandles.map(c => [c.time, c])).values());
+        pivotCandles = uniqueCandles.sort((a, b) => a.time - b.time);
+        
+        console.log(`Sorted ${pivotCandles.length} candles chronologically`);
+        console.log(`Time range: ${new Date(pivotCandles[0].time).toLocaleString()} to ${new Date(pivotCandles[pivotCandles.length-1].time).toLocaleString()}`);
+        
+        edges = {}; // No pre-computed edge data for live API calls
     }
     
-    // Load 1-minute candles for trade execution if available and not already 1-minute
+    // Validate pivot candle data
+    if (!pivotCandles || pivotCandles.length === 0) {
+        console.error(`${colors.red}Failed to fetch pivot candles${colors.reset}`);
+        process.exit(1);
+    }
+    
+    globalPivotCandles = pivotCandles;
+    globalEdges = edges;
+    
+    console.log(`${colors.green}Successfully loaded ${pivotCandles.length} pivot candles (${interval})${colors.reset}`);
+    
+    // Load 1-minute candles for trade execution (only if using local data and interval is not 1m)
+    let tradeCandles = [];
     if (useLocalData && interval !== '1m') {
-        const startTime = globalPivotCandles[0].time;
-        const endTime = globalPivotCandles[globalPivotCandles.length - 1].time;
-        globalTradeCandles = load1MinuteCandlesFromCSV(MINUTE_CSV_DATA_FILE, startTime, endTime);
+        const startTime = pivotCandles[0].time;
+        const endTime = pivotCandles[pivotCandles.length - 1].time;
+        tradeCandles = load1MinuteCandlesFromCSV(MINUTE_CSV_DATA_FILE, startTime, endTime);
         
-        // If no 1-minute candles loaded, fall back to pivot candles
-        if (globalTradeCandles.length === 0) {
-            globalTradeCandles = globalPivotCandles;
-            console.log('Using pivot timeframe candles for trade execution (1-minute data not available)');
+        if (tradeCandles.length > 0) {
+            console.log(`${colors.green}Successfully loaded ${tradeCandles.length} 1-minute candles for trade execution${colors.reset}`);
         } else {
-            console.log(`Trade Execution: Using ${globalTradeCandles.length} 1-minute candles for accurate TP/SL tracking`);
+            console.log(`${colors.yellow}No 1-minute candles found, using ${interval} candles for trade execution${colors.reset}`);
+            tradeCandles = pivotCandles; // Fallback to pivot candles
         }
     } else {
-        // Use pivot candles for trade execution
-        globalTradeCandles = globalPivotCandles;
-        console.log('Using pivot timeframe candles for trade execution');
+        // Use pivot candles for trade execution if interval is 1m or not using local data
+        tradeCandles = pivotCandles;
+        if (interval === '1m') {
+            console.log(`${colors.cyan}Using 1-minute candles for both pivot detection and trade execution${colors.reset}`);
+        } else {
+            console.log(`${colors.yellow}Using ${interval} candles for trade execution (1-minute data not available)${colors.reset}`);
+        }
     }
+    
+    globalTradeCandles = tradeCandles;
     
     console.log(`Loaded ${globalPivotCandles.length} pivot candles for detection`);
     candlesLoaded = true;
@@ -402,8 +639,8 @@ function computePivotsOnce() {
     pivotsComputed = true;
 }
 
-// Main function to run a single backtest with specific TP/SL/Leverage values
-async function runBacktest(takeProfit, stopLoss, leverage) {
+// Main function to run a single backtest with specific TP/SL/Leverage and pivot parameters
+async function runBacktest(takeProfit, stopLoss, leverage, minSwingPctParam, minLegBarsParam, pivotLookbackParam) {
     // Use cached candle data
     const pivotCandles = globalPivotCandles;
     const tradeCandles = globalTradeCandles;
@@ -421,9 +658,14 @@ async function runBacktest(takeProfit, stopLoss, leverage) {
         showTradeDetails: false
     };
 
+    // Use passed parameters instead of global config values
+    const swingThreshold = minSwingPctParam / 100;
+    const lookback = pivotLookbackParam;
+    const minLegBarsParam_val = minLegBarsParam;
+    
     // Ensure there are enough candles for the lookback on both sides
-    if (!pivotCandles || pivotCandles.length < (pivotLookback * 2 + 1)) {
-        console.error(`Not enough historical data. Need at least ${pivotLookback * 2 + 1} candles for lookback of ${pivotLookback}.`);
+    if (!pivotCandles || pivotCandles.length < (lookback * 2 + 1)) {
+        console.error(`Not enough historical data. Need at least ${lookback * 2 + 1} candles for lookback of ${lookback}.`);
         return null;
     }
 
@@ -431,7 +673,6 @@ async function runBacktest(takeProfit, stopLoss, leverage) {
     const timeframes = ['daily', 'weekly', 'biweekly', 'monthly'];
     
     let lastPivot = { type: null, price: null, time: null, index: 0 };
-    const swingThreshold = minSwingPct / 100;
     let pivotCounter = 0;
     let highPivotCount = 0;
     let lowPivotCount = 0;
@@ -444,7 +685,7 @@ async function runBacktest(takeProfit, stopLoss, leverage) {
     let tradeMaxProfit = 0;
 
     // Iterate, leaving enough space for lookback on either side
-    for (let i = pivotLookback; i < pivotCandles.length; i++) {
+    for (let i = lookback; i < pivotCandles.length; i++) {
         const currentPivotCandle = pivotCandles[i];
         let pivotType = null;
         
@@ -461,89 +702,204 @@ async function runBacktest(takeProfit, stopLoss, leverage) {
             }
         }
 
-        // --- Active Trade Management ---
-        // Process all open trades
+        // --- Active Trade Management using 1-minute candles ---
+        // Process all open trades using 1-minute candles for accurate execution
         for (let j = openTrades.length - 1; j >= 0; j--) {
             const trade = openTrades[j];
             let tradeClosed = false;
             let exitPrice = null;
             let result = '';
+            let finalTradeCandle = null;
             
-            // Track maximum favorable and unfavorable price movements
-            if (trade.type === 'long') {
-                const currentFavorable = (currentTradeCandle.high - trade.entryPrice) / trade.entryPrice * 100;
-                const currentUnfavorable = (currentTradeCandle.low - trade.entryPrice) / trade.entryPrice * 100;
+            // If we have 1-minute candles, process ALL candles from trade entry time onwards
+            if (tradeCandles !== pivotCandles) {
+                const currentPivotEndTime = currentPivotCandle.time + candleDurationMs;
+                const previousPivotEndTime = i > 0 ? pivotCandles[i-1].time + candleDurationMs : 0;
                 
-                trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
-                trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
-            } else { // short
-                const currentFavorable = (trade.entryPrice - currentTradeCandle.low) / trade.entryPrice * 100;
-                const currentUnfavorable = (trade.entryPrice - currentTradeCandle.high) / trade.entryPrice * 100;
+                // Find all 1-minute candles from trade entry time (end of previous pivot) to current pivot end
+                // Only process candles AFTER the trade entry time
+                const relevantTradeCandles = tradeCandles.filter(tc => 
+                    tc.time >= Math.max(trade.entryTime, previousPivotEndTime) && tc.time <= currentPivotEndTime
+                );
                 
-                trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
-                trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
-            }
+                // Process each 1-minute candle in chronological order
+                for (const tradeCandle of relevantTradeCandles) {
+                    // Skip if trade already closed
+                    if (tradeClosed) break;
+                    
+                    // Track maximum favorable and unfavorable price movements
+                    if (trade.type === 'long') {
+                        const currentFavorable = (tradeCandle.high - trade.entryPrice) / trade.entryPrice * 100;
+                        const currentUnfavorable = (tradeCandle.low - trade.entryPrice) / trade.entryPrice * 100;
+                        
+                        trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
+                        trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
+                    } else { // short
+                        const currentFavorable = (trade.entryPrice - tradeCandle.low) / trade.entryPrice * 100;
+                        const currentUnfavorable = (trade.entryPrice - tradeCandle.high) / trade.entryPrice * 100;
+                        
+                        trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
+                        trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
+                    }
 
-            // Check for trade timeout if maxTradeTimeMinutes is enabled
-            if (testConfig.maxTradeTimeMinutes > 0) {
-                const tradeTimeMs = currentTradeCandle.time - trade.entryTime;
-                const tradeTimeMinutes = tradeTimeMs / (1000 * 60);
-                
-                if (tradeTimeMinutes >= testConfig.maxTradeTimeMinutes) {
-                    tradeClosed = true;
-                    exitPrice = currentTradeCandle.close;
-                    result = 'TIMEOUT';
+                    // Check for trade timeout if maxTradeTimeMinutes is enabled
+                    if (testConfig.maxTradeTimeMinutes > 0) {
+                        const tradeTimeMs = tradeCandle.time - trade.entryTime;
+                        const tradeTimeMinutes = tradeTimeMs / (1000 * 60);
+                        
+                        if (tradeTimeMinutes >= testConfig.maxTradeTimeMinutes) {
+                            tradeClosed = true;
+                            exitPrice = tradeCandle.close;
+                            result = 'TIMEOUT';
+                            finalTradeCandle = tradeCandle;
+                            break;
+                        }
+                    }
+
+                    // Check TP/SL conditions
+                    if (!tradeClosed) {
+                        if (trade.type === 'long') {
+                            if (tradeCandle.high >= trade.takeProfitPrice) {
+                                tradeClosed = true;
+                                exitPrice = trade.takeProfitPrice;
+                                result = 'TP';
+                                finalTradeCandle = tradeCandle;
+                                break;
+                            } else if (tradeCandle.low <= trade.stopLossPrice) {
+                                tradeClosed = true;
+                                exitPrice = trade.stopLossPrice;
+                                result = 'SL';
+                                finalTradeCandle = tradeCandle;
+                                break;
+                            }
+                        } else { // short
+                            if (tradeCandle.low <= trade.takeProfitPrice) {
+                                tradeClosed = true;
+                                exitPrice = trade.takeProfitPrice;
+                                result = 'TP';
+                                finalTradeCandle = tradeCandle;
+                                break;
+                            } else if (tradeCandle.high >= trade.stopLossPrice) {
+                                tradeClosed = true;
+                                exitPrice = trade.stopLossPrice;
+                                result = 'SL';
+                                finalTradeCandle = tradeCandle;
+                                break;
+                            }
+                        }
+                    }
                 }
-            }
-
-            if (!tradeClosed) { // Only check TP/SL if not already closed due to timeout
+            } else {
+                // Using same timeframe for both pivot and trade execution
+                const currentTradeCandle = currentPivotCandle;
+                
+                // Track maximum favorable and unfavorable price movements
                 if (trade.type === 'long') {
-                    if (currentTradeCandle.high >= trade.takeProfitPrice) {
-                        tradeClosed = true;
-                        exitPrice = trade.takeProfitPrice;
-                        result = 'TP';
-                    } else if (currentTradeCandle.low <= trade.stopLossPrice) {
-                        tradeClosed = true;
-                        exitPrice = trade.stopLossPrice;
-                        result = 'SL';
-                    }
+                    const currentFavorable = (currentTradeCandle.high - trade.entryPrice) / trade.entryPrice * 100;
+                    const currentUnfavorable = (currentTradeCandle.low - trade.entryPrice) / trade.entryPrice * 100;
+                    
+                    trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
+                    trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
                 } else { // short
-                    if (currentTradeCandle.low <= trade.takeProfitPrice) {
+                    const currentFavorable = (trade.entryPrice - currentTradeCandle.low) / trade.entryPrice * 100;
+                    const currentUnfavorable = (trade.entryPrice - currentTradeCandle.high) / trade.entryPrice * 100;
+                    
+                    trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
+                    trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
+                }
+
+                // Check for trade timeout if maxTradeTimeMinutes is enabled
+                if (testConfig.maxTradeTimeMinutes > 0) {
+                    const tradeTimeMs = currentTradeCandle.time - trade.entryTime;
+                    const tradeTimeMinutes = tradeTimeMs / (1000 * 60);
+                    
+                    if (tradeTimeMinutes >= testConfig.maxTradeTimeMinutes) {
                         tradeClosed = true;
-                        exitPrice = trade.takeProfitPrice;
-                        result = 'TP';
-                    } else if (currentTradeCandle.high >= trade.stopLossPrice) {
-                        tradeClosed = true;
-                        exitPrice = trade.stopLossPrice;
-                        result = 'SL';
+                        exitPrice = currentTradeCandle.close;
+                        result = 'TIMEOUT';
+                        finalTradeCandle = currentTradeCandle;
+                    }
+                }
+
+                if (!tradeClosed) {
+                    if (trade.type === 'long') {
+                        if (currentTradeCandle.high >= trade.takeProfitPrice) {
+                            tradeClosed = true;
+                            exitPrice = trade.takeProfitPrice;
+                            result = 'TP';
+                            finalTradeCandle = currentTradeCandle;
+                        } else if (currentTradeCandle.low <= trade.stopLossPrice) {
+                            tradeClosed = true;
+                            exitPrice = trade.stopLossPrice;
+                            result = 'SL';
+                            finalTradeCandle = currentTradeCandle;
+                        }
+                    } else { // short
+                        if (currentTradeCandle.low <= trade.takeProfitPrice) {
+                            tradeClosed = true;
+                            exitPrice = trade.takeProfitPrice;
+                            result = 'TP';
+                            finalTradeCandle = currentTradeCandle;
+                        } else if (currentTradeCandle.high >= trade.stopLossPrice) {
+                            tradeClosed = true;
+                            exitPrice = trade.stopLossPrice;
+                            result = 'SL';
+                            finalTradeCandle = currentTradeCandle;
+                        }
                     }
                 }
             }
 
-            if (tradeClosed) {
-                const pnlPct = (trade.type === 'long' ? (exitPrice - trade.entryPrice) / trade.entryPrice : (trade.entryPrice - exitPrice) / trade.entryPrice) * testConfig.leverage;
+            if (tradeClosed && finalTradeCandle) {
+                // Apply exit slippage
+                const exitSlippage = calculateSlippage(trade.size, testConfig);
+                const slippageAdjustedExitPrice = applySlippage(exitPrice, trade.type, exitSlippage);
+                
+                // Calculate funding rate cost
+                const fundingCost = calculateFundingRate(
+                    testConfig, 
+                    finalTradeCandle.time, 
+                    trade.entryTime, 
+                    trade.size, 
+                    testConfig.leverage
+                );
+                
+                // Calculate PnL using slippage-adjusted exit price
+                const pnlPct = (trade.type === 'long' 
+                    ? (slippageAdjustedExitPrice - trade.entryPrice) / trade.entryPrice 
+                    : (trade.entryPrice - slippageAdjustedExitPrice) / trade.entryPrice) * testConfig.leverage;
                 const grossPnl = trade.size * pnlPct;
-                const fee = (trade.size * testConfig.leverage * (testConfig.totalMakerFee / 100));
-                const pnl = grossPnl - fee;
+                const tradingFee = (trade.size * testConfig.leverage * (testConfig.totalMakerFee / 100));
+                const pnl = grossPnl - tradingFee - fundingCost;
                 
                 capital += pnl;
                 
                 // Check if account is liquidated
                 if (capital <= 0) {
                     capital = 0; // Ensure capital never goes negative
-                    // Liquidation message not shown during optimization runs
+                }
+
+                // Find the correct exit index in the trade candles array
+                let exitIndex = i; // Default to pivot candle index
+                if (tradeCandles !== pivotCandles && finalTradeCandle) {
+                    // Find the index of the final trade candle in the tradeCandles array
+                    exitIndex = tradeCandles.findIndex(tc => tc.time === finalTradeCandle.time);
+                    if (exitIndex === -1) exitIndex = i; // Fallback to pivot index
                 }
 
                 trades.push({
                     ...trade,
-                    exitPrice,
-                    exitTime: currentTradeCandle.time,
-                    exitIndex: i,
+                    exitPrice: slippageAdjustedExitPrice,
+                    originalExitPrice: exitPrice,  // Store original exit price before slippage
+                    exitTime: finalTradeCandle.time,
+                    exitIndex: exitIndex,
                     status: 'closed',
                     result,
                     grossPnl,
                     pnl,
-                    fee,
+                    tradingFee,
+                    fundingCost,
+                    exitSlippage: exitSlippage * 100,  // Store exit slippage percentage for reporting
                     capitalAfter: capital
                 });
                 
@@ -553,13 +909,13 @@ async function runBacktest(takeProfit, stopLoss, leverage) {
         }
 
         // Process high pivots
-        const isHighPivot = detectPivot(pivotCandles, i, pivotLookback, 'high');
+        const isHighPivot = detectPivot(pivotCandles, i, lookback, 'high');
         
         if (isHighPivot) {
             const swingPct = lastPivot.price ? (currentPivotCandle.close - lastPivot.price) / lastPivot.price : 0;
             const isFirstPivot = lastPivot.type === null;
             
-            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
+            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBarsParam_val) {
                 pivotType = 'high';
                 pivotCounter++;
                 highPivotCount++;
@@ -596,7 +952,7 @@ async function runBacktest(takeProfit, stopLoss, leverage) {
                         
                         // Ensure we have enough capital and the trade size is valid
                         if (tradeSize > 0 && tradeSize <= availableCapital && capital > 0) {
-                            const shortTrade = createTrade('short', currentPivotCandle, lastPivot, i, tradeSize, testConfig);
+                            const shortTrade = createTrade('short', currentPivotCandle, lastPivot, i, tradeSize, takeProfit, stopLoss);
                             openTrades.push(shortTrade);
                         }
                     }
@@ -605,13 +961,13 @@ async function runBacktest(takeProfit, stopLoss, leverage) {
         }
 
         // Process low pivots
-        const isLowPivot = detectPivot(pivotCandles, i, pivotLookback, 'low');
+        const isLowPivot = detectPivot(pivotCandles, i, lookback, 'low');
         
         if (isLowPivot) {
             const swingPct = lastPivot.price ? (currentPivotCandle.close - lastPivot.price) / lastPivot.price : 0;
             const isFirstPivot = lastPivot.type === null;
             
-            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
+            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBarsParam_val) {
                 pivotType = 'low';
                 pivotCounter++;
                 lowPivotCount++;
@@ -648,7 +1004,7 @@ async function runBacktest(takeProfit, stopLoss, leverage) {
                         
                         // Ensure we have enough capital and the trade size is valid
                         if (tradeSize > 0 && tradeSize <= availableCapital && capital > 0) {
-                            const longTrade = createTrade('long', currentPivotCandle, lastPivot, i, tradeSize, testConfig);
+                            const longTrade = createTrade('long', currentPivotCandle, lastPivot, i, tradeSize, takeProfit, stopLoss);
                             openTrades.push(longTrade);
                         }
                     }
@@ -728,6 +1084,9 @@ async function runBacktest(takeProfit, stopLoss, leverage) {
         takeProfit,
         stopLoss,
         leverage,
+        minSwingPct: minSwingPctParam,
+        minLegBars: minLegBarsParam_val,
+        pivotLookback: lookback,
         totalTrades: regularTrades.length, // Only count non-EOB trades
         winRate,
         tpRate,
@@ -749,35 +1108,101 @@ async function runOptimizer() {
     // Record start time
     const startTime = process.hrtime.bigint();
     
-    console.log(`${colors.cyan}=== Parallel Pivot Optimizer ===${colors.reset}`);
+    // Display the appropriate title based on the mode
+    const modeText = pivotDetectionMode === 'extreme' ? 'Extreme (High/Low)' : 'Close';
+    if (useEdges) {
+        console.log(`${colors.cyan}=== ${modeText} Pivot Optimizer with Pre-Computed Edge Data ===${colors.reset}`);
+    } else if (useLocalData) {
+        console.log(`${colors.cyan}=== ${modeText} Pivot Optimizer with Standard CSV Data ===${colors.reset}`);
+    } else {
+        console.log(`${colors.cyan}=== ${modeText} Pivot Optimizer with Live API Data ===${colors.reset}`);
+    }
+    
     console.log(`Symbol: ${symbol}, Interval: ${interval}`);
     console.log(`Pivot Detection Mode: ${pivotDetectionMode.charAt(0).toUpperCase() + pivotDetectionMode.slice(1)}`);
     console.log(`Take Profit Range: ${optimizerConfig.takeProfitRange.start} to ${optimizerConfig.takeProfitRange.end} with step ${optimizerConfig.takeProfitRange.step}`);
     console.log(`Stop Loss Range: ${optimizerConfig.stopLossRange.start} to ${optimizerConfig.stopLossRange.end} with step ${optimizerConfig.stopLossRange.step}`);
     console.log(`Leverage Range: ${optimizerConfig.leverageRange.start} to ${optimizerConfig.leverageRange.end} with step ${optimizerConfig.leverageRange.step}`);
-    console.log(`Direction: ${tradeConfig.direction}`);
+    console.log(`Min Swing % Range: ${optimizerConfig.minSwingPctRange.start} to ${optimizerConfig.minSwingPctRange.end} with step ${optimizerConfig.minSwingPctRange.step}`);
+    console.log(`Min Leg Bars Range: ${optimizerConfig.minLegBarsRange.start} to ${optimizerConfig.minLegBarsRange.end} with step ${optimizerConfig.minLegBarsRange.step}`);
+    console.log(`Pivot Lookback Range: ${optimizerConfig.pivotLookbackRange.start} to ${optimizerConfig.pivotLookbackRange.end} with step ${optimizerConfig.pivotLookbackRange.step}`);
+    
+    // Display direction with alternate mode explanation
+    let directionDisplay = tradeConfig.direction;
+    if (tradeConfig.direction === 'alternate') {
+        directionDisplay = 'alternate (LONG at highs, SHORT at lows)';
+    }
+    console.log(`Direction: ${colors.yellow}${directionDisplay}${colors.reset}`);
+    
+    console.log(`Initial Capital: ${colors.yellow}${tradeConfig.initialCapital} USDT${colors.reset}`);
+    console.log(`Risk Per Trade: ${colors.yellow}${tradeConfig.riskPerTrade}%${colors.reset}`);
+    console.log(`Maker Fee: ${colors.yellow}${tradeConfig.totalMakerFee}%${colors.reset}`);
+    
+    // Display funding rate and slippage settings
+    if (tradeConfig.enableFundingRate) {
+        const fundingModeDisplay = tradeConfig.fundingRateMode === 'variable' 
+            ? `Variable (${tradeConfig.variableFundingMin}% to ${tradeConfig.variableFundingMax}%)`
+            : `Fixed (${tradeConfig.fundingRatePercent}%)`;
+        console.log(`Funding Rate: ${colors.yellow}${fundingModeDisplay} every ${tradeConfig.fundingRateHours}h${colors.reset}`);
+    } else {
+        console.log(`Funding Rate: ${colors.red}Disabled${colors.reset}`);
+    }
+
+    if (tradeConfig.enableSlippage) {
+        let slippageModeDisplay = '';
+        switch (tradeConfig.slippageMode) {
+            case 'fixed':
+                slippageModeDisplay = `Fixed (${tradeConfig.slippagePercent}%)`;
+                break;
+            case 'variable':
+                slippageModeDisplay = `Variable (${tradeConfig.variableSlippageMin}% to ${tradeConfig.variableSlippageMax}%)`;
+                break;
+            case 'market_impact':
+                slippageModeDisplay = `Market Impact (${tradeConfig.slippagePercent}% + ${tradeConfig.marketImpactFactor}% per 1000 USDT)`;
+                break;
+            default:
+                slippageModeDisplay = `Fixed (${tradeConfig.slippagePercent}%)`;
+        }
+        console.log(`Slippage: ${colors.yellow}${slippageModeDisplay}${colors.reset}`);
+    } else {
+        console.log(`Slippage: ${colors.red}Disabled${colors.reset}`);
+    }
+    
     console.log();
     
     // Load candle data once for all optimizations
-    loadCandlesOnce();
+    await loadCandlesOnce();
     
     // Pre-compute all pivots once for all optimizations
     computePivotsOnce();
     
     // Create header for CSV file
-    const csvHeader = 'takeProfit,stopLoss,leverage,totalTrades,winRate,tpRate,slRate,timeoutRate,profitFactor,netGain,netGainPct,initialCapital,finalCapital,avgWin,avgLoss\n';
+    const csvHeader = 'takeProfit,stopLoss,leverage,minSwingPct,minLegBars,pivotLookback,totalTrades,winRate,tpRate,slRate,timeoutRate,profitFactor,netGain,netGainPct,initialCapital,finalCapital,avgWin,avgLoss\n';
     fs.writeFileSync(RESULTS_CSV_FILE, csvHeader);
     
     const results = [];
     let totalCombinations = 0;
     
-    // Generate all combinations including leverage
+    // Generate all combinations including leverage and pivot parameters
     const combinations = [];
     for (let tp = optimizerConfig.takeProfitRange.start; tp <= optimizerConfig.takeProfitRange.end; tp += optimizerConfig.takeProfitRange.step) {
         for (let sl = optimizerConfig.stopLossRange.start; sl <= optimizerConfig.stopLossRange.end; sl += optimizerConfig.stopLossRange.step) {
             for (let lev = optimizerConfig.leverageRange.start; lev <= optimizerConfig.leverageRange.end; lev += optimizerConfig.leverageRange.step) {
-                combinations.push({ tp, sl, leverage: lev });
-                totalCombinations++;
+                for (let minSwing = optimizerConfig.minSwingPctRange.start; minSwing <= optimizerConfig.minSwingPctRange.end; minSwing += optimizerConfig.minSwingPctRange.step) {
+                    for (let minLeg = optimizerConfig.minLegBarsRange.start; minLeg <= optimizerConfig.minLegBarsRange.end; minLeg += optimizerConfig.minLegBarsRange.step) {
+                        for (let lookback = optimizerConfig.pivotLookbackRange.start; lookback <= optimizerConfig.pivotLookbackRange.end; lookback += optimizerConfig.pivotLookbackRange.step) {
+                            combinations.push({ 
+                                tp, 
+                                sl, 
+                                leverage: lev, 
+                                minSwingPct: minSwing, 
+                                minLegBars: minLeg, 
+                                pivotLookback: lookback 
+                            });
+                            totalCombinations++;
+                        }
+                    }
+                }
             }
         }
     }
@@ -823,7 +1248,7 @@ async function runOptimizer() {
                         results.push(result);
                         
                         // Format the result for CSV
-                        const csvLine = `${result.takeProfit},${result.stopLoss},${result.leverage},${result.totalTrades},${result.winRate.toFixed(2)},${result.tpRate.toFixed(2)},${result.slRate.toFixed(2)},${result.timeoutRate.toFixed(2)},${result.profitFactor.toFixed(2)},${result.netGain.toFixed(2)},${result.netGainPct.toFixed(2)},${result.initialCapital},${result.finalCapital.toFixed(2)},${result.avgWin.toFixed(2)},${result.avgLoss.toFixed(2)}\n`;
+                        const csvLine = `${result.takeProfit},${result.stopLoss},${result.leverage},${result.minSwingPct},${result.minLegBars},${result.pivotLookback},${result.totalTrades},${result.winRate.toFixed(2)},${result.tpRate.toFixed(2)},${result.slRate.toFixed(2)},${result.timeoutRate.toFixed(2)},${result.profitFactor.toFixed(2)},${formatNumber(result.netGain)},${result.netGainPct.toFixed(2)},${formatNumber(result.initialCapital)},${formatNumber(result.finalCapital)},${formatNumber(result.avgWin)},${formatNumber(result.avgLoss)}\n`;
                         fs.appendFileSync(RESULTS_CSV_FILE, csvLine);
                     } else if (message.type === 'progress') {
                         completedCombinations++;
@@ -838,10 +1263,10 @@ async function runOptimizer() {
                             progressLine = `\r${colors.cyan}Progress: ${bar} ${progressPct.toFixed(1)}% (${completedCombinations}/${totalCombinations})${colors.reset}`;
                             process.stdout.write(progressLine);
                             
-                            // Only log TP/SL/Leverage values every 10% or final result
+                            // Only log parameter values every 10% or final result
                             if (progressPct % 10 < 1 || completedCombinations === totalCombinations) {
                                 process.stdout.write('\n');
-                                console.log(`Current: TP ${message.data.tp.toFixed(2)}%, SL ${message.data.sl.toFixed(2)}%, Leverage ${message.data.leverage}x`);
+                                console.log(`Current: TP ${message.data.tp.toFixed(2)}%, SL ${message.data.sl.toFixed(2)}%, Lev ${message.data.leverage}x, Swing ${message.data.minSwingPct}%, MinLeg ${message.data.minLegBars}, Lookback ${message.data.pivotLookback}`);
                             }
                         }
                     }
@@ -871,7 +1296,8 @@ async function runOptimizer() {
 ${colors.green}=== Top 5 Combinations ====${colors.reset}`);
     for (let i = 0; i < Math.min(5, results.length); i++) {
         const r = results[i];
-        console.log(`${i+1}. TP: ${r.takeProfit.toFixed(2)}%, SL: ${r.stopLoss.toFixed(2)}%, Leverage: ${r.leverage}x - Trades: ${r.totalTrades}, Win Rate: ${r.winRate.toFixed(2)}%, Net Gain: ${r.netGainPct.toFixed(2)}% ($${r.netGain.toFixed(2)}), Capital: $${r.finalCapital.toFixed(2)}, Profit Factor: ${r.profitFactor.toFixed(2)}`);
+        console.log(`${i+1}. TP: ${r.takeProfit.toFixed(2)}%, SL: ${r.stopLoss.toFixed(2)}%, Lev: ${r.leverage}x, Swing: ${r.minSwingPct}%, MinLeg: ${r.minLegBars}, Lookback: ${r.pivotLookback}`);
+        console.log(`    Trades: ${r.totalTrades}, Win Rate: ${r.winRate.toFixed(2)}%, Net Gain: ${r.netGainPct.toFixed(2)}% ($${formatNumber(r.netGain)}), Capital: $${formatNumber(r.finalCapital)}, Profit Factor: ${r.profitFactor.toFixed(2)}\n`);
     }
     
     // Calculate execution time
@@ -956,11 +1382,25 @@ if (!isMainThread) {
             // Send progress update to main thread
             parentPort.postMessage({
                 type: 'progress',
-                data: { tp: combo.tp, sl: combo.sl, leverage: combo.leverage }
+                data: { 
+                    tp: combo.tp, 
+                    sl: combo.sl, 
+                    leverage: combo.leverage, 
+                    minSwingPct: combo.minSwingPct, 
+                    minLegBars: combo.minLegBars, 
+                    pivotLookback: combo.pivotLookback 
+                }
             });
             
             // Run the backtest
-            const result = await runBacktest(combo.tp, combo.sl, combo.leverage);
+            const result = await runBacktest(
+                combo.tp, 
+                combo.sl, 
+                combo.leverage, 
+                combo.minSwingPct, 
+                combo.minLegBars, 
+                combo.pivotLookback
+            );
             
             // Send result to main thread
             if (result) {

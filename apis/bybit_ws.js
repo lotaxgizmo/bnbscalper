@@ -16,8 +16,6 @@ export function connectWebSocket(symbol, onMessageCallback) {
   
   // Handle connection open
   ws.on('open', () => {
-    console.log('WebSocket connection established');
-    
     // Subscribe to ticker updates for the specified symbol
     const subscriptionMessage = JSON.stringify({
       op: 'subscribe',
@@ -25,7 +23,6 @@ export function connectWebSocket(symbol, onMessageCallback) {
     });
     
     ws.send(subscriptionMessage);
-    console.log(`Subscribed to ${symbol} ticker updates`);
   });
   
   // Handle incoming messages

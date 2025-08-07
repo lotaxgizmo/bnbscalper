@@ -8,11 +8,11 @@ import {
     minSwingPct,
     pivotLookback,
     minLegBars,
-    pivotDetectionMode,
-    hideCandle
+    pivotDetectionMode
 } from './config/config.js';
 
 import { tradeConfig } from './config/tradeconfig.js';
+import { fronttesterconfig } from './config/fronttesterconfig.js';
 // Removed bybit.js dependency - using embedded API calls
 import { connectWebSocket } from './apis/bybit_ws.js';
 import fs from 'fs';
@@ -32,6 +32,7 @@ const getCandles = async (symbol, interval, limit, customEndTime = null) => {
         const allCandles = [];
         let remainingLimit = limit;
         let endTime = customEndTime || Date.now();
+        const isSingleCandle = limit === 1; // Track if this is a single candle fetch
 
         // Convert interval to Bybit format
         const intervalMap = {
@@ -51,8 +52,12 @@ const getCandles = async (symbol, interval, limit, customEndTime = null) => {
         };
 
         const bybitInterval = intervalMap[interval] || interval;
-        console.log(`${colors.cyan}Fetching ${limit} candles from Bybit API for ${symbol} ${interval}...${colors.reset}`);
-
+        
+        // Only show fetching message for bulk operations (not single candles)
+        if (!isSingleCandle) {
+            console.log(`${colors.cyan}Fetching ${limit} candles from Bybit API for ${symbol} ${interval}...${colors.reset}`);
+        }
+        
         while (remainingLimit > 0) {
             const batchLimit = Math.min(remainingLimit, 1000);
             const response = await axios.get(`${BASE_URL}/market/kline`, {
@@ -89,7 +94,11 @@ const getCandles = async (symbol, interval, limit, customEndTime = null) => {
             endTime = candles[0].time - 1;
         }
 
-        console.log(`${colors.green}Successfully fetched ${allCandles.length} candles from Bybit API${colors.reset}`);
+        // Only show success message for bulk operations (not single candles)
+        if (!isSingleCandle) {
+            console.log(`${colors.green}Successfully fetched ${allCandles.length} candles from Bybit API${colors.reset}`);
+        }
+        
         return allCandles;
     } catch (error) {
         console.error(`${colors.red}Error fetching candles from Bybit API:${colors.reset}`, error.message);
@@ -126,13 +135,20 @@ const intervalValue = parseInt(interval);
 
 // Real-time system variables
 let candleBuffer = []; // Rolling buffer of candles for pivot detection
-let lastPivot = { type: null, price: null, time: null, index: 0 };
+let lastPivot = { type: null, price: null, time: 0, index: -1 }; // Initialize index to -1 so range starts from pivotLookback
 let pivotCounter = 0;
+let totalCandlesProcessed = 0; // Track total candles processed (not just buffer size)
 let highPivotCount = 0;
 let lowPivotCount = 0;
 let currentIntervalEnd = null;
 let lastProcessedIntervalEnd = null;
 let lastPrice = null;
+
+// Past mode simulation variables
+let simulationCandles = []; // Full historical dataset for simulation
+let simulationIndex = 0;    // Current position in simulation
+let simulationTimer = null; // Timer for candle delivery
+let simulationStartTime = null; // When simulation started
 
 // Trade state variables
 let capital = tradeConfig.initialCapital;
@@ -206,9 +222,12 @@ const getPivotPrice = (candle, pivotType) => {
     }
 };
 
-// Helper function to detect pivots using configurable price mode
+// Helper function to detect pivots using configurable price mode - LEFT-SIDE ONLY LIKE BACKTESTER
 const detectPivot = (candles, i, pivotLookback, pivotType) => {
-    let isPivot = true;
+    // Must have enough candles on left side
+    if (i < pivotLookback) {
+        return false;
+    }
     
     // Get current and comparison prices based on detection mode
     const getCurrentPrice = (candle) => {
@@ -221,23 +240,22 @@ const detectPivot = (candles, i, pivotLookback, pivotType) => {
     
     const currentPrice = getCurrentPrice(candles[i]);
     
+    // Check LEFT side (backward lookback) ONLY - EXACTLY LIKE BACKTESTER
     for (let j = 1; j <= pivotLookback; j++) {
         const comparePrice = getCurrentPrice(candles[i - j]);
         
         if (pivotType === 'high') {
             if (currentPrice <= comparePrice) {
-                isPivot = false;
-                break;
+                return false;
             }
         } else { // low pivot
             if (currentPrice >= comparePrice) {
-                isPivot = false;
-                break;
+                return false;
             }
         }
     }
     
-    return isPivot;
+    return true;
 };
 
 // Helper function to format percentage with color
@@ -835,8 +853,12 @@ const getIntervalBoundaries = (timestamp, intervalMinutes) => {
 };
 
 // Display header information
-console.log(`${colors.cyan}=== BNB Scalper Fronttester - Live Pivot Trading ===${colors.reset}`);
+const modeDisplay = fronttesterconfig.pastMode ? `Past Mode Simulation (${fronttesterconfig.speedMultiplier}x speed)` : 'Live Pivot Trading';
+console.log(`${colors.cyan}=== BNB Scalper Fronttester - ${modeDisplay} ===${colors.reset}`);
 console.log(`${colors.yellow}Symbol: ${symbol} | Interval: ${interval}${colors.reset}`);
+if (fronttesterconfig.pastMode) {
+    console.log(`${colors.magenta}Simulation Speed: ${fronttesterconfig.speedMultiplier}x | Candle Interval: ${60000 / fronttesterconfig.speedMultiplier}ms${colors.reset}`);
+}
 console.log(`${colors.magenta}Started at: ${new Date().toLocaleString()}${colors.reset}`);
 console.log(`${colors.cyan}=================================================${colors.reset}\n`);
 
@@ -957,12 +979,132 @@ const formatCandle = (candle) => {
     ].join(' | ');
 };
 
-async function initializeSystem() {
-    console.log(`\n${colors.cyan}--- Initializing Real-Time Pivot Trading System ---${colors.reset}`);
+// Initialize simulation mode with historical data
+async function initializeSimulation() {
+    try {
+        if (fronttesterconfig.showSystemStatus) {
+            console.log(`${colors.cyan}Loading historical data for simulation...${colors.reset}`);
+        }
+        
+        // Load full historical dataset
+        const fullLimit = fronttesterconfig.simulationLength || limit;
+        const allCandles = await getCandles(symbol, interval, fullLimit);
+        
+        if (!allCandles || allCandles.length === 0) {
+            throw new Error('Failed to fetch simulation candles');
+        }
+        
+        // Sort candles chronologically
+        simulationCandles = allCandles.sort((a, b) => a.time - b.time);
+        
+        if (fronttesterconfig.showSystemStatus) {
+            console.log(`${colors.green}Loaded ${simulationCandles.length} candles for simulation${colors.reset}`);
+            console.log(`${colors.yellow}Simulation period: ${new Date(simulationCandles[0].time).toLocaleString()} to ${new Date(simulationCandles[simulationCandles.length - 1].time).toLocaleString()}${colors.reset}`);
+        }
+        
+        // Initialize with first batch for pivot detection
+        const initialBatchSize = Math.min(pivotLookback * 2 + 10, simulationCandles.length);
+        candleBuffer = simulationCandles.slice(0, initialBatchSize);
+        simulationIndex = initialBatchSize;
+        totalCandlesProcessed = candleBuffer.length;
+        
+        // Detect initial pivots
+        await analyzeInitialPivots();
+        
+        // Start simulation
+        startSimulation();
+        
+    } catch (error) {
+        console.error(`${colors.red}Failed to initialize simulation:${colors.reset}`, error);
+        process.exit(1);
+    }
+}
+
+// Start the simulation timer
+function startSimulation() {
+    const intervalMs = 60000 / fronttesterconfig.speedMultiplier; // 60 seconds / speed multiplier
+    simulationStartTime = Date.now();
     
-    // Load initial historical candles for pivot detection buffer (reduced for faster startup)
+    if (fronttesterconfig.showSystemStatus) {
+        console.log(`${colors.green}\n🚀 Starting simulation at ${fronttesterconfig.speedMultiplier}x speed (${intervalMs}ms per candle)${colors.reset}`);
+        console.log(`${colors.cyan}Remaining candles to simulate: ${simulationCandles.length - simulationIndex}${colors.reset}\n`);
+        
+        // Show current position
+        if (candleBuffer.length > 0 && !fronttesterconfig.hideCandles) {
+            const latestCandle = candleBuffer[candleBuffer.length - 1];
+            console.log(`${colors.brightCyan}--- SIMULATION STARTING POSITION ---${colors.reset}`);
+            console.log(`${formatCandle(latestCandle)}`);
+            console.log(`${colors.brightCyan}--- Simulation will continue from here ---${colors.reset}\n`);
+        }
+    }
+    
+    // Start the simulation timer
+    simulationTimer = setInterval(() => {
+        deliverNextCandle();
+    }, intervalMs);
+}
+
+// Deliver the next candle in simulation
+function deliverNextCandle() {
+    if (simulationIndex >= simulationCandles.length) {
+        // Simulation complete
+        clearInterval(simulationTimer);
+        console.log(`${colors.green}\n🎯 Simulation completed! Processed ${simulationCandles.length} candles.${colors.reset}`);
+        
+        // Show final summary
+        showSimulationSummary();
+        return;
+    }
+    
+    const nextCandle = simulationCandles[simulationIndex];
+    simulationIndex++;
+    
+    // Add to buffer and maintain size limit
+    candleBuffer.push(nextCandle);
+    totalCandlesProcessed++;
+    
+    if (candleBuffer.length > limit) {
+        candleBuffer.shift(); // Remove oldest candle
+    }
+    
+    // Display the candle (same as live mode)
+    if (!fronttesterconfig.hideCandles) {
+        console.log(`\n${formatCandle(nextCandle)}`);
+    }
+    
+    // Show progress
+    if (fronttesterconfig.showProgress) {
+        const remaining = simulationCandles.length - simulationIndex;
+        const progress = ((simulationIndex / simulationCandles.length) * 100).toFixed(1);
+        console.log(`${colors.cyan}Progress: ${progress}% | Remaining: ${remaining} candles${colors.reset}\n`);
+    }
+    
+    // Process the candle (same logic as live mode)
+    processNewCandle(nextCandle);
+}
+
+// Show simulation summary
+function showSimulationSummary() {
+    const duration = Date.now() - simulationStartTime;
+    const durationSec = (duration / 1000).toFixed(1);
+    
+    console.log(`${colors.brightGreen}=== SIMULATION SUMMARY ===${colors.reset}`);
+    console.log(`${colors.yellow}Total Candles Processed: ${simulationCandles.length}${colors.reset}`);
+    console.log(`${colors.yellow}Simulation Duration: ${durationSec} seconds${colors.reset}`);
+    console.log(`${colors.yellow}Speed Multiplier: ${fronttesterconfig.speedMultiplier}x${colors.reset}`);
+    console.log(`${colors.yellow}Pivots Detected: ${pivotCounter}${colors.reset}`);
+    console.log(`${colors.yellow}Trades Executed: ${trades.length}${colors.reset}`);
+    console.log(`${colors.yellow}Final Capital: ${capital.toFixed(2)} USDT${colors.reset}`);
+}
+
+async function initializeSystem() {
+    if (fronttesterconfig.pastMode) {
+        await initializeSimulation();
+        return;
+    }
+    
+    // Original live mode initialization
     const reducedLimit = Math.min(1000, limit); // Load max 1000 candles for faster startup
-    console.log(`${colors.yellow}Loading initial ${reducedLimit} candles for pivot detection buffer...${colors.reset}`);
     
     try {
         const initialCandles = await getCandles(symbol, interval, reducedLimit);
@@ -973,9 +1115,7 @@ async function initializeSystem() {
         
         // Sort candles chronologically and populate buffer
         candleBuffer = initialCandles.sort((a, b) => a.time - b.time);
-        
-        console.log(`${colors.green}Successfully loaded ${candleBuffer.length} initial candles${colors.reset}`);
-        console.log(`${colors.cyan}Time range: ${new Date(candleBuffer[0].time).toLocaleString()} to ${new Date(candleBuffer[candleBuffer.length-1].time).toLocaleString()}${colors.reset}`);
+        totalCandlesProcessed = candleBuffer.length; // Initialize with historical candles
         
         // Initialize interval tracking
         const now = Date.now();
@@ -983,10 +1123,7 @@ async function initializeSystem() {
         currentIntervalEnd = boundaries.end;
         lastProcessedIntervalEnd = boundaries.start;
         
-        console.log(`${colors.yellow}Next candle close expected at: ${new Date(currentIntervalEnd).toLocaleString()}${colors.reset}`);
-        
         // Detect initial pivots in the loaded data
-        console.log(`${colors.magenta}Analyzing loaded candles for existing pivots...${colors.reset}`);
         await analyzeInitialPivots();
         
         // Start WebSocket connection
@@ -996,16 +1133,16 @@ async function initializeSystem() {
         console.error(`${colors.red}Failed to initialize system:${colors.reset}`, error);
         process.exit(1);
     }
-
 }
 
 // Analyze initial candles for existing pivots
 async function analyzeInitialPivots() {
     let pivotsFound = 0;
     const maxPivotsToShow = 10;
+    const allPivots = []; // Store all pivots to show the last ones
     
     // Analyze the loaded candles for pivots
-    for (let i = pivotLookback; i < candleBuffer.length - pivotLookback; i++) {
+    for (let i = pivotLookback; i < candleBuffer.length; i++) {
         const candle = candleBuffer[i];
         const swingThreshold = minSwingPct / 100;
         
@@ -1025,9 +1162,15 @@ async function analyzeInitialPivots() {
                 const movePct = swingPct * 100;
                 const formattedTime = new Date(candle.time).toLocaleString();
                 
-                if (pivotsFound <= maxPivotsToShow) {
-                    console.log(`${colors.brightRed}📈 HIGH PIVOT #${pivotCounter} @ ${pivotPrice.toFixed(4)} (${formattedTime}) | Move: ${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`);
-                }
+                // Store pivot info for later display
+                allPivots.push({
+                    type: 'high',
+                    counter: pivotCounter,
+                    price: pivotPrice,
+                    time: formattedTime,
+                    movePct,
+                    barsSinceLast
+                });
                 
                 lastPivot = { type: 'high', price: pivotPrice, index: i, time: candle.time };
             }
@@ -1049,35 +1192,73 @@ async function analyzeInitialPivots() {
                 const movePct = swingPct * 100;
                 const formattedTime = new Date(candle.time).toLocaleString();
                 
-                if (pivotsFound <= maxPivotsToShow) {
-                    console.log(`${colors.brightGreen}📉 LOW PIVOT #${pivotCounter} @ ${pivotPrice.toFixed(4)} (${formattedTime}) | Move: ${movePct.toFixed(2)}% | Bars: ${barsSinceLast}${colors.reset}`);
-                }
+                // Store pivot info for later display
+                allPivots.push({
+                    type: 'low',
+                    counter: pivotCounter,
+                    price: pivotPrice,
+                    time: formattedTime,
+                    movePct,
+                    barsSinceLast
+                });
                 
                 lastPivot = { type: 'low', price: pivotPrice, index: i, time: candle.time };
             }
         }
     }
     
+    // Display the LAST maxPivotsToShow pivots
+    const pivotsToShow = allPivots.slice(-maxPivotsToShow);
+    pivotsToShow.forEach(pivot => {
+        const icon = pivot.type === 'high' ? '📈' : '📉';
+        const color = pivot.type === 'high' ? colors.brightGreen : colors.brightRed;
+        const typeLabel = pivot.type.toUpperCase();
+        console.log(`${color}${icon} ${typeLabel} PIVOT #${pivot.counter} @ ${pivot.price.toFixed(4)} (${pivot.time}) | Move: ${pivot.movePct.toFixed(2)}% | Bars: ${pivot.barsSinceLast}${colors.reset}`);
+    });
+    
     console.log(`${colors.cyan}Found ${pivotsFound} pivots in historical data (showing last ${Math.min(pivotsFound, maxPivotsToShow)})${colors.reset}`);
-    console.log(`${colors.yellow}System ready for real-time pivot detection...${colors.reset}\n`);
+    
+    // Simple approach: Just track the last pivot time for comparison
+    if (fronttesterconfig.showDebug) {
+        if (lastPivot.type) {
+            console.log(`${colors.dim || ''}[DEBUG] Last historical pivot: ${lastPivot.type} @ ${lastPivot.price} (${new Date(lastPivot.time).toLocaleString()})${colors.reset || ''}`);
+        } else {
+            console.log(`${colors.dim || ''}[DEBUG] No historical pivots found. Starting fresh.${colors.reset || ''}`);
+        }
+    }
+    
+    if (fronttesterconfig.showSystemStatus) {
+        console.log(`${colors.yellow}System ready for real-time pivot detection...${colors.reset}\n`);
+    }
 }
 
 // Start real-time WebSocket monitoring
 function startRealTimeMonitoring() {
-    console.log(`\n${colors.cyan}--- Starting Real-Time WebSocket Connection ---${colors.reset}`);
-    
     const ws = connectWebSocket(symbol, (data) => {
         handlePriceUpdate(data);
     });
     
     // Handle WebSocket connection events
     ws.on('open', () => {
-        console.log(`${colors.green}✓ WebSocket connected successfully${colors.reset}`);
-        console.log(`${colors.cyan}Monitoring ${symbol} for real-time price updates...${colors.reset}`);
+        if (fronttesterconfig.showSystemStatus) {
+            console.log(`${colors.green}✓ WebSocket connected - monitoring ${symbol}${colors.reset}`);
+        }
+        
+        // Display the latest available candle so user knows where we're starting from
+        if (!fronttesterconfig.hideCandles) {
+            const latestCandle = candleBuffer[candleBuffer.length - 1];
+            console.log(`\n${colors.brightCyan}--- CURRENT POSITION ---${colors.reset}`);
+            console.log(`${formatCandle(latestCandle)}`);
+            console.log(`${colors.brightCyan}--- Starting from here ---${colors.reset}`);
+            
+            // Show next candle time
+            const nextCandleTime = new Date(currentIntervalEnd).toLocaleTimeString();
+            console.log(`${colors.cyan}Next candle close at ${nextCandleTime}${colors.reset}\n`);
+        }
         
         // Start heartbeat to show system is alive
         setInterval(() => {
-            if (!hideCandle) {
+            if (!hideCandle && fronttesterconfig.showHeartbeat) {
                 const now = new Date().toLocaleTimeString();
                 const nextCandle = new Date(currentIntervalEnd).toLocaleTimeString();
                 console.log(`${colors.dim}[${now}] System monitoring... Next candle: ${nextCandle}${colors.reset}`);
@@ -1086,11 +1267,15 @@ function startRealTimeMonitoring() {
     });
     
     ws.on('error', (error) => {
-        console.error(`${colors.red}WebSocket error:${colors.reset}`, error);
+        if (fronttesterconfig.showSystemStatus) {
+            console.error(`${colors.red}WebSocket error:${colors.reset}`, error);
+        }
     });
     
     ws.on('close', () => {
-        console.log(`${colors.yellow}WebSocket connection closed. Attempting to reconnect...${colors.reset}`);
+        if (fronttesterconfig.showSystemStatus) {
+            console.log(`${colors.yellow}WebSocket connection closed. Attempting to reconnect...${colors.reset}`);
+        }
         setTimeout(() => startRealTimeMonitoring(), 5000);
     });
 }
@@ -1144,14 +1329,18 @@ const fetchLatestCandle = async () => {
             
             // Add to buffer and maintain size limit
             candleBuffer.push(newCandle);
+            totalCandlesProcessed++; // Track total candles processed
+            
             if (candleBuffer.length > limit) {
                 candleBuffer.shift(); // Remove oldest candle
             }
             
-            // Always display completed candles (hideCandle only affects price updates)
-            console.log(`\n${formatCandle(newCandle)}`);
-            const nextCandleTime = new Date(currentIntervalEnd).toLocaleTimeString();
-            console.log(`${colors.cyan}Next candle close at ${nextCandleTime}${colors.reset}\n`);
+            // Display completed candles (controlled by hideCandles config)
+            if (!fronttesterconfig.hideCandles) {
+                console.log(`\n${formatCandle(newCandle)}`);
+                const nextCandleTime = new Date(currentIntervalEnd).toLocaleTimeString();
+                console.log(`${colors.cyan}Next candle close at ${nextCandleTime}${colors.reset}\n`);
+            }
             
             // Process the new candle for pivot detection and trading
             await processNewCandle(newCandle);
@@ -1165,7 +1354,7 @@ const fetchLatestCandle = async () => {
     
 };
 
-// Process new candle for pivot detection and trading
+// Process new candle for pivot detection and trading - SIMULATION COMPATIBLE
 const processNewCandle = async (newCandle) => {
     // Ensure we have enough candles for pivot detection
     if (candleBuffer.length < (pivotLookback * 2 + 1)) {
@@ -1173,87 +1362,120 @@ const processNewCandle = async (newCandle) => {
         return;
     }
     
-    const currentIndex = candleBuffer.length - 1;
     const swingThreshold = minSwingPct / 100;
     
     // Process active trades first
     await processActiveTrades(newCandle);
     
-    // Check for pivot detection (need to look back from current position)
-    const pivotIndex = currentIndex - pivotLookback; // Look back to avoid future bias
+    // SEQUENTIAL APPROACH: Check for pivots at the current position
+    // This mimics exactly how the backtester works - LEFT-SIDE ONLY
+    const currentIndex = candleBuffer.length - 1;
     
-    if (pivotIndex >= pivotLookback) {
-        const pivotCandle = candleBuffer[pivotIndex];
+    // FULL BUFFER RE-ANALYSIS: Re-analyze entire buffer like restart does
+    // This ensures we catch all pivots just like when restarting the fronttester
+    let tempLastPivot = { type: null, price: null, time: null, index: 0 };
+    let tempPivotCounter = 0;
+    
+    // Re-analyze the ENTIRE buffer from scratch (exactly like restart)
+    for (let i = pivotLookback; i < candleBuffer.length; i++) {
+        const pivotCandle = candleBuffer[i];
+        
+        if (fronttesterconfig.showPivotChecking) {
+            console.log(`${colors.dim || ''}[DEBUG] Checking for pivot at index ${i} (${new Date(pivotCandle.time).toLocaleString()}) - Price: ${pivotCandle.close}${colors.reset || ''}`);
+        }
         
         // Check for high pivot
-        const isHighPivot = detectPivot(candleBuffer, pivotIndex, pivotLookback, 'high');
+        const isHighPivot = detectPivot(candleBuffer, i, pivotLookback, 'high');
         
         if (isHighPivot) {
             const pivotPrice = getPivotPrice(pivotCandle, 'high');
-            const swingPct = lastPivot.price ? (pivotPrice - lastPivot.price) / lastPivot.price : 0;
-            const isFirstPivot = lastPivot.type === null;
+            const swingPct = tempLastPivot.price ? (pivotPrice - tempLastPivot.price) / tempLastPivot.price : 0;
+            const isFirstPivot = tempLastPivot.type === null;
             
-            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (pivotIndex - lastPivot.index) >= minLegBars) {
-                pivotCounter++;
-                highPivotCount++;
-                const barsSinceLast = pivotIndex - lastPivot.index;
+            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - tempLastPivot.index) >= minLegBars) {
+                tempPivotCounter++;
+                const barsSinceLast = i - tempLastPivot.index;
                 const movePct = swingPct * 100;
-                const formattedTime = new Date(pivotCandle.time).toLocaleString();
                 
-                const swingCandles = lastPivot.price ? candleBuffer.slice(lastPivot.index, pivotIndex + 1) : null;
-                const output = formatPivotOutput('high', pivotCounter, pivotPrice, formattedTime, movePct, barsSinceLast, lastPivot, swingCandles);
+                // Check if this is a NEW pivot (not previously detected)
+                const isNewPivot = !lastPivot.time || pivotCandle.time > lastPivot.time;
                 
-                if (tradeConfig.showPivot) {
+                if (isNewPivot) {
+                    highPivotCount++;
+                    pivotCounter++;
+                    const pivotTime = new Date(pivotCandle.time);
+                    const formattedTime = `${pivotTime.toLocaleDateString()} ${pivotTime.toLocaleTimeString()}`;
+                    
+                    // Format NEW pivot output
+                    const icon = '📈';
+                    const color = colors.brightRed;
+                    const modeLabel = fronttesterconfig.pastMode ? 'SIMULATION' : 'REAL-TIME';
+                    const output = `${color}${icon} HIGH PIVOT #${pivotCounter} @ ${pivotPrice.toFixed(4)} (${formattedTime}) | Move: ${movePct.toFixed(2)}% | Bars: ${barsSinceLast} | 🆕 ${modeLabel}${colors.reset}`;
+                    
                     console.log(output);
+                    
+                    // Execute trade logic
+                    await executeTradeLogic('high', pivotCandle, { type: 'high', price: pivotPrice, time: pivotCandle.time, index: i });
                 }
                 
-                // Update pivot tracking
-                lastPivot = { 
+                // Update temp pivot tracking
+                tempLastPivot = { 
                     type: 'high', 
                     price: pivotPrice, 
                     time: pivotCandle.time, 
-                    index: pivotIndex
+                    index: i
                 };
-                
-                // Execute trade logic for high pivot
-                await executeTradeLogic('high', pivotCandle, lastPivot);
             }
         }
         
         // Check for low pivot
-        const isLowPivot = detectPivot(candleBuffer, pivotIndex, pivotLookback, 'low');
+        const isLowPivot = detectPivot(candleBuffer, i, pivotLookback, 'low');
         
         if (isLowPivot) {
             const pivotPrice = getPivotPrice(pivotCandle, 'low');
-            const swingPct = lastPivot.price ? (pivotPrice - lastPivot.price) / lastPivot.price : 0;
-            const isFirstPivot = lastPivot.type === null;
+            const swingPct = tempLastPivot.price ? (pivotPrice - tempLastPivot.price) / tempLastPivot.price : 0;
+            const isFirstPivot = tempLastPivot.type === null;
             
-            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (pivotIndex - lastPivot.index) >= minLegBars) {
-                pivotCounter++;
-                lowPivotCount++;
-                const barsSinceLast = pivotIndex - lastPivot.index;
+            if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - tempLastPivot.index) >= minLegBars) {
+                tempPivotCounter++;
+                const barsSinceLast = i - tempLastPivot.index;
                 const movePct = swingPct * 100;
-                const formattedTime = new Date(pivotCandle.time).toLocaleString();
                 
-                const swingCandles = lastPivot.price ? candleBuffer.slice(lastPivot.index, pivotIndex + 1) : null;
-                const output = formatPivotOutput('low', pivotCounter, pivotPrice, formattedTime, movePct, barsSinceLast, lastPivot, swingCandles);
+                // Check if this is a NEW pivot (not previously detected)
+                const isNewPivot = !lastPivot.time || pivotCandle.time > lastPivot.time;
                 
-                if (tradeConfig.showPivot) {
+                if (isNewPivot) {
+                    lowPivotCount++;
+                    pivotCounter++;
+                    const pivotTime = new Date(pivotCandle.time);
+                    const formattedTime = `${pivotTime.toLocaleDateString()} ${pivotTime.toLocaleTimeString()}`;
+                    
+                    // Format NEW pivot output
+                    const icon = '📉';
+                    const color = colors.brightGreen;
+                    const modeLabel = fronttesterconfig.pastMode ? 'SIMULATION' : 'REAL-TIME';
+                    const output = `${color}${icon} LOW PIVOT #${pivotCounter} @ ${pivotPrice.toFixed(4)} (${formattedTime}) | Move: ${movePct.toFixed(2)}% | Bars: ${barsSinceLast} | 🆕 ${modeLabel}${colors.reset}`;
+                    
                     console.log(output);
+                    
+                    // Execute trade logic
+                    await executeTradeLogic('low', pivotCandle, { type: 'low', price: pivotPrice, time: pivotCandle.time, index: i });
                 }
                 
-                // Update pivot tracking
-                lastPivot = { 
+                // Update temp pivot tracking
+                tempLastPivot = { 
                     type: 'low', 
                     price: pivotPrice, 
                     time: pivotCandle.time, 
-                    index: pivotIndex
+                    index: i
                 };
-                
-                // Execute trade logic for low pivot
-                await executeTradeLogic('low', pivotCandle, lastPivot);
             }
         }
+    }
+    
+    // Update global pivot state with the latest pivot found in buffer analysis
+    if (tempLastPivot.time) {
+        lastPivot = tempLastPivot;
     }
 };
 

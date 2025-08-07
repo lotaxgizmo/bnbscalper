@@ -1,13 +1,13 @@
 // config.js
 
 // Data source settings
-export const useLocalData = false;  // Force API data fetching
+export const useLocalData = true;  // Force API data fetching
 export const useEdges = false;    // Use pre-computed edge data; if false, use standard CSV candles
 
 // API settings
 export const api = 'bybit'; // 'binance' or 'bybit'
 // export const api = 'binance'; // 'binance' or 'bybit'
-export const time = '1m';
+export const time = '4h';
 export const symbol = 'BTCUSDT';
 
 // candle limit below
@@ -41,6 +41,13 @@ const getIntervalMultiplier = (intervalStr) => {
                 perWeek: 7 / value,
                 perMonth: 30 / value
             };
+        case 'w': // weeks
+            return {
+                perHour: 1 / (value * 7 * 24),
+                perDay: 1 / (value * 7),
+                perWeek: 1 / value,
+                perMonth: 30 / (value * 7)
+            };
         default: // default to minutes if unknown
             return {
                 perHour: 60,
@@ -62,36 +69,34 @@ const daylimit = weeklimit * 7;
 // const daylimit = 7;
 const hourlimit = daylimit * 24;
 const minlimit = Math.floor(monthlimit * multiplier.perMonth); // Total candles for the month
- 
-// export const limit = minlimit;
-export const limit = 1000; 
- 
+
+export const limit = minlimit;
+// export const limit = 15;
 
 const multiplied = 0;
 export const delay = multiplied * 180; // Number of candles to delay (0 = use all available candles)
-  
 
 
 
-export const minSwingPct    = 0.2;   // minimum % move to mark a pivot
+
+
+export const minSwingPct = 0.4;   // minimum % move to mark a pivot 4.85%
+
+// New setting: ignore any pivot that took fewer than this many candles
+export const minLegBars = 2;     // e.g. require at least 3 candles per swing
+
+// New setting: number of candles to look back on each side for pivot confirmation
+export const pivotLookback = 2;  // 1 = 3-candle pattern, 2 = 5-candle pattern
+
 export const shortWindow    = 6;     // number of recent swings to average
 export const longWindow     = 50;    // number of swings for background volatility
 export const confirmOnClose = true;  // only confirm pivots on candle-close
-
 // Pivot detection mode: 'close' uses candle close prices, 'extreme' uses high/low prices
 export const pivotDetectionMode = 'close';  // 'close' or 'extreme'
-
-// New setting: ignore any pivot that took fewer than this many candles
-export const minLegBars = 3;     // e.g. require at least 3 candles per swing
-
-// New setting: number of candles to look back on each side for pivot confirmation
-export const pivotLookback = 5;  // 1 = 3-candle pattern, 2 = 5-candle pattern
 
 // Percentage of average swing size to use as threshold (100 = use exact average)
 export const averageSwingThresholdPct = 100;   // e.g. 50 = half of average, 200 = double
 
 // Whether to show detailed information about trades that pass the threshold
 export const showThresholdTrades = true;
-export const logCandlesInStreamer = true; // Toggle to show/hide individual candle logs in the historical streamer
-export const hideCandle = true; // When true, hides intermediate candle fetching messages and price updates
  

@@ -17,6 +17,7 @@ import {
 
 import { tradeConfig } from './config/tradeconfig.js';
 import { getCandles } from './apis/bybit.js';
+import { formatNumber } from './utils/formatters.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -443,10 +444,13 @@ const createTrade = (type, currentCandle, pivotData, i, tradeSize, tradeConfig) 
         ? entryPrice * (1 - (tradeConfig.stopLoss / 100))
         : entryPrice * (1 + (tradeConfig.stopLoss / 100));
 
+    // Trade enters at the END of the pivot candle (when pivot is confirmed)
+    const entryTime = currentCandle.time + candleDurationMs;
+    
     return {
         type,
         entryPrice,
-        entryTime: currentCandle.time,
+        entryTime: entryTime,
         entryIndex: i,
         size,
         status: 'open',
@@ -456,7 +460,7 @@ const createTrade = (type, currentCandle, pivotData, i, tradeSize, tradeConfig) 
         maxFavorable: 0,  // Track maximum favorable price movement
         maxUnfavorable: 0,  // Track maximum unfavorable price movement
         entrySlippage: entrySlippage * 100,  // Store entry slippage percentage for reporting
-        lastFundingTime: currentCandle.time  // Track last funding payment time
+        lastFundingTime: entryTime  // Track last funding payment time
     };
 };
 
@@ -825,7 +829,11 @@ async function runTest() {
         pivotCandles = uniqueCandles.sort((a, b) => a.time - b.time);
         
         console.log(`Sorted ${pivotCandles.length} candles chronologically`);
-        console.log(`Time range: ${new Date(pivotCandles[0].time).toLocaleString()} to ${new Date(pivotCandles[pivotCandles.length-1].time).toLocaleString()}`);
+        const startTime12 = new Date(pivotCandles[0].time).toLocaleString();
+        const startTime24 = new Date(pivotCandles[0].time).toLocaleString('en-GB', { hour12: false });
+        const endTime12 = new Date(pivotCandles[pivotCandles.length-1].time).toLocaleString();
+        const endTime24 = new Date(pivotCandles[pivotCandles.length-1].time).toLocaleString('en-GB', { hour12: false });
+        console.log(`Time range: ${startTime12} (${startTime24}) to ${endTime12} (${endTime24})`);
         
         edges = {}; // No pre-computed edge data for live API calls
     }
@@ -1124,89 +1132,148 @@ async function runTest() {
             let tradeClosed = false;
             let exitPrice = null;
             let result = '';
+            let finalTradeCandle = null;
             
-            // Find the current 1-minute candle for this pivot candle time
-            let currentTradeCandle = null;
-            
-            // If we have 1-minute candles, find the one closest to current pivot candle time
+            // If we have 1-minute candles, process ALL candles from trade entry time onwards
             if (tradeCandles !== pivotCandles) {
-                // Find the 1-minute candle that corresponds to this pivot candle time
-                const pivotTime = currentPivotCandle.time;
+                const currentPivotEndTime = currentPivotCandle.time + candleDurationMs;
+                const previousPivotEndTime = i > 0 ? pivotCandles[i-1].time + candleDurationMs : 0;
                 
-                // Find the closest 1-minute candle at or after the pivot time
-                for (let k = 0; k < tradeCandles.length; k++) {
-                    if (tradeCandles[k].time >= pivotTime) {
-                        currentTradeCandle = tradeCandles[k];
-                        break;
+                // Find all 1-minute candles from trade entry time (end of previous pivot) to current pivot end
+                // Only process candles AFTER the trade entry time
+                const relevantTradeCandles = tradeCandles.filter(tc => 
+                    tc.time >= Math.max(trade.entryTime, previousPivotEndTime) && tc.time <= currentPivotEndTime
+                );
+                
+                // Process each 1-minute candle in chronological order
+                for (const tradeCandle of relevantTradeCandles) {
+                    // Skip if trade already closed
+                    if (tradeClosed) break;
+                    
+                    // Track maximum favorable and unfavorable price movements
+                    if (trade.type === 'long') {
+                        const currentFavorable = (tradeCandle.high - trade.entryPrice) / trade.entryPrice * 100;
+                        const currentUnfavorable = (tradeCandle.low - trade.entryPrice) / trade.entryPrice * 100;
+                        
+                        trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
+                        trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
+                    } else { // short
+                        const currentFavorable = (trade.entryPrice - tradeCandle.low) / trade.entryPrice * 100;
+                        const currentUnfavorable = (trade.entryPrice - tradeCandle.high) / trade.entryPrice * 100;
+                        
+                        trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
+                        trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
                     }
-                }
-                
-                // If no 1-minute candle found at or after pivot time, use the last available
-                if (!currentTradeCandle && tradeCandles.length > 0) {
-                    currentTradeCandle = tradeCandles[tradeCandles.length - 1];
+
+                    // Check for trade timeout if maxTradeTimeMinutes is enabled
+                    if (tradeConfig.maxTradeTimeMinutes > 0) {
+                        const tradeTimeMs = tradeCandle.time - trade.entryTime;
+                        const tradeTimeMinutes = tradeTimeMs / (1000 * 60);
+                        
+                        if (tradeTimeMinutes >= tradeConfig.maxTradeTimeMinutes) {
+                            tradeClosed = true;
+                            exitPrice = tradeCandle.close;
+                            result = 'TIMEOUT';
+                            finalTradeCandle = tradeCandle;
+                            break;
+                        }
+                    }
+
+                    // Check TP/SL conditions
+                    if (!tradeClosed) {
+                        if (trade.type === 'long') {
+                            if (tradeCandle.high >= trade.takeProfitPrice) {
+                                tradeClosed = true;
+                                exitPrice = trade.takeProfitPrice;
+                                result = 'TP';
+                                finalTradeCandle = tradeCandle;
+                                break;
+                            } else if (tradeCandle.low <= trade.stopLossPrice) {
+                                tradeClosed = true;
+                                exitPrice = trade.stopLossPrice;
+                                result = 'SL';
+                                finalTradeCandle = tradeCandle;
+                                break;
+                            }
+                        } else { // short
+                            if (tradeCandle.low <= trade.takeProfitPrice) {
+                                tradeClosed = true;
+                                exitPrice = trade.takeProfitPrice;
+                                result = 'TP';
+                                finalTradeCandle = tradeCandle;
+                                break;
+                            } else if (tradeCandle.high >= trade.stopLossPrice) {
+                                tradeClosed = true;
+                                exitPrice = trade.stopLossPrice;
+                                result = 'SL';
+                                finalTradeCandle = tradeCandle;
+                                break;
+                            }
+                        }
+                    }
                 }
             } else {
                 // Using same timeframe for both pivot and trade execution
-                currentTradeCandle = currentPivotCandle;
-            }
-            
-            // Skip trade processing if no trade candle available
-            if (!currentTradeCandle) continue;
-            
-            // Track maximum favorable and unfavorable price movements
-            if (trade.type === 'long') {
-                // For long trades: favorable = price goes up, unfavorable = price goes down
-                const currentFavorable = (currentTradeCandle.high - trade.entryPrice) / trade.entryPrice * 100;
-                const currentUnfavorable = (currentTradeCandle.low - trade.entryPrice) / trade.entryPrice * 100;
+                const currentTradeCandle = currentPivotCandle;
                 
-                trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
-                trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
-            } else { // short
-                // For short trades: favorable = price goes down, unfavorable = price goes up
-                const currentFavorable = (trade.entryPrice - currentTradeCandle.low) / trade.entryPrice * 100;
-                const currentUnfavorable = (trade.entryPrice - currentTradeCandle.high) / trade.entryPrice * 100;
-                
-                trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
-                trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
-            }
-
-            // Check for trade timeout if maxTradeTimeMinutes is enabled (greater than 0)
-            if (tradeConfig.maxTradeTimeMinutes > 0) {
-                const tradeTimeMs = currentTradeCandle.time - trade.entryTime;
-                const tradeTimeMinutes = tradeTimeMs / (1000 * 60);
-                
-                if (tradeTimeMinutes >= tradeConfig.maxTradeTimeMinutes) {
-                    tradeClosed = true;
-                    exitPrice = currentTradeCandle.close; // Use current trade candle close price for timeout exits
-                    result = 'TIMEOUT';
-                }
-            }
-
-            if (!tradeClosed) { // Only check TP/SL if not already closed due to timeout
+                // Track maximum favorable and unfavorable price movements
                 if (trade.type === 'long') {
-                    if (currentTradeCandle.high >= trade.takeProfitPrice) {
-                        tradeClosed = true;
-                        exitPrice = trade.takeProfitPrice;
-                        result = 'TP';
-                    } else if (currentTradeCandle.low <= trade.stopLossPrice) {
-                        tradeClosed = true;
-                        exitPrice = trade.stopLossPrice;
-                        result = 'SL';
-                    }
+                    const currentFavorable = (currentTradeCandle.high - trade.entryPrice) / trade.entryPrice * 100;
+                    const currentUnfavorable = (currentTradeCandle.low - trade.entryPrice) / trade.entryPrice * 100;
+                    
+                    trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
+                    trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
                 } else { // short
-                    if (currentTradeCandle.low <= trade.takeProfitPrice) {
+                    const currentFavorable = (trade.entryPrice - currentTradeCandle.low) / trade.entryPrice * 100;
+                    const currentUnfavorable = (trade.entryPrice - currentTradeCandle.high) / trade.entryPrice * 100;
+                    
+                    trade.maxFavorable = Math.max(trade.maxFavorable, currentFavorable);
+                    trade.maxUnfavorable = Math.min(trade.maxUnfavorable, currentUnfavorable);
+                }
+
+                // Check for trade timeout if maxTradeTimeMinutes is enabled
+                if (tradeConfig.maxTradeTimeMinutes > 0) {
+                    const tradeTimeMs = currentTradeCandle.time - trade.entryTime;
+                    const tradeTimeMinutes = tradeTimeMs / (1000 * 60);
+                    
+                    if (tradeTimeMinutes >= tradeConfig.maxTradeTimeMinutes) {
                         tradeClosed = true;
-                        exitPrice = trade.takeProfitPrice;
-                        result = 'TP';
-                    } else if (currentTradeCandle.high >= trade.stopLossPrice) {
-                        tradeClosed = true;
-                        exitPrice = trade.stopLossPrice;
-                        result = 'SL';
+                        exitPrice = currentTradeCandle.close;
+                        result = 'TIMEOUT';
+                        finalTradeCandle = currentTradeCandle;
+                    }
+                }
+
+                if (!tradeClosed) {
+                    if (trade.type === 'long') {
+                        if (currentTradeCandle.high >= trade.takeProfitPrice) {
+                            tradeClosed = true;
+                            exitPrice = trade.takeProfitPrice;
+                            result = 'TP';
+                            finalTradeCandle = currentTradeCandle;
+                        } else if (currentTradeCandle.low <= trade.stopLossPrice) {
+                            tradeClosed = true;
+                            exitPrice = trade.stopLossPrice;
+                            result = 'SL';
+                            finalTradeCandle = currentTradeCandle;
+                        }
+                    } else { // short
+                        if (currentTradeCandle.low <= trade.takeProfitPrice) {
+                            tradeClosed = true;
+                            exitPrice = trade.takeProfitPrice;
+                            result = 'TP';
+                            finalTradeCandle = currentTradeCandle;
+                        } else if (currentTradeCandle.high >= trade.stopLossPrice) {
+                            tradeClosed = true;
+                            exitPrice = trade.stopLossPrice;
+                            result = 'SL';
+                            finalTradeCandle = currentTradeCandle;
+                        }
                     }
                 }
             }
 
-            if (tradeClosed) {
+            if (tradeClosed && finalTradeCandle) {
                 // Apply exit slippage
                 const exitSlippage = calculateSlippage(trade.size, tradeConfig);
                 const slippageAdjustedExitPrice = applySlippage(exitPrice, trade.type, exitSlippage);
@@ -1214,7 +1281,7 @@ async function runTest() {
                 // Calculate funding rate cost
                 const fundingCost = calculateFundingRate(
                     tradeConfig, 
-                    currentTradeCandle.time, 
+                    finalTradeCandle.time, 
                     trade.entryTime, 
                     trade.size, 
                     tradeConfig.leverage
@@ -1246,12 +1313,20 @@ async function runTest() {
                     console.log(`  \x1b[35;1m└─> [${result}] ${tradeType} trade closed @ ${exitPrice.toFixed(2)}. PnL: ${pnlText}${colors.reset}`);
                 }
 
+                // Find the correct exit index in the trade candles array
+                let exitIndex = i; // Default to pivot candle index
+                if (tradeCandles !== pivotCandles && finalTradeCandle) {
+                    // Find the index of the final trade candle in the tradeCandles array
+                    exitIndex = tradeCandles.findIndex(tc => tc.time === finalTradeCandle.time);
+                    if (exitIndex === -1) exitIndex = i; // Fallback to pivot index
+                }
+
                 trades.push({
                     ...trade,
                     exitPrice: slippageAdjustedExitPrice,
                     originalExitPrice: exitPrice,  // Store original exit price before slippage
-                    exitTime: currentTradeCandle.time,
-                    exitIndex: i,
+                    exitTime: finalTradeCandle.time,
+                    exitIndex: exitIndex,
                     status: 'closed',
                     result,
                     grossPnl,
@@ -1281,7 +1356,9 @@ async function runTest() {
                 highPivotCount++;
                 const barsSinceLast = i - lastPivot.index;
                 const movePct = swingPct * 100;
-                const formattedTime = new Date(currentPivotCandle.time).toLocaleString();
+                const formattedTime12 = new Date(currentPivotCandle.time).toLocaleString();
+                const formattedTime24Only = new Date(currentPivotCandle.time).toLocaleTimeString('en-GB', { hour12: false });
+                const formattedTime = `${formattedTime12} (${formattedTime24Only})`;
                 
                 // Get edge data for this pivot from pre-computed data
                 const pivotEdgeData = getCurrentEdgeData(pivotPrice, currentPivotCandle, edges, timeframes);
@@ -1366,7 +1443,9 @@ async function runTest() {
             if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
                 const movePct = swingPct * 100;
                 const barsSinceLast = i - lastPivot.index;
-                const formattedTime = new Date(pivotCandles[i].time).toLocaleString();
+                const formattedTime12 = new Date(pivotCandles[i].time).toLocaleString();
+                const formattedTime24Only = new Date(pivotCandles[i].time).toLocaleTimeString('en-GB', { hour12: false });
+                const formattedTime = `${formattedTime12} (${formattedTime24Only})`;
                 
                 // Get edge data for this pivot from pre-computed data
                 const pivotEdgeData = getCurrentEdgeData(pivotPrice, pivotCandles[i], edges, timeframes);
@@ -1546,13 +1625,17 @@ ${colors.yellow}Closing ${openTrades.length} open trade${openTrades.length > 1 ?
         console.log('--------------------------------------------------------------------------------');
         
         trades.forEach((trade, index) => {
-            // Format dates to be more readable
+            // Format dates to be more readable - trade.entryTime already includes execution time (candle close)
             const entryDate = new Date(trade.entryTime);
             const exitDate = new Date(trade.exitTime);
-            const entryDateStr = `${entryDate.toLocaleDateString('en-US', { weekday: 'short' })} ${entryDate.toLocaleDateString()} ${entryDate.toLocaleTimeString()}`;
-            const exitDateStr = `${exitDate.toLocaleDateString('en-US', { weekday: 'short' })} ${exitDate.toLocaleDateString()} ${exitDate.toLocaleTimeString()}`;
+            const entryTime12 = entryDate.toLocaleTimeString();
+            const entryTime24Only = entryDate.toLocaleTimeString('en-GB', { hour12: false });
+            const exitTime12 = exitDate.toLocaleTimeString();
+            const exitTime24Only = exitDate.toLocaleTimeString('en-GB', { hour12: false });
+            const entryDateStr = `${entryDate.toLocaleDateString('en-US', { weekday: 'short' })} ${entryDate.toLocaleDateString()} ${entryTime12} (${entryTime24Only})`;
+            const exitDateStr = `${exitDate.toLocaleDateString('en-US', { weekday: 'short' })} ${exitDate.toLocaleDateString()} ${exitTime12} (${exitTime24Only})`;
             
-            // Calculate and format duration
+            // Calculate and format duration using actual trade times
             const durationMs = trade.exitTime - trade.entryTime;
             const durationStr = formatDuration(durationMs);
             
@@ -1801,12 +1884,12 @@ ${colors.yellow}Closing ${openTrades.length} open trade${openTrades.length > 1 ?
         if (totalTradingFees > 0) costBreakdown.push(`Trading Fees: $${totalTradingFees.toFixed(2)}`);
         if (totalFundingCosts > 0) costBreakdown.push(`Funding Costs: $${totalFundingCosts.toFixed(2)}`);
         
-        console.log(`Total PnL: ${(totalRealizedPnl > 0 ? colors.green : colors.red)}${totalRealizedPnl.toFixed(2)}${colors.reset}`);
+        console.log(`Total PnL: ${(totalRealizedPnl > 0 ? colors.green : colors.red)}${formatNumber(totalRealizedPnl)}${colors.reset}`);
         if (costBreakdown.length > 0) {
-            console.log(`${colors.yellow}Cost Breakdown: ${costBreakdown.join(' | ')} | Total: $${totalFees.toFixed(2)}${colors.reset}`);
+            console.log(`${colors.yellow}Cost Breakdown: ${costBreakdown.join(' | ')} | Total: $${formatNumber(totalFees)}${colors.reset}`);
         }
     } else {
-        console.log(`Total PnL: ${(totalRealizedPnl > 0 ? colors.green : colors.red)}${totalRealizedPnl.toFixed(2)}${colors.reset} (after $${totalFees.toFixed(2)} in fees)`);
+        console.log(`Total PnL: ${(totalRealizedPnl > 0 ? colors.green : colors.red)}${formatNumber(totalRealizedPnl)}${colors.reset} (after $${formatNumber(totalFees)} in fees)`);
     }
     
     // Calculate capital excluding EOB trades
@@ -1816,22 +1899,19 @@ ${colors.yellow}Closing ${openTrades.length} open trade${openTrades.length > 1 ?
     console.log(`Initial Capital: ${tradeConfig.initialCapital.toFixed(2)}`);
     
     if (eobTrades.length > 0) {
-        console.log(`Final Capital: ${colors.yellow}${adjustedFinalCapital.toFixed(2)}${colors.reset} (excluding EOB trades)`);
+        console.log(`Final Capital: ${colors.yellow}${formatNumber(adjustedFinalCapital)}${colors.reset} (excluding EOB trades)`);
     } else {
-        console.log(`Final Capital: ${colors.yellow}${finalCapital.toFixed(2)}${colors.reset}`);
+        console.log(`Final Capital: ${colors.yellow}${formatNumber(finalCapital)}${colors.reset}`);
     }
     
     const profit = ((adjustedFinalCapital - tradeConfig.initialCapital) / tradeConfig.initialCapital) * 100;
-    console.log(`Overall Profit: ${(profit > 0 ? colors.green : colors.red)}${profit.toFixed(2)}%${colors.reset}${eobTrades.length > 0 ? ' (excluding EOB trades)' : ''}`);
+    console.log(`Overall Profit: ${(profit > 0 ? colors.green : colors.red)}${formatNumber(profit)}%${colors.reset}${eobTrades.length > 0 ? ' (excluding EOB trades)' : ''}`);
       
 
     // Calculate trade duration statistics if there are regular trades
     if (regularTrades.length > 0) {
-        // Get durations in number of candles for each trade
-        const tradeDurations = regularTrades.map(trade => trade.exitIndex - trade.entryIndex);
-        
-        // Convert candle count to actual time duration based on interval
-        const tradeDurationsMs = tradeDurations.map(candles => candles * candleDurationMs);
+        // Get durations using actual timestamps (not indices which can be from different arrays)
+        const tradeDurationsMs = regularTrades.map(trade => trade.exitTime - trade.entryTime);
         
         // Find min, max, and average durations
         const minDurationMs = Math.min(...tradeDurationsMs);

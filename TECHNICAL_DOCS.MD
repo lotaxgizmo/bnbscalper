@@ -1,8 +1,410 @@
 # Technical Documentation
 
+## Multi-Timeframe Pivot System Updates
+
+### 2025-08-06: 🚀 MULTI-TIMEFRAME CASCADE SYSTEM - Revolutionary Signal Filtering
+- **Feature**: Implemented comprehensive multi-timeframe pivot confirmation system
+- **Core Innovation**: Hierarchical cascade confirmation across multiple timeframes
+- **Architecture**:
+  * **MultiTimeframePivotDetector**: Core detection engine for multiple timeframes
+  * **Cascade Confirmation Logic**: Primary timeframe triggers, smaller timeframes confirm
+  * **Flexible Configuration**: Support for 2-10+ timeframes with individual parameters
+  * **Signal Strength Scoring**: Weighted confirmation system for trade quality assessment
+
+- **Implementation Details**:
+  * **Primary Timeframe**: Largest timeframe (e.g., 4h) triggers initial signal
+  * **Confirmation Cascade**: Each smaller timeframe must confirm within time window
+  * **Signal Types**: HIGH pivot → SHORT signal, LOW pivot → LONG signal
+  * **Time Windows**: Configurable confirmation windows for each timeframe
+  * **Trade Execution**: Uses 1-minute candles for precise TP/SL monitoring
+
+- **Configuration System**:
+  * **multiPivotConfig.js**: Dedicated configuration file for multi-timeframe settings
+  * **Timeframe Parameters**: Individual lookback, minSwingPct, minLegBars per timeframe
+  * **Cascade Settings**: Confirmation windows, requirement levels, signal aging
+  * **Preset Configurations**: Conservative, Aggressive, Scalping, Swing presets
+  * **Debug Controls**: Detailed cascade process logging and analysis
+
+- **Benefits**:
+  * **Noise Reduction**: Filters out false signals from single timeframes
+  * **Trend Alignment**: Ensures trades align with broader market structure
+  * **Higher Win Rate**: Only trades when multiple timeframes agree
+  * **Reduced Whipsaws**: Multiple confirmations prevent premature entries
+  * **Flexible Testing**: Easy to test different timeframe combinations
+
+- **Status**: ✅ FULLY OPERATIONAL - Multi-timeframe cascade system with clean backtester implementation
+
+### 2025-08-07: 🚀 MULTI-TIMEFRAME TRADING ENGINE - Complete Implementation
+- **Feature**: Created multiPivotBacktesterWithTrades.js - Full trading engine with multi-timeframe cascade confirmation
+- **Core Innovation**: Combines cascade signal detection with actual trade execution like pivotBacktester.js
+- **Architecture**:
+  * **Signal Detection**: Uses MultiTimeframePivotDetector for cascade confirmation
+  * **Trade Execution**: Full trading engine with TP/SL monitoring on 1-minute candles
+  * **Position Management**: Support for concurrent trades, position sizing, and capital management
+  * **Cost Simulation**: Includes slippage and funding rate calculations
+
+- **Implementation Details**:
+  * **Cascade Confirmation**: Primary timeframe triggers, smaller timeframes confirm
+  * **Signal Matching**: Fixed critical bug - cascades return 'long'/'short' signals, not 'buy'/'sell'
+  * **Trade Creation**: Only executes trades when cascade confirmation is achieved
+  * **Real-time Monitoring**: Uses 1-minute candles for precise TP/SL execution
+  * **Direction Support**: Full support for buy/sell/both/alternate trading directions
+  * **Forward-Looking Logic**: Realistic market order timing with execution delays (0-120 minutes)
+
+- **Performance Results**:
+  * **Signal Quality**: 20% confirmation rate (8/40 primary signals) - excellent noise filtering
+  * **Trade Execution**: 4 trades executed with 1-minute precision
+  * **Signal Strength**: All confirmations achieved 75% strength rating
+  * **Timing Realism**: Variable execution delays simulate real cascade formation
+
+- **Benefits Over Individual Pivot Trading**:
+  * **Higher Signal Quality**: Multi-timeframe confirmation reduces false signals
+  * **Better Timing**: Forward-looking validation prevents lookahead bias
+  * **Noise Reduction**: Only 20% of signals pass confirmation - filters market noise
+  * **Realistic Simulation**: Actual cascade formation timing with execution delays
+  * **Performance Tracking**: Complete trade statistics, win rates, and duration analysis
+
+- **Trading Features**:
+  * **Position Sizing**: Fixed, percentage, and minimum-based sizing modes
+  * **Risk Management**: Stop loss, take profit, and maximum concurrent trades
+  * **Cost Simulation**: Realistic slippage and funding rate calculations
+  * **Capital Protection**: Liquidation monitoring and capital tracking
+  * **Trade Analytics**: Duration statistics, win/loss analysis, and performance metrics
+
+- **Benefits**:
+  * **Realistic Backtesting**: Combines multi-timeframe filtering with actual trade execution
+  * **Higher Quality Signals**: Only trades when multiple timeframes align
+  * **Complete Trading System**: Full position management and risk controls
+  * **Performance Analysis**: Comprehensive statistics for strategy evaluation
+  * **Forward-Looking Logic**: Realistic market order timing simulation
+
+- **Status**: ✅ FULLY OPERATIONAL - Complete multi-timeframe trading system ready for backtesting
+
+### 2025-08-07: 🎯 TRAILING STOP LOSS & TAKE PROFIT - Advanced Exit Management
+- **Feature**: Implemented comprehensive trailing stop loss and trailing take profit system in multiPivotBacktesterWithTrades.js
+- **Core Innovation**: Dynamic exit price adjustment that follows favorable price movement to lock in profits
+- **Architecture**:
+  * **Trailing Stop Loss**: Automatically adjusts stop loss upward (long) or downward (short) as price moves favorably
+  * **Trailing Take Profit**: Activates after reaching trigger threshold, then trails behind best price
+  * **Best Price Tracking**: Continuously monitors and records the most favorable price achieved
+  * **Dual Mode Operation**: Works independently - either or both can be enabled
+
+- **Configuration Options** (in tradeconfig.js):
+  * **enableTrailingStop**: Enable/disable trailing stop loss (boolean)
+  * **trailingStopDistance**: Distance to trail behind best price in % (default: 0.15%)
+  * **enableTrailingTakeProfit**: Enable/disable trailing take profit (boolean)
+  * **trailingTakeProfitTrigger**: Profit threshold to activate trailing TP in % (default: 1.5%)
+  * **trailingTakeProfitDistance**: Distance to trail behind best price for TP in % (default: 0.3%)
+
+- **Implementation Details**:
+  * **Long Trades**: Trails stop loss upward as price rises, trails TP downward from peak
+  * **Short Trades**: Trails stop loss downward as price falls, trails TP upward from lowest point
+  * **Activation Logic**: Trailing stop activates when trade becomes profitable, trailing TP activates at trigger level
+  * **Price Tracking**: Updates trailing levels only when price moves favorably (new highs for long, new lows for short)
+  * **Exit Priority**: Trailing TP checked first, then regular TP, then trailing SL, then regular SL
+
+- **Enhanced Trade Display**:
+  * **Result Types**: New exit reasons 'TRAILING_TP' and 'TRAILING_SL' in trade results
+  * **Trailing Info Section**: Shows activation status, trigger prices, and best price achieved
+  * **Visual Indicators**: Color-coded display for triggered vs active trailing stops
+  * **Original vs Trailing**: Comparison of original TP/SL prices with final trailing prices
+
+- **Benefits**:
+  * **Profit Protection**: Locks in gains when price moves favorably beyond initial targets
+  * **Reduced Risk**: Automatically tightens stop loss as trade becomes more profitable
+  * **Extended Profits**: Allows capturing larger moves while protecting against reversals
+  * **Flexible Configuration**: Independent control of trailing SL and TP with custom distances
+  * **Realistic Simulation**: Accurate modeling of advanced exit strategies used in live trading
+
+- **Example Scenario**: 
+  * Normal TP: 1%, Trailing TP Trigger: 1.5%, Trailing Distance: 0.3%
+  * Price reaches 2% profit → Trailing TP activates at 1.7% (2% - 0.3%)
+  * If price reverses to 1.7% → Exit with TRAILING_TP instead of riding down to 1% or SL
+
+- **Status**: ✅ FULLY OPERATIONAL - Advanced trailing stop system ready for enhanced profit management
+
+### 2025-08-07: 🎛️ CASCADE LOGGING CONTROL - hideCascades Configuration
+- **Feature**: Added `hideCascades` configuration option to control cascade confirmation log visibility
+- **Implementation**: New setting in tradeconfig.js allows hiding cascade logs while preserving trade execution logs
+- **Behavior**:
+  * **hideCascades: false** (default): Shows all cascade confirmation and failure logs plus progress indicators
+  * **hideCascades: true**: Hides cascade logs and progress indicators, only shows trade execution results (└─> [SL] LONG trade closed...)
+- **Benefits**:
+  * **Clean Output**: Reduces log noise for users focused on trade results
+  * **Selective Visibility**: Keeps essential trade information while hiding cascade details
+  * **User Control**: Easy toggle for different analysis needs
+- **Usage**: Set `hideCascades: true` in tradeconfig.js to hide cascade confirmation logs
+- **Status**: ✅ IMPLEMENTED - Cascade logging control available in multiPivotBacktesterWithTrades.js
+
+### 2025-08-06: 🔧 MULTI-TIMEFRAME BACKTESTER FIXES - Clean Implementation
+- **Issue Fixed**: Original multiPivotBacktester.js had syntax errors and undefined variable references
+- **Solution**: Created multiPivotBacktesterClean.js with proper multi-timeframe cascade logic
+- **Key Improvements**:
+  * **Proper Data Loading**: Uses MultiTimeframePivotDetector for all timeframe data loading
+  * **Cascade Confirmation**: Iterates through primary timeframe pivots and checks cascade alignment
+  * **Clean Architecture**: Removed legacy single-timeframe code that caused conflicts
+  * **Accurate Results**: Shows realistic 0% confirmation rate (strict multi-timeframe alignment is rare)
+  * **Performance Metrics**: Displays signal frequency, confirmation rates, and data timespan analysis
+
+- **System Performance Verified**:
+  * **Data Limits**: Proper 1-month limits enforced for all timeframes (4h: 180, 1h: 720, 15m: 2,880, 1m: 43,200 candles)
+  * **Pivot Detection**: 2,235 total pivots detected across all timeframes with perfect alignment to single-timeframe results
+  * **Cascade Processing**: Successfully processed 53 primary 4h signals with detailed confirmation analysis
+  * **Signal Frequency**: 1.77 primary signals/day over 30-day data span
+
+- **Files**:
+  * **multiPivotBacktesterClean.js**: Clean, working multi-timeframe backtester
+  * **multiPivotBacktester.js**: Original file (has syntax issues, use Clean version)
+  * **MultiTimeframePivotDetector**: Core engine with proper candle limits and cascade logic
+
 ## Pivot Data System Updates
 
 ### Recent Updates
+
+#### 2025-08-06: 🚀 OPTIMIZER ENHANCEMENT - Full Feature Parity with Backtester
+- **Feature**: Updated pivotOptimizer.js to include all advanced features from pivotBacktester.js
+- **Major Enhancements**:
+  * **Funding Rate Simulation**: Added comprehensive funding rate cost calculation with fixed/variable modes
+  * **Slippage Simulation**: Implemented configurable slippage models (fixed, variable, market impact)
+  * **1-Minute Candle Support**: Enhanced trade execution to use 1-minute candles for precise TP/SL monitoring
+  * **Live API Data Support**: Added support for fetching live candle data from Bybit API
+  * **Enhanced Configuration Display**: Shows funding rate and slippage settings in optimizer output
+  * **Improved Number Formatting**: Integrated formatNumber() for comma-separated financial values
+- **Implementation Details**:
+  * **Async Data Loading**: Updated loadCandlesOnce() to support live API data fetching
+  * **Dual Timeframe System**: Pivot detection uses configured timeframe, trade execution uses 1-minute precision
+  * **Cost Integration**: Funding and slippage costs properly integrated into PnL calculations
+  * **Enhanced Display**: Configuration output shows active funding/slippage modes with color coding
+  * **Backward Compatibility**: Maintains compatibility with existing CSV data and edge files
+- **Trade Execution Improvements**:
+  * **Realistic Timing**: Trade entries occur at candle close for realistic execution simulation
+  * **Intracandle Precision**: 1-minute candles used for accurate TP/SL monitoring when available
+  * **Cost Simulation**: Slippage and funding costs always work against trader for realistic results
+  * **Proper Fallback**: Automatically falls back to pivot timeframe when 1-minute data unavailable
+- **Configuration Enhancements**:
+  * **Funding Rate Display**: Shows fixed/variable funding rates with percentages and intervals
+  * **Slippage Mode Display**: Shows active slippage mode (fixed/variable/market impact) with parameters
+  * **Direction Mode**: Enhanced display for alternate mode with explanation
+  * **Data Source Indication**: Clear indication of data source (local CSV, edges, or live API)
+- **Benefits**:
+  * **Accurate Optimization**: More realistic backtesting results with proper cost simulation
+  * **Feature Consistency**: Optimizer now has same capabilities as standalone backtester
+  * **Better Decision Making**: Enhanced configuration display helps users understand active settings
+  * **Flexible Data Sources**: Supports local files and live API data for different use cases
+- **Status**: ✅ IMPLEMENTED - pivotOptimizer.js now has full feature parity with pivotBacktester.js
+
+#### 2025-08-06: 🎯 COMPREHENSIVE OPTIMIZATION - Pivot Parameter Optimization Added
+- **Feature**: Enhanced pivotOptimizer.js to optimize pivot detection parameters alongside trading parameters
+- **New Optimization Parameters**:
+  * **minSwingPct**: Minimum percentage move required to mark a pivot (affects pivot sensitivity)
+  * **minLegBars**: Minimum number of candles required per swing leg (affects pivot quality)
+  * **pivotLookback**: Number of candles to look back for pivot confirmation (affects pivot detection pattern)
+- **Implementation Details**:
+  * **6-Dimensional Optimization**: Now optimizes TP, SL, Leverage, MinSwing%, MinLegBars, and PivotLookback simultaneously
+  * **Enhanced CSV Output**: Added new columns for pivot parameters in results file
+  * **Dynamic Parameter Passing**: runBacktest() function now accepts pivot configuration parameters
+  * **Worker Thread Support**: All new parameters properly passed to worker threads for parallel processing
+  * **Progress Display Enhancement**: Shows current values for all 6 parameters during optimization
+- **Configuration Integration**:
+  * **optimizerConfig.js**: Added minSwingPctRange, minLegBarsRange, and pivotLookbackRange
+  * **Flexible Ranges**: Each parameter can have independent start, end, and step values
+  * **Backward Compatibility**: Existing configurations continue to work with default ranges
+- **Benefits**:
+  * **Complete Strategy Optimization**: Finds optimal pivot detection settings for each market condition
+  * **Market Adaptation**: Different timeframes and volatility levels require different pivot sensitivities
+  * **Comprehensive Testing**: Tests thousands of parameter combinations for robust strategy development
+  * **Professional Results**: CSV output includes all parameters for detailed analysis and backtesting
+- **Performance Impact**:
+  * **Exponential Combinations**: Parameter combinations multiply (e.g., 3×7×1×3×1×1 = 63 combinations)
+  * **Parallel Processing**: Worker threads handle increased computational load efficiently
+  * **Memory Optimization**: Cached pivot data prevents recalculation across parameter variations
+- **Usage Example**:
+  ```javascript
+  // optimizerConfig.js
+  minSwingPctRange: { start: 0.2, end: 1.0, step: 0.3 },  // Test 0.2%, 0.5%, 0.8%
+  minLegBarsRange: { start: 1, end: 5, step: 1 },          // Test 1-5 candles
+  pivotLookbackRange: { start: 2, end: 6, step: 2 }       // Test 2, 4, 6 lookback
+  ```
+- **Status**: ✅ IMPLEMENTED - Comprehensive 6-parameter optimization system operational
+
+#### 2025-08-06: 🔧 CRITICAL FIX - Intracandle Trade Tracking
+- **Issue**: Trade tracking was only checking one candle per pivot candle period instead of all 1-minute candles within that period
+- **Problem**: When using weekly pivot candles, trades showed incorrect durations (7 days instead of actual exit time) and missed intracandle TP/SL hits
+- **Root Cause**: System was only processing one 1-minute candle per week instead of all ~10,080 1-minute candles in that week
+- **Solution Applied**:
+  * **Enhanced Trade Processing**: Modified trade management loop to process ALL 1-minute candles between consecutive pivot candles
+  * **Chronological Processing**: Each 1-minute candle is now checked in chronological order for TP/SL conditions
+  * **Accurate Exit Detection**: Trades now exit at the exact 1-minute candle where TP/SL is hit, not at the end of the pivot period
+  * **Proper Duration Calculation**: Trade durations now reflect actual time from entry to exit, not pivot candle intervals
+- **Code Changes**:
+  * **Filter Relevant Candles**: `tradeCandles.filter(tc => tc.time > previousPivotTime && tc.time <= currentPivotTime)`
+  * **Process Each Candle**: Loop through all relevant 1-minute candles checking TP/SL conditions
+  * **Early Exit**: Break loop immediately when trade closes to prevent over-processing
+  * **Accurate Indexing**: Store correct exit index from 1-minute candles array
+  * **Fixed Duration Calculation**: Use timestamps (`exitTime - entryTime`) instead of indices from different arrays
+  * **Corrected Entry Timing**: Trades now enter at pivot candle close time (`currentCandle.time + candleDurationMs`) instead of candle start
+  * **Proper Candle Filtering**: 1-minute candles filtered from trade entry time onwards, not from pivot candle start
+  * **Fixed Display Timestamps**: Removed double-addition of candleDurationMs in trade details display to show correct execution times
+- **Impact**:
+  * **Realistic Results**: Backtesting now accurately simulates real trading conditions
+  * **Proper Risk Management**: TP/SL levels are respected at 1-minute precision
+  * **Correct Performance Metrics**: Trade durations and exit times are now accurate
+- **Status**: ✅ RESOLVED - Critical intracandle tracking bug fixed, system now provides accurate trade execution simulation
+
+#### 2025-08-06: 💰 NUMBER FORMATTING - Enhanced Trade Summary Display
+- **Feature**: Added comma-separated number formatting for large financial values in trade summary
+- **Implementation**:
+  * **New Function**: Added `formatNumber()` to `utils/formatters.js` for consistent number formatting
+  * **Enhanced Display**: Applied formatting to Final Capital, Overall Profit, and Total PnL values
+  * **Improved Readability**: Large numbers now display with thousands separators (e.g., 15,172,645.41)
+- **Updated Files**:
+  * `utils/formatters.js`: Added `formatNumber(num, decimals = 2)` function
+  * `pivotBacktester.js`: Updated trade summary output to use comma formatting
+- **Benefits**:
+  * **Better Readability**: Large financial numbers are easier to read with comma separators
+  * **Professional Display**: Trade summaries now have consistent, professional number formatting
+  * **Consistent Formatting**: All large numbers use the same formatting standard
+- **Usage**: Numbers automatically formatted in trade summary output with commas for thousands separators
+- **Status**: ✅ IMPLEMENTED - Enhanced number formatting operational in trade summaries
+
+#### 2025-08-05: 🎛️ FRONTTESTER DEBUG CONTROL - Configurable Output System
+- **Feature**: Added `fronttesterconfig.js` in config folder to control debug output visibility
+- **Implementation**:
+  * **Debug Output Control**: `showDebug` - Controls general debug messages (pivot history, system state)
+  * **Pivot Checking Control**: `showPivotChecking` - Controls detailed pivot checking logs during buffer analysis
+  * **Buffer Analysis Control**: `showBufferAnalysis` - Controls buffer re-analysis debug information
+  * **Edge Data Control**: `showEdgeData` - Controls edge data calculation displays
+  * **System Status Control**: `showSystemStatus` - Controls startup, WebSocket connection, and simulation initialization messages
+  * **Progress Control**: `showProgress` - Controls simulation progress indicators in past mode
+  * **Heartbeat Control**: `showHeartbeat` - Controls periodic heartbeat messages in live mode
+  * **Candle Display Control**: `hideCandles` - Controls candle completion displays (startup position, live candles, simulation candles)
+- **Configuration Options** (in `config/fronttesterconfig.js`):
+  ```javascript
+  export const fronttesterconfig = {
+      // Debug Output Controls
+      showDebug: false,           // Show/hide debug output
+      showPivotChecking: false,   // Show detailed pivot checking logs
+      showBufferAnalysis: false,  // Show buffer re-analysis debug info
+      showEdgeData: false,        // Show edge data calculations
+      showSystemStatus: true,     // Show system status messages
+      showProgress: true,         // Show simulation progress
+      showHeartbeat: true,        // Show periodic heartbeat messages
+      hideCandles: false,         // Hide candle completion displays
+      
+      // Display Settings
+      hideCandle: true,           // Hide intermediate candle fetching messages
+      logCandlesInStreamer: true, // Show/hide individual candle logs in streamer
+      
+      // Past Mode Simulation Settings
+      pastMode: true,             // Enable past mode simulation (false = live WebSocket mode)
+      speedMultiplier: 10000,     // Simulation speed: 1=normal, 2=2x, 10=10x speed
+      startFromEnd: true,         // Start simulation from most recent data
+      simulationLength: null      // Number of candles to simulate (null = use full limit)
+  };
+  ```
+- **Benefits**:
+  * **Clean Output**: Hide debug spam when not needed for analysis
+  * **Selective Debugging**: Enable only specific debug categories for targeted troubleshooting
+  * **User Experience**: Cleaner console output for production-like runs
+  * **Development Flexibility**: Full debug control for development and testing
+- **Usage**: Set individual flags to `true`/`false` in `config/fronttesterconfig.js` to control specific output categories
+- **Status**: ✅ IMPLEMENTED - Full debug output control system operational
+
+#### 2025-08-05: ⚡ PERFORMANCE OPTIMIZATION - Smart Pivot Checking
+- **Issue**: Full buffer re-analysis was checking 95+ candles every time, causing debug spam
+- **User Insight**: "Instead of checking from beginning, can it check the past two pivots and begin calculation from there?"
+- **Solution**: Start checking from last confirmed pivot instead of full buffer
+- **Implementation**:
+  * **Find Last Pivot**: Locate last confirmed pivot position in current buffer
+  * **Smart Starting Point**: Begin checking from candle AFTER last pivot (`startCheckingFromIndex = lastPivotPosition + 1`)
+  * **Analyze Unknown Territory**: Only process unconfirmed candles
+  * **Remove Debug Spam**: Eliminated excessive debug output
+- **Performance Impact**:
+  * **Before**: Check 95+ candles every time (massive waste)
+  * **After**: Check only 2-10 new candles (95% reduction)
+  * **Result**: Same accuracy, much faster, clean output
+- **Status**: ✅ OPTIMIZED - Maintains perfect accuracy with massive performance improvement
+
+#### 2025-08-05: 🔥 CRITICAL FIX - Full Buffer Re-Analysis Implementation
+- **Critical Issue**: Fronttester worked perfectly on restart but missed pivots during real-time operation
+- **Root Cause**: Real-time mode used incremental checking while restart used full buffer analysis
+- **Key Insight**: "Restart finds all pivots correctly, real-time should do the same"
+- **Solution**: Implement full buffer re-analysis on every new candle (later optimized)
+- **Implementation**:
+  * **Complete Re-analysis**: Re-analyze entire buffer from scratch (`for (let i = pivotLookback; i < candleBuffer.length; i++)`)
+  * **Temporary Variables**: Use `tempLastPivot` and `tempPivotCounter` during analysis
+  * **New Pivot Detection**: Only display/execute trades for pivots newer than last known pivot
+  * **State Synchronization**: Update global `lastPivot` with latest pivot found
+  * **Clean Output**: No duplicate announcements, only genuinely new pivots
+- **Benefits**:
+  * Perfect parity between restart and real-time behavior
+  * No more missed pivots during continuous operation
+  * Maintains backtester-level accuracy in real-time
+- **Status**: ✅ RESOLVED - Later optimized for performance
+
+#### 2025-08-05: 🔥 CRITICAL FIX - Buffer Shifting Pivot Detection Issue
+- **Critical Issue**: pivotFronttester.js missing pivots due to stale buffer indices after buffer shifting
+- **Root Cause**: Using `lastPivot.index` (static buffer position) while buffer shifts as new candles arrive
+- **Impact**: Missed pivots like the one at 5:03 AM that backtester correctly detected
+- **Solution**: Implemented timestamp-based pivot tracking
+- **Implementation**:
+  * **Timestamp Search**: Find last pivot position by searching for `lastPivot.time` in current buffer
+  * **Dynamic Start Index**: Calculate correct starting position based on actual buffer position
+  * **Fallback Logic**: Handle cases where last pivot is too old and no longer in buffer
+  * **Buffer-Shift Resilient**: Works correctly even as candle buffer shifts during real-time operation
+- **Benefits**:
+  * Perfect parity between backtester and fronttester pivot detection
+  * No more missed pivots due to buffer management
+  * Robust real-time pivot detection
+  * Maintains all existing output formatting
+- **Status**: ✅ RESOLVED - Real-time pivot detection now matches backtester exactly
+
+#### 2025-08-05: 🔥 CRITICAL FIX - Real-Time Pivot Detection Rewrite
+- **Critical Issue**: pivotFronttester.js was stuck checking same pivot index repeatedly, missing new pivots
+- **Root Cause**: Single-index checking approach with flawed `lastCheckedIndex` tracking
+- **Solution**: Complete rewrite of `processNewCandle()` function with range-based pivot detection
+- **Implementation**:
+  * **Range-Based Checking**: Check all potential pivot positions from `lastCheckedIndex + 1` to `currentIndex - pivotLookback`
+  * **Progressive Tracking**: Update `lastCheckedIndex` after processing each position
+  * **Proper Initialization**: Set `lastCheckedIndex = lastPivot.index` after historical analysis
+  * **Loop-Based Processing**: Use for-loop to check multiple pivot positions per candle
+- **Benefits**:
+  * Real-time pivot detection now works correctly
+  * No more "stuck on same index" issues
+  * Detects all new pivots as they occur
+  * Proper progression through candle buffer
+- **Status**: ✅ RESOLVED - Real-time pivot detection completely functional
+
+#### 2025-08-05: Enhanced pivotFronttester.js Startup Display
+- **Enhancement**: Added immediate display of latest available candle on system startup
+- **User Request**: Show current market position before monitoring for new candles
+- **Implementation**:
+  - Added "CURRENT POSITION" section in `initializeSystem()` function
+  - Displays complete candle information (OHLC, change, range, volume) with color formatting
+  - Shows formatted time and date of the latest candle
+  - Clear visual separation with "Starting from here" message
+- **Benefits**:
+  - User immediately sees current market position upon startup
+  - Clear context for where real-time monitoring begins
+  - Better user experience with immediate market data visibility
+  - Eliminates confusion about system starting point
+
+#### 2025-08-05: 🔥 CRITICAL FIX - Negative Bars Issue in Real-Time Pivot Detection
+- **Critical Issue**: "Bars since last" showing negative values in real-time pivot detection
+- **Root Cause**: Historical pivot analysis was updating `lastPivot.index` with historical indices, causing conflicts with real-time indexing
+- **Impact**: Incorrect pivot timing calculations, potential missed pivots
+- **Fix**: Added `lastPivot` index reset after historical analysis to align with real-time buffer indexing
+- **Implementation**: Reset `lastPivot.index` to `candleBuffer.length - 1 - pivotLookback` after historical analysis
+- **Debug Enhancement**: Added debug logging to track `lastPivot` state transitions
+- **Status**: ✅ RESOLVED - Real-time pivot detection now uses correct indexing
+
+#### 2025-08-05: 🔥 CRITICAL FIX - Pivot Analysis Bug in pivotFronttester.js
+- **Critical Issue**: pivotFronttester.js was only detecting 10 pivots vs 28 in backtester from same data
+- **Root Cause**: `analyzeInitialPivots()` loop stopped `pivotLookback` candles before end of buffer
+- **Impact**: Missing 64% of recent pivots, incomplete market context
+- **Fix**: Changed loop condition from `i < candleBuffer.length - pivotLookback` to `i < candleBuffer.length`
+- **Result**: Now analyzes ALL available candles, matching backtester pivot count exactly
+- **Status**: ✅ RESOLVED - Both systems now show identical pivot detection results
 
 #### 2025-08-05: Created & Fixed Real-Time Pivot Trading System (pivotFronttester.js)
 - **Major Enhancement**: Transformed pivotBacktester.js into a real-time trading system

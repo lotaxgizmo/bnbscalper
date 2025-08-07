@@ -52,3 +52,12 @@ export const getTimeInMinutes = (interval) => {
     default: return value; // assume minutes
   }
 };
+
+// Format numbers with commas for thousands separator
+export const formatNumber = (num, decimals = 2) => {
+  if (typeof num !== 'number') return num;
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
+};

@@ -1,5 +1,63 @@
 # Issues Log
 
+## Negative "Bars since last" in Real-Time Pivot Detection
+
+### Issue:
+The real-time pivot detection system in `pivotFronttester.js` was showing negative values for "Bars since last" in debug output, indicating a critical indexing problem that could affect pivot timing calculations.
+
+### Root Cause:
+The historical pivot analysis in `analyzeInitialPivots()` was updating the global `lastPivot.index` variable with indices from the historical analysis (e.g., index 997). However, when the real-time system checked for new pivots at lower indices (e.g., index 994), the calculation `pivotIndex - lastPivot.index` resulted in negative values.
+
+### Impact:
+- Incorrect "Bars since last" calculations in debug output
+- Potential for missed pivots due to incorrect timing logic
+- Inconsistency between historical and real-time pivot detection systems
+- Debug output showing confusing negative values
+
+### Fix:
+Added a `lastPivot` index reset after the historical analysis completes to align the indexing with the real-time buffer system.
+
+**Code Snippet (Fix Applied):**
+```javascript
+// In pivotFronttester.js, after analyzeInitialPivots() completes
+
+// Reset lastPivot for real-time detection to avoid negative bar calculations
+// The historical analysis used different indexing, so we need to reset for real-time
+if (lastPivot.type) {
+    console.log(`${colors.dim || ''}[DEBUG] Resetting lastPivot tracking for real-time detection. Last historical pivot: ${lastPivot.type} @ ${lastPivot.price} (index ${lastPivot.index})${colors.reset || ''}`);
+    // Keep the price and type but reset the index to current buffer position
+    lastPivot.index = candleBuffer.length - 1 - pivotLookback; // Set to a reasonable starting point
+}
+```
+
+### Additional Fix - Preventing Old Pivot Re-detection:
+After the initial fix, the system was still detecting old pivots from historical analysis. Added a critical check to only process NEW pivots:
+
+```javascript
+// CRITICAL: Only check for pivots that are NEWER than what we've already processed
+// This prevents re-detecting old pivots from historical analysis
+if (pivotIndex <= lastPivot.index) {
+    // Skip - this pivot was already processed in historical analysis
+    return;
+}
+```
+
+### Enhanced Real-Time Pivot Display:
+Updated pivot output format for real-time detections to include:
+- Full date and time formatting
+- "🆕 REAL-TIME DETECTION" indicator
+- Clear distinction from historical pivots
+
+### Result:
+- "Bars since last" now shows correct positive values
+- Real-time pivot detection uses consistent indexing
+- No more duplicate/old pivot detections
+- Enhanced pivot output with full timestamps
+- Clear visual distinction between historical and real-time pivots
+- System maintains proper pivot tracking between historical and real-time phases
+
+### Status: ✅ RESOLVED
+
 ## Misleading Backtest Results Due to Ignored Open Trades
 
 ### Issue:

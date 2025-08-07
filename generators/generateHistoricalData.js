@@ -19,7 +19,7 @@ function ensureDirectoryExists(dirPath) {
 // Get file path for a pair and interval
 function getFilePath(pair, interval) {
     // Ensure minute-based intervals have 'm' suffix
-    const formattedInterval = interval.endsWith('h') || interval.endsWith('d') ? interval : `${interval}m`;
+    const formattedInterval = interval.endsWith('h') || interval.endsWith('d') || interval.endsWith('w') ? interval : `${interval}m`;
     const fullPath = path.resolve(historicalDataConfig.dataPath, pair, `${formattedInterval}.csv`);
     console.log('Full path:', fullPath);
     return fullPath;
@@ -310,6 +310,7 @@ function getIntervalMs(interval) {
     switch(unit) {
         case 'h': return value * 60 * 60 * 1000;
         case 'd': return value * 24 * 60 * 60 * 1000;
+        case 'w': return value * 7 * 24 * 60 * 60 * 1000; // weeks
         default: return value * 60 * 1000; // minutes
     }
 }
