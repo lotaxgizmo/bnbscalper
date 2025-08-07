@@ -1,6 +1,6 @@
 // Multi-timeframe pivot detection test - shows detected pivots across timeframes
-import { multiPivotConfig } from './config/multiPivotConfig.js';
-import { MultiTimeframePivotDetector } from './utils/multiTimeframePivotDetector.js';
+import { multiPivotConfig } from '../config/multiPivotConfig.js';
+import { MultiTimeframePivotDetector } from '../utils/multiTimeframePivotDetector.js';
 
 const colors = {
     reset: '\x1b[0m',

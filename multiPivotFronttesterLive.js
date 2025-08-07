@@ -202,10 +202,12 @@ class CleanTimeProgressiveFronttester {
         this.trades.push(trade);
         this.openTrades.push(trade);
         
-        console.log(`\n ${colors.green}🚀 TRADE OPENED: ${trade.direction.toUpperCase()} #${trade.id}${colors.reset}`);
-        console.log(`   Entry: $${formatNumberWithCommas(entryPrice)} | Size: $${formatNumberWithCommas(positionSize)} | Leverage: ${leverage}x`);
-        console.log(`   SL: $${formatNumberWithCommas(stopLossPrice)} | TP: $${formatNumberWithCommas(takeProfitPrice)}`);
-        console.log(`   Capital Remaining: $${formatNumberWithCommas(this.capital)}`);
+        if (fronttesterconfig.showTrades) {
+            console.log(`\n ${colors.green}🚀 TRADE OPENED: ${trade.direction.toUpperCase()} #${trade.id}${colors.reset}`);
+            console.log(`   Entry: $${formatNumberWithCommas(entryPrice)} | Size: $${formatNumberWithCommas(positionSize)} | Leverage: ${leverage}x`);
+            console.log(`   SL: $${formatNumberWithCommas(stopLossPrice)} | TP: $${formatNumberWithCommas(takeProfitPrice)}`);
+            console.log(`   Capital Remaining: $${formatNumberWithCommas(this.capital)}`);
+        }
         
         return trade;
     }
@@ -246,7 +248,9 @@ class CleanTimeProgressiveFronttester {
                     trade.trailingStopPrice = trade.direction === 'long'
                         ? currentPrice * (1 - tradeConfig.trailingStopPercent / 100)
                         : currentPrice * (1 + tradeConfig.trailingStopPercent / 100);
-                    console.log(`${colors.cyan}📈 Trailing stop activated for trade #${trade.id} at $${formatNumberWithCommas(trade.trailingStopPrice)}${colors.reset}`);
+                    if (fronttesterconfig.showTrades) {
+                        console.log(`${colors.cyan}📈 Trailing stop activated for trade #${trade.id} at $${formatNumberWithCommas(trade.trailingStopPrice)}${colors.reset}`);
+                    }
                 }
             }
             
@@ -386,30 +390,32 @@ class CleanTimeProgressiveFronttester {
             'max_time': 'EOB'
         }[exitReason] || exitReason.toUpperCase();
         
-        console.log('--------------------------------------------------------------------------------');
-        // Format the trade header - entire line in result color
-        console.log(`\n${resultColor}[TRADE ${trade.id.toString().padStart(2, ' ')}] ${trade.direction.toUpperCase()} | P&L: ${pnlPct}% | ${resultText} | Result: ${resultCode}${colors.reset}`);
-        console.log();
-        console.log(`${colors.cyan}  Entry: ${entryDateStr} at $${formatNumberWithCommas(trade.entryPrice)}${colors.reset}`);
-        console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${formatNumberWithCommas(finalExitPrice)}${colors.reset}`);
-        console.log(`${colors.cyan}  Duration: ${durationStr}${colors.reset}`);
-        
-        // Add trade amount, profit/loss, and remainder information
-        const tradeAmount = trade.positionSize;
-        const tradeRemainder = tradeAmount + netPnL; // Original amount + P&L = what's left
-        
-        console.log(`${colors.yellow}  Trade Amount: $${formatNumberWithCommas(tradeAmount)}${colors.reset}`);
-        
-        // Add TRADE PROFIT/LOSS line
-        if (netPnL >= 0) {
-            console.log(`${colors.green}  Trade Profit: $${formatNumberWithCommas(netPnL)}${colors.reset}`);
-        } else {
-            console.log(`${colors.red}  Trade Loss: $${formatNumberWithCommas(Math.abs(netPnL))}${colors.reset}`);
+        if (fronttesterconfig.showTrades) {
+            console.log('--------------------------------------------------------------------------------');
+            // Format the trade header - entire line in result color
+            console.log(`\n${resultColor}[TRADE ${trade.id.toString().padStart(2, ' ')}] ${trade.direction.toUpperCase()} | P&L: ${pnlPct}% | ${resultText} | Result: ${resultCode}${colors.reset}`);
+            console.log();
+            console.log(`${colors.cyan}  Entry: ${entryDateStr} at $${formatNumberWithCommas(trade.entryPrice)}${colors.reset}`);
+            console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${formatNumberWithCommas(finalExitPrice)}${colors.reset}`);
+            console.log(`${colors.cyan}  Duration: ${durationStr}${colors.reset}`);
+            
+            // Add trade amount, profit/loss, and remainder information
+            const tradeAmount = trade.positionSize;
+            const tradeRemainder = tradeAmount + netPnL; // Original amount + P&L = what's left
+            
+            console.log(`${colors.yellow}  Trade Amount: $${formatNumberWithCommas(tradeAmount)}${colors.reset}`);
+            
+            // Add TRADE PROFIT/LOSS line
+            if (netPnL >= 0) {
+                console.log(`${colors.green}  Trade Profit: $${formatNumberWithCommas(netPnL)}${colors.reset}`);
+            } else {
+                console.log(`${colors.red}  Trade Loss: $${formatNumberWithCommas(Math.abs(netPnL))}${colors.reset}`);
+            }
+            
+            console.log(`${colors.cyan}  Trade Remainder: $${formatNumberWithCommas(tradeRemainder)}${colors.reset}`);
+            console.log(`${colors.yellow}  Capital: $${formatNumberWithCommas(this.capital)}${colors.reset}`);
+            console.log('--------------------------------------------------------------------------------');
         }
-        
-        console.log(`${colors.cyan}  Trade Remainder: $${formatNumberWithCommas(tradeRemainder)}${colors.reset}`);
-        console.log(`${colors.yellow}  Capital: $${formatNumberWithCommas(this.capital)}${colors.reset}`);
-        console.log('--------------------------------------------------------------------------------');
         
         return trade;
     }
@@ -449,9 +455,10 @@ class CleanTimeProgressiveFronttester {
         }
         
         // Display all trades taken
-        console.log(`\n${colors.cyan}--- All Trades Taken (${this.trades.length}) ---${colors.reset}`);
+        if (fronttesterconfig.showAllTrades) {
+            console.log(`\n${colors.cyan}--- All Trades Taken (${this.trades.length}) ---${colors.reset}`);
         
-        this.trades.forEach((trade, index) => {
+            this.trades.forEach((trade, index) => {
             if (trade.status === 'closed') {
                 // Format dates to be more readable
                 const entryDate = new Date(trade.entryTime);
@@ -537,10 +544,11 @@ class CleanTimeProgressiveFronttester {
                 console.log('--------------------------------------------------------------------------------');
             }
             
-            if (index < this.trades.length - 1) {
-                console.log(''); // Add spacing between trades
-            }
-        });
+                if (index < this.trades.length - 1) {
+                    console.log(''); // Add spacing between trades
+                }
+            });
+        }
         
         console.log(`\n${colors.cyan}--- Trading Performance ---${colors.reset}`);
         
@@ -565,7 +573,7 @@ class CleanTimeProgressiveFronttester {
         
         console.log(`${colors.yellow}Initial Capital: ${colors.cyan}${formatNumberWithCommas(tradeConfig.initialCapital)} USDT${colors.reset}`);
         console.log(`${colors.yellow}Total P&L: ${pnlColor}${formatNumberWithCommas(totalPnL)} USDT${colors.reset}`);
-        console.log(`${colors.yellow}Total Return: ${returnColor}${totalPnLPercent.toFixed(2)}%${colors.reset}`);
+        console.log(`${colors.yellow}Total Return: ${returnColor}${formatNumberWithCommas(parseFloat(totalPnLPercent.toFixed(2)))}%${colors.reset}`);
         console.log(`${colors.yellow}Final Capital: ${colors.brightYellow}${formatNumberWithCommas(finalCapital)} USDT${colors.reset}`);
         
         // Add cascade statistics
@@ -900,21 +908,23 @@ class CleanTimeProgressiveFronttester {
         const time24 = new Date(primaryPivot.time).toLocaleTimeString('en-GB', { hour12: false });
         const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
         
-        console.log(`\n${colors.brightYellow}🟡 PRIMARY WINDOW OPENED [${windowId}]: ${primaryPivot.timeframe} ${primaryPivot.signal.toUpperCase()} pivot detected${colors.reset}`);
-        console.log(`${colors.yellow}   Time: ${timeString12} (${time24}) | Price: $${primaryPivot.price.toFixed(1)}${colors.reset}`);
-        console.log(`${colors.yellow}   Waiting for confirmations within ${confirmationWindow}min window...${colors.reset}`);
-        
-        // Get confirmation and execution timeframes from config
-        const confirmationTFs = multiPivotConfig.timeframes.filter(tf => tf.role === 'confirmation').map(tf => tf.interval);
-        const executionTFs = multiPivotConfig.timeframes.filter(tf => tf.role === 'execution').map(tf => tf.interval);
-        
-        console.log(`${colors.yellow}   Hierarchical Requirements:${colors.reset}`);
-        console.log(`${colors.yellow}   • Primary: ${primaryPivot.timeframe} ✅${colors.reset}`);
-        console.log(`${colors.yellow}   • Confirmations: ${confirmationTFs.join(', ')} (need any ${minRequired-1})${colors.reset}`);
-        if (executionTFs.length > 0) {
-            console.log(`${colors.yellow}   • Execution: ${executionTFs.join(', ')} (optional but preferred)${colors.reset}`);
+        if (fronttesterconfig.showWindow) {
+            console.log(`\n${colors.brightYellow}🟡 PRIMARY WINDOW OPENED [${windowId}]: ${primaryPivot.timeframe} ${primaryPivot.signal.toUpperCase()} pivot detected${colors.reset}`);
+            console.log(`${colors.yellow}   Time: ${timeString12} (${time24}) | Price: $${primaryPivot.price.toFixed(1)}${colors.reset}`);
+            console.log(`${colors.yellow}   Waiting for confirmations within ${confirmationWindow}min window...${colors.reset}`);
+            
+            // Get confirmation and execution timeframes from config
+            const confirmationTFs = multiPivotConfig.timeframes.filter(tf => tf.role === 'confirmation').map(tf => tf.interval);
+            const executionTFs = multiPivotConfig.timeframes.filter(tf => tf.role === 'execution').map(tf => tf.interval);
+            
+            console.log(`${colors.yellow}   Hierarchical Requirements:${colors.reset}`);
+            console.log(`${colors.yellow}   • Primary: ${primaryPivot.timeframe} ✅${colors.reset}`);
+            console.log(`${colors.yellow}   • Confirmations: ${confirmationTFs.join(', ')} (need any ${minRequired-1})${colors.reset}`);
+            if (executionTFs.length > 0) {
+                console.log(`${colors.yellow}   • Execution: ${executionTFs.join(', ')} (optional but preferred)${colors.reset}`);
+            }
+            console.log(`${colors.yellow}   • Total Required: ${minRequired}/${multiPivotConfig.timeframes.length} timeframes${colors.reset}`);
         }
-        console.log(`${colors.yellow}   • Total Required: ${minRequired}/${multiPivotConfig.timeframes.length} timeframes${colors.reset}`);
     }
     
     checkWindowConfirmations(pivot, timeframe, currentTime) {
@@ -961,25 +971,31 @@ class CleanTimeProgressiveFronttester {
             const timeString = new Date(pivot.time).toLocaleString();
             const time24 = new Date(pivot.time).toLocaleTimeString('en-GB', { hour12: false });
             
-            console.log(`${colors.brightGreen}🟢 CONFIRMATION WINDOW [${windowId}]: ${timeframe.interval} ${pivot.signal.toUpperCase()} pivot detected${colors.reset}`);
-            console.log(`${colors.cyan}   Time: ${timeString} (${time24}) | Price: $${pivot.price.toFixed(1)}${colors.reset}`);
-            console.log(`${colors.cyan}   Confirmations: ${totalConfirmed}/${minRequiredTFs} (${[window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)].join(' + ')})${colors.reset}`);
+            if (fronttesterconfig.showWindow) {
+                console.log(`${colors.brightGreen}🟢 CONFIRMATION WINDOW [${windowId}]: ${timeframe.interval} ${pivot.signal.toUpperCase()} pivot detected${colors.reset}`);
+                console.log(`${colors.cyan}   Time: ${timeString} (${time24}) | Price: $${pivot.price.toFixed(1)}${colors.reset}`);
+                console.log(`${colors.cyan}   Confirmations: ${totalConfirmed}/${minRequiredTFs} (${[window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)].join(' + ')})${colors.reset}`);
+            }
             
             // HIERARCHICAL EXECUTION LOGIC
             if (totalConfirmed >= minRequiredTFs && window.status !== 'executed') {
                 const canExecute = this.checkHierarchicalExecution(window);
                 if (canExecute) {
-                    console.log(`${colors.brightGreen}   ✅ EXECUTING CASCADE - Hierarchical confirmation complete!${colors.reset}`);
+                    if (fronttesterconfig.showWindow) {
+                        console.log(`${colors.brightGreen}   ✅ EXECUTING CASCADE - Hierarchical confirmation complete!${colors.reset}`);
+                    }
                     window.status = 'ready';
                     this.executeWindow(window, currentTime);
                 } else {
                     // Show why execution is blocked
-                    const confirmedTFs = [window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)];
-                    const roles = confirmedTFs.map(tf => {
-                        const role = multiPivotConfig.timeframes.find(t => t.interval === tf)?.role || 'unknown';
-                        return `${tf}(${role})`;
-                    });
-                    console.log(`${colors.yellow}   ⏳ WAITING - Hierarchical requirements not met: ${roles.join(' + ')}${colors.reset}`);
+                    if (fronttesterconfig.showWindow) {
+                        const confirmedTFs = [window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)];
+                        const roles = confirmedTFs.map(tf => {
+                            const role = multiPivotConfig.timeframes.find(t => t.interval === tf)?.role || 'unknown';
+                            return `${tf}(${role})`;
+                        });
+                        console.log(`${colors.yellow}   ⏳ WAITING - Hierarchical requirements not met: ${roles.join(' + ')}${colors.reset}`);
+                    }
                 }
             }
         }
@@ -1113,9 +1129,11 @@ class CleanTimeProgressiveFronttester {
                 const totalConfirmed = 1 + window.confirmations.length;
                 const minRequiredTFs = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
                 
-                console.log(`\n${colors.red}❌ PRIMARY WINDOW EXPIRED [${windowId}]: ${window.primaryPivot.timeframe} ${window.primaryPivot.signal.toUpperCase()}${colors.reset}`);
-                console.log(`${colors.red}   Expired at: ${timeString12} (${time24})${colors.reset}`);
-                console.log(`${colors.red}   Final confirmations: ${totalConfirmed}/${minRequiredTFs} (insufficient for execution)${colors.reset}`);
+                if (fronttesterconfig.showWindow) {
+                    console.log(`\n${colors.red}❌ PRIMARY WINDOW EXPIRED [${windowId}]: ${window.primaryPivot.timeframe} ${window.primaryPivot.signal.toUpperCase()}${colors.reset}`);
+                    console.log(`${colors.red}   Expired at: ${timeString12} (${time24})${colors.reset}`);
+                    console.log(`${colors.red}   Final confirmations: ${totalConfirmed}/${minRequiredTFs} (insufficient for execution)${colors.reset}`);
+                }
             }
         }
     }
@@ -1243,7 +1261,7 @@ class CleanTimeProgressiveFronttester {
     }
 
     displayRecentCascades() {
-        if (this.recentCascades.length === 0) return;
+        if (!fronttesterconfig.showRecentCascades || this.recentCascades.length === 0) return;
         
         console.log(`\n${colors.magenta}┌─ Recent Cascades (${this.recentCascades.length}/3) ${'─'.repeat(30)}${colors.reset}`);
         
@@ -1294,11 +1312,11 @@ class CleanTimeProgressiveFronttester {
 
     finishSimulation() {
         // Move final summary to the very bottom with colors
-        console.log(`\n${colors.green}🏁 Clean simulation completed!${colors.reset}`);
-        console.log(`${colors.cyan}${'─'.repeat(40)}${colors.reset}`);
-        console.log(`${colors.yellow}Total Cascades Detected: ${colors.green}${this.cascadeCounter}${colors.reset}`);
-        console.log(`${colors.yellow}Minutes Processed:       ${colors.green}${this.currentMinute}${colors.reset}`);
-        console.log(`${colors.cyan}${'─'.repeat(40)}${colors.reset}`);
+        // console.log(`\n${colors.green}🏁 Clean simulation completed!${colors.reset}`);
+        // console.log(`${colors.cyan}${'─'.repeat(40)}${colors.reset}`);
+        // console.log(`${colors.yellow}Total Cascades Detected: ${colors.green}${this.cascadeCounter}${colors.reset}`);
+        // console.log(`${colors.yellow}Minutes Processed:       ${colors.green}${this.currentMinute}${colors.reset}`);
+        // console.log(`${colors.cyan}${'─'.repeat(40)}${colors.reset}`);
 
         if (this.allCascades.length > 0) {
             console.log(`\nFinal Cascades:`);

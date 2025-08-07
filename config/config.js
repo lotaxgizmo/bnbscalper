@@ -62,7 +62,7 @@ const getIntervalMultiplier = (intervalStr) => {
 const multiplier = getIntervalMultiplier(time);
 
 // Calculate limits in terms of number of candles
-const monthlimit = 1; // Base unit - 1 month
+const monthlimit = 0.05; // Base unit - 1 month
 const weeklimit = monthlimit * multiplier.perMonth / multiplier.perWeek;
 // const weeklimit = 8;
 const daylimit = weeklimit * 7;

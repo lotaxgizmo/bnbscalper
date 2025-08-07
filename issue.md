@@ -1,5 +1,102 @@
 # Issues Log
 
+## Enhanced Log Control System Implementation
+
+### Issue:
+The multiPivotFronttesterLive.js system was generating excessive console output that made it difficult to focus on specific aspects of the trading system. Users needed granular control over different categories of logs (trades, windows, cascades) to reduce noise and improve analysis clarity.
+
+### Solution:
+Implemented comprehensive log control system with three new configuration options in `fronttesterconfig.js`:
+
+1. **showTrades**: Controls trade opening and closing logs
+2. **showWindow**: Controls window opening, confirmation, and execution logs  
+3. **showRecentCascades**: Controls recent cascades display section
+
+### Implementation Details:
+
+**Configuration Options Added:**
+```javascript
+// In config/fronttesterconfig.js
+export const fronttesterconfig = {
+    showTrades: true,          // Show/hide trade opening and closing logs
+    showWindow: true,          // Show/hide window logs
+    showRecentCascades: true,  // Show/hide recent cascades display
+    // ... existing options
+};
+```
+
+**Code Changes Applied:**
+
+1. **Trade Logs Control** - Wrapped all trade-related console.log statements:
+```javascript
+// Trade opening logs
+if (fronttesterconfig.showTrades) {
+    console.log(`🚀 TRADE OPENED: ${direction.toUpperCase()} #${this.tradeCounter}`);
+    // ... additional trade opening logs
+}
+
+// Trade closing logs
+if (fronttesterconfig.showTrades) {
+    console.log(`[TRADE ${tradeId.toString().padStart(2, '0')}] ${direction.toUpperCase()} | P&L: ${pnlPercent}% | ${result} | Result: ${exitReason}`);
+    // ... additional trade closing logs
+}
+```
+
+2. **Window Logs Control** - Wrapped all window-related console.log statements:
+```javascript
+// Primary window opening
+if (fronttesterconfig.showWindow) {
+    console.log(`🟡 PRIMARY WINDOW OPENED [${windowId}]: ${primaryPivot.timeframe} ${primaryPivot.signal.toUpperCase()} pivot detected`);
+    // ... additional window logs
+}
+
+// Confirmation window logs
+if (fronttesterconfig.showWindow) {
+    console.log(`🟢 CONFIRMATION WINDOW [${windowId}]: ${timeframe.interval} ${pivot.signal.toUpperCase()} pivot detected`);
+    // ... additional confirmation logs
+}
+
+// Execution logs
+if (fronttesterconfig.showWindow) {
+    console.log(`✅ EXECUTING CASCADE - Hierarchical confirmation complete!`);
+    // ... additional execution logs
+}
+```
+
+3. **Recent Cascades Display Control**:
+```javascript
+displayRecentCascades() {
+    if (!fronttesterconfig.showRecentCascades || this.recentCascades.length === 0) return;
+    
+    console.log(`┌─ Recent Cascades (${this.recentCascades.length}/3) ─────────────────────────────`);
+    // ... cascade display logic
+}
+```
+
+### Benefits:
+- **Granular Control**: Users can hide specific log categories while keeping others visible
+- **Clean Output**: Reduces console noise for focused analysis
+- **Professional Display**: Configurable output suitable for different analysis needs
+- **Backward Compatible**: All options default to `true` to maintain existing behavior
+- **Mix and Match**: Users can combine settings (e.g., show trades but hide windows)
+
+### Usage Examples:
+- **Trades Only**: `showTrades: true, showWindow: false, showRecentCascades: false`
+- **Signals Only**: `showTrades: false, showWindow: true, showRecentCascades: false`
+- **Clean Mode**: `showTrades: false, showWindow: false, showRecentCascades: false`
+- **Full Display**: `showTrades: true, showWindow: true, showRecentCascades: true` (default)
+
+### Files Modified:
+1. `config/fronttesterconfig.js` - Added new configuration options
+2. `multiPivotFronttesterLive.js` - Added conditional checks around all relevant console.log statements
+3. `TECHNICAL_DOCS.MD` - Added comprehensive documentation
+4. `USER_GUIDE.md` - Updated display controls section
+
+### Status: ✅ FULLY IMPLEMENTED
+The log control system is now fully operational and provides users with complete control over console output categories for improved analysis and reduced noise.
+
+---
+
 ## Negative "Bars since last" in Real-Time Pivot Detection
 
 ### Issue:

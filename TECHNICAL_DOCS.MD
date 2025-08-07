@@ -21,6 +21,48 @@
 - **After**: Fronttester 2 signals → 2 cascades (2.22/day), Backtester 9 signals → 2 cascades (2.22/day)
 - **Status**: ✅ Both systems now produce identical cascade detection frequency
 
+### 2025-08-07: 🎛️ ENHANCED LOG CONTROL SYSTEM
+- **NEW CONFIGURATION OPTIONS**: Added three new fronttesterconfig.js options for granular log control
+- **showTrades**: Controls display of trade opening and closing logs (🚀 TRADE OPENED, [TRADE XX] WIN/LOSS)
+- **showWindow**: Controls display of window logs (🟡 PRIMARY WINDOW OPENED, 🟢 CONFIRMATION WINDOW, ✅ EXECUTING CASCADE)
+- **showRecentCascades**: Controls display of recent cascades section (┌─ Recent Cascades table)
+- **showAllTrades**: Controls display of "All Trades Taken" detailed summary section
+- **GRANULAR CONTROL**: Users can now hide specific log categories while keeping others visible
+- **CLEAN OUTPUT**: Allows focus on specific aspects (signals only, trades only, etc.)
+- **PROFESSIONAL DISPLAY**: Configurable output suitable for different analysis needs
+
+#### **Configuration Options**:
+```javascript
+// fronttesterconfig.js
+export const fronttesterconfig = {
+    showTrades: true,          // Show/hide trade opening and closing logs
+    showWindow: true,          // Show/hide window opening, confirmation, and execution logs  
+    showRecentCascades: true,  // Show/hide recent cascades display section
+    showAllTrades: true,       // Show/hide "All Trades Taken" detailed summary section
+    // ... other existing options
+};
+```
+
+#### **Log Categories Controlled**:
+1. **showTrades**: 
+   - Trade opening: "🚀 TRADE OPENED: LONG #1"
+   - Trade closing: "[TRADE 01] LONG | P&L: 2.45% | WIN | Result: TP"
+   - Trailing stop activation: "📈 Trailing stop activated"
+
+2. **showWindow**:
+   - Primary window: "🟡 PRIMARY WINDOW OPENED [W1]: 4h LONG pivot detected"
+   - Confirmation window: "🟢 CONFIRMATION WINDOW [W1]: 1h LONG pivot detected"
+   - Execution: "✅ EXECUTING CASCADE - Hierarchical confirmation complete!"
+   - Expired windows: "❌ PRIMARY WINDOW EXPIRED [W1]"
+
+3. **showRecentCascades**:
+   - Recent cascades table display after each cascade execution
+   - "┌─ Recent Cascades (3/3)" section with cascade history
+
+4. **showAllTrades**:
+   - Detailed "All Trades Taken" summary section with complete trade information
+   - "--- All Trades Taken (2) ---" section with entry/exit details, duration, amounts, and results
+
 ### 2025-08-07: 📈 ENHANCED STATISTICS & DISPLAY UPDATE
 - **IMPROVED STATISTICS DISPLAY**: Updated trading performance summary to match backtester's clean format
 - **IMPROVED TRADE DISPLAY**: Upgraded trade closure formatting to match backtester style with detailed entry/exit info

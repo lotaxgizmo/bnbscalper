@@ -56,6 +56,12 @@
 7. **Display Controls** (`config/fronttesterconfig.js`):
    - Set `hideTimeDisplay: true` to hide time progression messages
    - Set `hideProgressDisplay: true` to hide progress percentage updates
+   - Set `showTrades: false` to hide trade opening and closing logs
+   - Set `showWindow: false` to hide window opening, confirmation, and execution logs
+   - Set `showRecentCascades: false` to hide recent cascades display section
+   - Set `showAllTrades: false` to hide the detailed "All Trades Taken" summary section
+   - **Granular Control**: Mix and match settings to focus on specific aspects
+   - **Clean Output**: Hide unnecessary logs while keeping important information visible
    - Cleaner console output for focused trading analysis
 
 8. **Enhanced Trade Display**:

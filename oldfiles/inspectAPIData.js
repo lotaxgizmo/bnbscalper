@@ -5,9 +5,9 @@ import {
     symbol,
     time as interval,
     limit
-} from './config/config.js';
+} from '../config/config.js';
 
-import { getCandles } from './apis/bybit.js';
+import { getCandles } from '../apis/bybit.js';
 
 async function inspectAPIData() {
     console.log('=== API DATA INSPECTION ===\n');

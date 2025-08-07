@@ -1,8 +1,8 @@
 // testPivotAlignment.js
 // Test to ensure multi-timeframe detector matches pivotBacktester.js exactly
 
-import { MultiTimeframePivotDetector } from './utils/multiTimeframePivotDetector.js';
-import { time, minSwingPct, minLegBars, pivotLookback, limit } from './config/config.js';
+import { MultiTimeframePivotDetector } from '../utils/multiTimeframePivotDetector.js';
+import { time, minSwingPct, minLegBars, pivotLookback, limit } from '../config/config.js';
 import fs from 'fs';
 import path from 'path';
 

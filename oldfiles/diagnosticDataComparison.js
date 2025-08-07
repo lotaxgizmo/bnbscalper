@@ -5,9 +5,9 @@ import {
     symbol,
     time as interval,
     limit
-} from './config/config.js';
+} from '../config/config.js';
 
-import { getCandles } from './apis/bybit.js';
+import { getCandles } from '../apis/bybit.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

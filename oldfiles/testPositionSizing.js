@@ -1,5 +1,5 @@
 // Test script to verify position sizing modes
-import { tradeConfig } from './config/tradeconfig.js';
+import { tradeConfig } from '../config/tradeconfig.js';
 
 console.log('=== Position Sizing Mode Test ===\n');
 

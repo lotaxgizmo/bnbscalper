@@ -829,7 +829,11 @@ async function runTest() {
         pivotCandles = uniqueCandles.sort((a, b) => a.time - b.time);
         
         console.log(`Sorted ${pivotCandles.length} candles chronologically`);
-        console.log(`Time range: ${new Date(pivotCandles[0].time).toLocaleString()} to ${new Date(pivotCandles[pivotCandles.length-1].time).toLocaleString()}`);
+        const startTime12 = new Date(pivotCandles[0].time).toLocaleString();
+        const startTime24 = new Date(pivotCandles[0].time).toLocaleString('en-GB', { hour12: false });
+        const endTime12 = new Date(pivotCandles[pivotCandles.length-1].time).toLocaleString();
+        const endTime24 = new Date(pivotCandles[pivotCandles.length-1].time).toLocaleString('en-GB', { hour12: false });
+        console.log(`Time range: ${startTime12} (${startTime24}) to ${endTime12} (${endTime24})`);
         
         edges = {}; // No pre-computed edge data for live API calls
     }
@@ -1352,7 +1356,9 @@ async function runTest() {
                 highPivotCount++;
                 const barsSinceLast = i - lastPivot.index;
                 const movePct = swingPct * 100;
-                const formattedTime = new Date(currentPivotCandle.time).toLocaleString();
+                const formattedTime12 = new Date(currentPivotCandle.time).toLocaleString();
+                const formattedTime24Only = new Date(currentPivotCandle.time).toLocaleTimeString('en-GB', { hour12: false });
+                const formattedTime = `${formattedTime12} (${formattedTime24Only})`;
                 
                 // Get edge data for this pivot from pre-computed data
                 const pivotEdgeData = getCurrentEdgeData(pivotPrice, currentPivotCandle, edges, timeframes);
@@ -1437,7 +1443,9 @@ async function runTest() {
             if ((isFirstPivot || Math.abs(swingPct) >= swingThreshold) && (i - lastPivot.index) >= minLegBars) {
                 const movePct = swingPct * 100;
                 const barsSinceLast = i - lastPivot.index;
-                const formattedTime = new Date(pivotCandles[i].time).toLocaleString();
+                const formattedTime12 = new Date(pivotCandles[i].time).toLocaleString();
+                const formattedTime24Only = new Date(pivotCandles[i].time).toLocaleTimeString('en-GB', { hour12: false });
+                const formattedTime = `${formattedTime12} (${formattedTime24Only})`;
                 
                 // Get edge data for this pivot from pre-computed data
                 const pivotEdgeData = getCurrentEdgeData(pivotPrice, pivotCandles[i], edges, timeframes);
@@ -1620,8 +1628,12 @@ ${colors.yellow}Closing ${openTrades.length} open trade${openTrades.length > 1 ?
             // Format dates to be more readable - trade.entryTime already includes execution time (candle close)
             const entryDate = new Date(trade.entryTime);
             const exitDate = new Date(trade.exitTime);
-            const entryDateStr = `${entryDate.toLocaleDateString('en-US', { weekday: 'short' })} ${entryDate.toLocaleDateString()} ${entryDate.toLocaleTimeString()}`;
-            const exitDateStr = `${exitDate.toLocaleDateString('en-US', { weekday: 'short' })} ${exitDate.toLocaleDateString()} ${exitDate.toLocaleTimeString()}`;
+            const entryTime12 = entryDate.toLocaleTimeString();
+            const entryTime24Only = entryDate.toLocaleTimeString('en-GB', { hour12: false });
+            const exitTime12 = exitDate.toLocaleTimeString();
+            const exitTime24Only = exitDate.toLocaleTimeString('en-GB', { hour12: false });
+            const entryDateStr = `${entryDate.toLocaleDateString('en-US', { weekday: 'short' })} ${entryDate.toLocaleDateString()} ${entryTime12} (${entryTime24Only})`;
+            const exitDateStr = `${exitDate.toLocaleDateString('en-US', { weekday: 'short' })} ${exitDate.toLocaleDateString()} ${exitTime12} (${exitTime24Only})`;
             
             // Calculate and format duration using actual trade times
             const durationMs = trade.exitTime - trade.entryTime;

@@ -19,6 +19,11 @@ export const fronttesterconfig = {
     hideTimeDisplay: true,     // Hide time progression display (⏰ Wed, Aug 6, 05:00 PM...)
     hideProgressDisplay: true, // Hide progress percentage display (Progress: 15.4%...)
     
+    showTrades: false,          // Show/hide trade opening and closing logs
+    showWindow: false,          // Show/hide window opening, confirmation, and execution logs
+    showRecentCascades: false,  // Show/hide recent cascades display section
+    showAllTrades: true,        // Show/hide "All Trades Taken" detailed summary section
+    
     // Past Mode Simulation Settings
     pastMode: true,             // Enable past mode simulation (false = live WebSocket mode)
     speedMultiplier: 100000,     // Simulation speed: 1=normal, 2=2x, 10=10x speed
