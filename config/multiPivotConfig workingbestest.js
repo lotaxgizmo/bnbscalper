@@ -18,7 +18,7 @@ export const multiPivotConfig = {
         },
         {
             interval: '1h',
-            role: 'confirmation',      // Confirmation timeframe
+            role: 'secondary',      // Confirmation timeframe
             minSwingPct: 0.1,       // Same settings for easy testing
             minLegBars: 2,          // Same settings for easy testing
             lookback: 4,

@@ -8,36 +8,36 @@ export const multiPivotConfig = {
     // Timeframes to analyze (in hierarchical order - largest to smallest)
     // The system will cascade from largest to smallest timeframe
     timeframes: [
-        {
-            interval: '4h',
-            role: 'primary',        // This timeframe triggers the cascade
-            minSwingPct: 0.4,       // Same settings for easy testing
-            minLegBars: 3,          // Same settings for easy testing
-            lookback: 5,            // Pivot lookback for this timeframe
-            weight: 3               // Importance weight (higher = more important)
-        },
+        // {
+        //     interval: '4h',
+        //     role: 'primary',        // This timeframe triggers the cascade
+        //     minSwingPct: 0.2,       // Same settings for easy testing
+        //     minLegBars: 1,          // Same settings for easy testing
+        //     lookback: 1,            // Pivot lookback for this timeframe
+        //     weight: 3               // Importance weight (higher = more important)
+        // },
         {
             interval: '1h',
-            role: 'secondary',      // Confirmation timeframe
-            minSwingPct: 0.8,       // Same settings for easy testing
-            minLegBars: 8,          // Same settings for easy testing
-            lookback: 10,
+            role: 'primary',      // Confirmation timeframe
+            minSwingPct: 0.4,       // Same settings for easy testing
+            minLegBars: 1,          // Same settings for easy testing
+            lookback: 4,
             weight: 2
         },
         {
             interval: '15m',
             role: 'confirmation',   // Additional confirmation
-            minSwingPct: 0.4,       // Same settings for easy testing
-            minLegBars: 2,          // Same settings for easy testing
-            lookback: 2,
+            minSwingPct: 0.1,       // Same settings for easy testing
+            minLegBars: 1,          // Same settings for easy testing
+            lookback: 1,
             weight: 1
         },
         {
             interval: '1m',
             role: 'execution',      // Final execution timeframe
-            minSwingPct: 0.8,       // Same settings for easy testing
-            minLegBars: 5,          // Same settings for easy testing
-            lookback: 2,
+            minSwingPct: 0.01,       // Same settings for easy testing
+            minLegBars: 1,          // Same settings for easy testing
+            lookback: 1,
             weight: 1
         }
     ],

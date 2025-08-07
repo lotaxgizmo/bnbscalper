@@ -16,20 +16,20 @@ export const tradeConfig = {
     
     // Trailing stop settings
     enableTrailingStop: false,     // Enable trailing stop loss
-    trailingStopDistance: 0.4,   // Distance to trail behind best price (in %)
+    trailingStopDistance: 0.5,   // Distance to trail behind best price (in %)
     enableTrailingTakeProfit: false, // Enable trailing take profit
     trailingTakeProfitTrigger: 1, // Trigger trailing TP when profit reaches this % (must be > takeProfit)
     trailingTakeProfitDistance: 0.3, // Distance to trail behind best price for TP (in %)
     
  
-    leverage: 100,        
+    leverage: 1,        
     
     
     showCandle: false,
     showPivot: false,
     showLimits: false,
-    showTradeDetails: true,
-    hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
+    showTradeDetails: false,
+    hideCascades: false,  // Hide cascade confirmation logs (keeps trade execution logs)
         
     // Multi-trade settings
     maxConcurrentTrades: 1, // Number of trades that can be open at once (default: 1)

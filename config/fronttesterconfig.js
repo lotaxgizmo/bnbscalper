@@ -9,8 +9,9 @@ export const fronttesterconfig = {
     showEdgeData: false,        // Show edge data calculations
     showSystemStatus: true,     // Show system status messages (startup, WebSocket connection)
     showProgress: true,         // Show simulation progress in past mode
-    showHeartbeat: true,        // Show periodic heartbeat messages in live mode
-    hideCandles: false,         // Hide candle completion displays (true = only show pivots and trades)
+    showHeartbeat: false,       // Show periodic heartbeat messages in live mode
+    hideCandles: true,          // Hide individual candle data in live mode
+    timeLoggingInterval: 10,    // Log time progression every X minutes (1=every minute, 60=every hour)
     
     // Display Settings
     hideCandle: true,           // When true, hides intermediate candle fetching messages and price updates
@@ -20,5 +21,19 @@ export const fronttesterconfig = {
     pastMode: true,             // Enable past mode simulation (false = live WebSocket mode)
     speedMultiplier: 10000,     // Simulation speed: 1=normal, 2=2x, 10=10x speed
     startFromEnd: true,         // Start simulation from most recent data
-    simulationLength: null      // Number of candles to simulate (null = use full limit)
+    simulationLength: null,     // Number of candles to simulate (null = use full limit)
+    
+    // Real-time Operation Settings
+    refreshInterval: 5,        // Seconds between cascade checks (5-10 recommended)
+    executionMode: 'signal',    // 'signal' = show signals only, 'trade' = execute trades
+    maxRecentCascades: 3,       // Number of recent cascades to display
+    
+    // Data Range Settings
+    dataLimit: null,            // Override limit from config.js (null = use config.js limit)
+    
+    // Audio Notifications
+    enableBeeps: false,          // Enable audio beeps for notifications
+    beepOnCascade: true,        // Beep when cascade is detected
+    beepOnTrade: true,          // Beep when trade is executed
+    beepVolume: 1               // Beep volume (1-3, 1=single beep, 2=double, 3=triple)
 };

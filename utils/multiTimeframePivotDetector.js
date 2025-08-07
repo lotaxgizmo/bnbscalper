@@ -300,6 +300,35 @@ export class MultiTimeframePivotDetector {
             console.log(`${colors.cyan}=== Multi-Timeframe Initialization Complete ===${colors.reset}\n`);
         }
     }
+    
+    // Load raw candle data only - NO pivot pre-calculation (eliminates future look bias)
+    async loadRawCandleDataOnly(useLocalData = true, dataLimit = null) {
+        if (this.debug.showTimeframeAnalysis) {
+            console.log(`${colors.cyan}=== Loading Raw Candle Data (No Future Look Bias) ===${colors.reset}`);
+            console.log(`${colors.cyan}Timeframes: ${this.config.timeframes.map(tf => tf.interval).join(', ')}${colors.reset}`);
+        }
+        
+        for (const timeframe of this.config.timeframes) {
+            await this.loadTimeframeData(timeframe, useLocalData, dataLimit);
+            
+            // DO NOT detect pivots here - this eliminates future look bias
+            // Pivots will be detected progressively as time advances
+            
+            if (this.debug.showTimeframeAnalysis) {
+                const candles = this.timeframeData.get(timeframe.interval) || [];
+                console.log(`${colors.cyan}[${timeframe.interval}] Loaded ${candles.length} raw candles (no pivots calculated)${colors.reset}`);
+            }
+        }
+        
+        // Initialize empty pivot history - will be populated progressively
+        for (const timeframe of this.config.timeframes) {
+            this.pivotHistory.set(timeframe.interval, []);
+        }
+        
+        if (this.debug.showTimeframeAnalysis) {
+            console.log(`${colors.cyan}=== Raw Candle Data Loading Complete ===${colors.reset}\n`);
+        }
+    }
 
     // Get the most recent pivot for a timeframe
     getLatestPivot(interval) {

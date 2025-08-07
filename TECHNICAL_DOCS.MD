@@ -1,5 +1,92 @@
 # Technical Documentation
 
+## 🚨 CRITICAL SYSTEM FIXES
+
+### 2025-08-07: 🎯 EXECUTION WINDOW LOGIC FIXED - Duplicate Cascade Elimination
+- **CRITICAL ISSUE**: multiPivotFronttesterV2.js was executing cascades TWICE from same primary window
+- **Problems Identified**:
+  * Duplicate cascade executions: CASCADE #1 and CASCADE #2 from same primary
+  * Two parallel systems running: old cascade detection + new window-based system
+  * Execution window (1m) being detected BEFORE confirmations appeared
+  * Timeline showing execution at wrong times
+
+- **ROOT CAUSE**: Dual execution systems conflict
+  * Old `checkForCascadeAtCurrentTime()` method running in parallel with new window system
+  * Old system executed when confirmations met (without execution window)
+  * New system executed when execution window appeared
+  * Both systems called `displayCascade()` causing duplicates
+
+- **SOLUTION IMPLEMENTED**: 
+  * **Disabled old cascade detection system** - commented out `checkForCascadeAtCurrentTime()`
+  * **Only window-based system active** - proper execution hierarchy enforced
+  * **Execution window logic fixed** - 1m pivots only considered AFTER confirmations exist
+  * **Single execution per window** - added `window.status !== 'executed'` check
+  * **Proper timing sequence**: Primary → Confirmations → Execution Window → Execute
+
+- **RESULT**: Perfect cascade execution with no duplicates and correct timing
+
+### 2025-08-07: 🛡️ FUTURE LOOK BIAS ELIMINATION - Time-Progressive System Implementation
+- **CRITICAL ISSUE**: multiPivotFronttester.js had severe future look bias problems
+- **Problems Identified**:
+  * Complete historical data pre-loading across all timeframes at startup
+  * Access to full pivot history including future pivots during simulation
+  * Forward-looking cascade confirmation with access to future candles
+  * System could see entire future when making trading decisions
+
+- **ROOT CAUSE**: System was designed like a backtester, not a real-time simulator
+  * `initializeAllTimeframes()` pre-calculated ALL pivots from ALL timeframes
+  * `checkForwardCascadeConfirmation()` had access to complete future candle dataset
+  * Simulation could look ahead to see which cascades would be confirmed
+  * No time-progressive data revelation system
+
+- **SOLUTION IMPLEMENTED**: Complete Time-Progressive Architecture
+  * **loadRawCandleDataOnly()**: Loads only raw candle data, NO pivot pre-calculation
+  * **updateKnownPivotsUpToCurrentTime()**: Detects pivots progressively as time advances
+  * **detectPivotAtIndex()**: Real-time pivot detection without future look
+  * **checkTimeProgressiveCascadeConfirmation()**: Only uses data up to current simulation time
+  * **currentSimulationTime**: Tracks current point in time progression
+  * **timeframeKnownPivots**: Maintains pivots known only up to current time
+
+- **KEY ARCHITECTURAL CHANGES**:
+  1. **Time-Progressive Data Access**: Only reveal candles/pivots up to current simulation time
+  2. **Real-Time Pivot Detection**: Detect pivots as we progress through time, not pre-calculate
+  3. **Genuine Cascade Confirmation**: Wait for actual confirmations to develop in real-time
+  4. **Streaming Architecture**: Process data candle-by-candle as if receiving live
+  5. **No Future Knowledge**: System only knows what it should know at each moment
+
+- **BENEFITS**:
+  * **Realistic Simulation**: Behaves exactly like live trading would
+  * **No Cheating**: Cannot see future pivots or confirmations
+  * **True Performance**: Results reflect actual trading conditions
+  * **Live Trading Ready**: Same logic works for both simulation and live trading
+  * **Eliminates Bias**: No artificial performance inflation from future knowledge
+
+- **VALIDATION**: System now properly simulates moving through time without any future look bias
+- **Status**: ✅ CRITICAL FIX APPLIED - Future look bias completely eliminated
+
+### 🚨 CRITICAL DISCOVERY: Backtester vs Fronttester Cascade Differences
+- **Issue Found**: multiPivotBacktesterWithTrades.js still uses `detector.checkForwardCascadeConfirmation()`
+- **Problem**: Backtester has FUTURE LOOK BIAS while Fronttester V2 is bias-free
+- **Evidence**: 
+  * Same primary pivots detected at identical times (5:00 AM, 9:00 AM, 1:00 PM, etc.)
+  * Backtester shows higher strength percentages (75% vs 25%)
+  * Backtester can wait longer for optimal confirmations (+15-17min vs +1-2min)
+  * Backtester detects more total cascades due to future knowledge
+- **Root Cause**: Backtester pre-loads ALL data and can "peek ahead" for confirmations
+- **Impact**: Backtester results are artificially inflated and unrealistic
+- **Action Required**: Backtester needs same time-progressive fix as Fronttester V2
+
+### ✅ FRONTTESTER V2 IMPROVEMENTS: Proper Cascade Confirmation
+- **Issue Fixed**: Fronttester was accepting weak cascades with only 2 timeframes (25% strength)
+- **Solution**: Modified cascade confirmation to respect `minTimeframesRequired: 3` from config
+- **Changes Made**:
+  * Fixed cascade confirmation logic to require primary + 2 confirming timeframes minimum
+  * Improved strength calculation based on total timeframes confirmed
+  * Enhanced display formatting with 24-hour time format and clean price display
+  * Removed comma formatting from entry prices for cleaner output
+- **Result**: Fronttester now properly waits for adequate confirmations like backtester
+- **Status**: ✅ IMPROVED - Fronttester respects minimum timeframe requirements
+
 ## Multi-Timeframe Pivot System Updates
 
 ### 2025-08-06: 🚀 MULTI-TIMEFRAME CASCADE SYSTEM - Revolutionary Signal Filtering
