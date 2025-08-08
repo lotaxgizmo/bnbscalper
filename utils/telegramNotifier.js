@@ -138,11 +138,14 @@ class TelegramNotifier {
     async notifyTradeOpened(trade) {
         if (!telegramConfig.notifications.tradeOpen) return;
         
-        const emoji = trade.direction === 'long' ? '🟢' : '🔴';
+        const emoji = trade.direction === 'long' ? '🟢⬆️' : '🔴⬇️';
+        const emoji2 = trade.direction === 'long' ? '⬆️🟢' : '⬇️🔴';
         const direction = trade.direction === 'long' ? 'LONG' : 'SHORT';
         const timeFormatted = this.formatDate(trade.entryTime);
         
-        const message = `${emoji} *TRADE OPENED: ${direction} #${trade.id}*\n\n` +
+        const message = `${emoji} *TRADE OPENED: ${direction} #${trade.id} ${emoji2}*\n` +
+        `------------------------------------------\n` +
+        `------------------------------------------\n` +
             `💰 *Entry:* $${this.formatPrice(trade.entryPrice)}\n` +
             `💵 *Size:* $${this.formatNumber(trade.positionSize)}\n` +
             `⚡ *Leverage:* ${trade.leverage}x\n` +
@@ -195,7 +198,8 @@ class TelegramNotifier {
             `💰 *Exit:* $${this.formatPrice(trade.exitPrice)}\n` +
             `⏱ *Duration:* ${durationStr}\n` +
             `💵 *P&L:* ${isWin ? '+' : ''}$${this.formatNumber(Math.abs(trade.pnl))} (${trade.pnlPercent.toFixed(2)}%)\n` +
-            `💼 *Capital:* $${this.formatNumber(trade.finalCapital)}\n`;
+            `💼 *Capital:* $${this.formatNumber(trade.finalCapital)}\n` +
+            `⏰ *Time:* ${exitTimeFormatted}\n`;
             
         await this.sendMessage(message);
         
