@@ -8,7 +8,7 @@ export const telegramConfig = {
     
     // Notification settings
     notifications: {
-        // Trade notifications
+        //  Trade notifications
         tradeOpen: true,           // Notify when a trade is opened
         tradeClose: true,          // Notify when a trade is closed
         tradeSummary: true,        // Send trade summary at the end
