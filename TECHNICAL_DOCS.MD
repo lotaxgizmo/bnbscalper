@@ -7,7 +7,7 @@
 - **COMPREHENSIVE NOTIFICATIONS**: Cascade confirmations, trade opens/closes, and final summaries
 - **CONFIGURABLE ALERTS**: Granular control over notification types via telegramConfig.js
 - **RATE LIMITED**: Built-in message queuing and rate limiting to respect Telegram API limits
-- **ERROR HANDLING**: Robust error handling with retry logic and logging
+- **ERROR HANDLING**: Robust error handling with retry logic (no file logging to prevent memory buildup)
 
 #### **Key Components**:
 1. **telegramConfig.js**: Configuration file with bot credentials and notification settings

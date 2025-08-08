@@ -3,8 +3,6 @@
 
 import { telegramConfig, validateTelegramConfig } from '../config/telegramConfig.js';
 import fetch from 'node-fetch';
-import fs from 'fs';
-import path from 'path';
 
 class TelegramNotifier {
     constructor() {
@@ -22,35 +20,18 @@ class TelegramNotifier {
             initialCapital: 0,
             finalCapital: 0
         };
-        
-        // Create logs directory if it doesn't exist
-        // this.logsDir = path.join(process.cwd(), 'logs');
-        // if (!fs.existsSync(this.logsDir)) {
-        //     fs.mkdirSync(this.logsDir, { recursive: true });
-        // }
-        
-        // this.logFile = path.join(this.logsDir, `telegram_${new Date().toISOString().replace(/:/g, '-')}.log`);
     }
     
-    // Log message to file
-    logMessage(type, message) {
-        const timestamp = new Date().toISOString();
-        const logEntry = `[${timestamp}] [${type}] ${message}\n`;
-        
-        fs.appendFileSync(this.logFile, logEntry);
-    }
-    
+
     // Send message to Telegram
     async sendMessage(message) {
         if (!this.isConfigValid) {
             console.error('Cannot send Telegram message: Invalid configuration');
-            this.logMessage('ERROR', 'Invalid configuration');
             return false;
         }
         
         // Add to queue
         this.messageQueue.push(message);
-        this.logMessage('QUEUE', `Added message to queue: ${message.substring(0, 50)}...`);
         
         // Process queue if not already processing
         if (!this.isProcessing) {
@@ -91,10 +72,8 @@ class TelegramNotifier {
                 
                 if (!data.ok) {
                     console.error(`Telegram API error for chat ${chatId}: ${data.description}`);
-                    this.logMessage('API_ERROR', `Chat ${chatId}: ${data.description}`);
                     return false;
                 } else {
-                    this.logMessage('SUCCESS', `Message sent to chat ${chatId}: ${message.substring(0, 50)}...`);
                     return true;
                 }
             });
@@ -108,7 +87,6 @@ class TelegramNotifier {
             }
         } catch (error) {
             console.error(`Error sending Telegram message: ${error.message}`);
-            this.logMessage('ERROR', error.message);
             
             // Put message back in queue for retry
             this.messageQueue.unshift(message);

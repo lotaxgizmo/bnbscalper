@@ -1,5 +1,41 @@
 # Issues and Solutions Log
 
+## 79. 🔧 FIX: Removed Telegram Logging to Prevent Memory Buildup
+
+**Date:** August 8, 2025
+
+**Issue:** TelegramNotifier was writing all messages and API responses to log files, which could lead to memory buildup over time during long-running trading sessions.
+
+**Root Cause:** File logging operations in TelegramNotifier constructor and logMessage() method:
+```javascript
+// REMOVED - Memory buildup risk
+this.logsDir = path.join(process.cwd(), 'logs');
+this.logFile = path.join(this.logsDir, `telegram_${new Date().toISOString().replace(/:/g, '-')}.log`);
+
+logMessage(type, message) {
+    const logEntry = `[${timestamp}] [${type}] ${message}\n`;
+    fs.appendFileSync(this.logFile, logEntry); // Memory buildup
+}
+```
+
+**Solution Applied:**
+1. **Removed File System Imports**: Eliminated `fs` and `path` imports
+2. **Removed Log Directory Creation**: No more logs directory or file creation
+3. **Removed logMessage() Method**: Completely eliminated file writing functionality
+4. **Removed All Log Calls**: Removed all `this.logMessage()` calls throughout the class
+5. **Preserved Console Logging**: Essential error messages still go to console
+
+**Benefits:**
+- ✅ No memory buildup from continuous file writing
+- ✅ Cleaner, more efficient code
+- ✅ Better performance without file I/O operations
+- ✅ Console error reporting preserved for debugging
+- ✅ Same Telegram functionality without logging overhead
+
+**Status:** ✅ RESOLVED - TelegramNotifier now operates without file logging to prevent memory issues
+
+---
+
 ## 78. 📱 FEATURE: Telegram Notifications Integration
 
 **Date:** August 8, 2025
