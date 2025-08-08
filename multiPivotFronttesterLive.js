@@ -1,5 +1,5 @@
-// multiPivotFronttesterV2.js
-// CLEAN TIME-PROGRESSIVE CASCADE DETECTION - NO FUTURE LOOK BIAS
+// multiPivotFronttesterLive.js
+// DUAL MODE: HISTORICAL SIMULATION + LIVE WEBSOCKET TRADING
 
 import {
     symbol,
@@ -16,6 +16,7 @@ import { fronttesterconfig } from './config/fronttesterconfig.js';
 import { MultiTimeframePivotDetector } from './utils/multiTimeframePivotDetector.js';
 import { formatNumber } from './utils/formatters.js';
 import telegramNotifier from './utils/telegramNotifier.js';
+import WebSocket from 'ws';
 import fs from 'fs';
 import path from 'path';
 
@@ -106,7 +107,7 @@ const applySlippage = (price, tradeType, slippagePercent) => {
     }
 };
 
-class CleanTimeProgressiveFronttester {
+class LiveMultiPivotFronttester {
     constructor() {
         this.timeframeCandles = new Map(); // Raw candle data for each timeframe
         this.timeframePivots = new Map();  // Discovered pivots for each timeframe
@@ -127,6 +128,17 @@ class CleanTimeProgressiveFronttester {
         this.capital = tradeConfig.initialCapital;
         this.trades = [];
         this.openTrades = [];
+        
+        // WebSocket properties for live mode
+        this.isLiveMode = !fronttesterconfig.pastMode; // Detect live mode from config
+        this.ws = null;
+        this.currentPrice = 0;
+        this.lastPriceUpdate = 0;
+        this.lastCandleCheck = 0;
+        this.candleCheckInterval = (fronttesterconfig.candleCheckInterval || 20) * 1000; // Configurable candle check interval
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectDelay = 1000; // Start with 1 second
         
         // Initialize Telegram notifier with initial capital
         telegramNotifier.setInitialCapital(tradeConfig.initialCapital);
@@ -628,14 +640,19 @@ class CleanTimeProgressiveFronttester {
     }
 
     async initialize() {
-        const dataSource = useLocalData ? 'CSV Files (Local)' : `${api.toUpperCase()} API (Live)`;
-        const dataMode = useLocalData ? 'Historical Simulation' : 'Live Market Data';
+        const operatingMode = this.isLiveMode ? 'LIVE WEBSOCKET' : 'HISTORICAL SIMULATION';
+        const dataSource = this.isLiveMode ? 'WebSocket + API' : (useLocalData ? 'CSV Files (Local)' : `${api.toUpperCase()} API`);
         
-        console.log(`${colors.cyan}=== CLEAN TIME-PROGRESSIVE FRONTTESTER V2 ===${colors.reset}`);
+        console.log(`${colors.cyan}=== LIVE MULTI-PIVOT FRONTTESTER ===${colors.reset}`);
         console.log(`${colors.yellow}Symbol: ${symbol}${colors.reset}`);
+        console.log(`${colors.yellow}Operating Mode: ${colors.brightCyan}${operatingMode}${colors.reset}`);
         console.log(`${colors.yellow}Data Source: ${dataSource}${colors.reset}`);
-        console.log(`${colors.yellow}Mode: ${dataMode}${colors.reset}`);
-        console.log(`${colors.yellow}Method: Step-by-step minute progression${colors.reset}`);
+        
+        if (this.isLiveMode) {
+            console.log(`${colors.yellow}Method: Real-time WebSocket + Live pivot detection${colors.reset}`);
+        } else {
+            console.log(`${colors.yellow}Method: Step-by-step minute progression${colors.reset}`);
+        }
         
         // Display trading configuration
         if (fronttesterconfig.enableTrading) {
@@ -662,6 +679,42 @@ class CleanTimeProgressiveFronttester {
         
         console.log(`${'='.repeat(60)}\n`);
 
+        if (this.isLiveMode) {
+            // Live mode: Load initial data and setup WebSocket
+            await this.initializeLiveMode();
+        } else {
+            // Past mode: Load historical data for simulation
+            await this.initializeHistoricalMode();
+        }
+        
+        console.log(`${colors.green}✅ System initialized successfully${colors.reset}`);
+        console.log(`${colors.cyan}📊 Ready for ${this.isLiveMode ? 'live trading' : 'simulation'}${colors.reset}\n`);
+    }
+
+    async initializeLiveMode() {
+        console.log(`${colors.cyan}=== INITIALIZING LIVE MODE ===${colors.reset}`);
+        
+        // Load recent historical data for all timeframes to build context
+        await this.loadRecentHistoricalData();
+        
+        // Initialize pivot tracking
+        for (const tf of multiPivotConfig.timeframes) {
+            this.timeframePivots.set(tf.interval, []);
+            this.lastPivots.set(tf.interval, { type: null, price: null, time: null, index: 0 });
+        }
+        
+        // Analyze initial pivots from historical data
+        await this.analyzeInitialPivots();
+        
+        // Connect to WebSocket for live price feed
+        await this.connectWebSocket();
+        
+        console.log(`${colors.green}✅ Live mode initialized${colors.reset}`);
+    }
+    
+    async initializeHistoricalMode() {
+        console.log(`${colors.cyan}=== INITIALIZING HISTORICAL MODE ===${colors.reset}`);
+        
         // Load raw candle data for all timeframes
         await this.loadAllTimeframeData();
         
@@ -672,8 +725,343 @@ class CleanTimeProgressiveFronttester {
             this.lastPivots.set(tf.interval, { type: null, price: null, time: null, index: 0 });
         }
         
-        console.log(`${colors.green}✅ Clean system initialized successfully${colors.reset}`);
-        console.log(`${colors.cyan}📊 Ready for time-progressive simulation${colors.reset}\n`);
+        console.log(`${colors.green}✅ Historical mode initialized${colors.reset}`);
+    }
+    
+    async loadRecentHistoricalData() {
+        console.log(`${colors.cyan}Loading recent historical data for context...${colors.reset}`);
+        
+        // Import API function directly to bypass MultiTimeframePivotDetector limits
+        const { getCandles } = await import('./apis/bybit.js');
+        
+        for (const tf of multiPivotConfig.timeframes) {
+            // Load minimal recent data for live mode context
+            const contextLimit = this.getContextLimit(tf.interval);
+            
+            try {
+                console.log(`${colors.yellow}[${tf.interval}] Loading ${contextLimit} recent candles...${colors.reset}`);
+                // FORCE API usage in live mode (forceLocal = false)
+                const candles = await getCandles(symbol, tf.interval, contextLimit, null, false);
+                
+                if (candles && candles.length > 0) {
+                    this.timeframeCandles.set(tf.interval, candles);
+                    console.log(`${colors.green}[${tf.interval.padEnd(4)}] Loaded ${candles.length.toString().padStart(3)} recent candles for context${colors.reset}`);
+                } else {
+                    console.log(`${colors.red}[${tf.interval.padEnd(4)}] No candles received${colors.reset}`);
+                    this.timeframeCandles.set(tf.interval, []);
+                }
+            } catch (error) {
+                console.error(`${colors.red}Error loading ${tf.interval} candles:${colors.reset}`, error);
+                this.timeframeCandles.set(tf.interval, []);
+            }
+        }
+    }
+    
+    getContextLimit(interval) {
+        // Return minimal context needed for each timeframe in live mode
+        const contextLimits = {
+            '1m': 100,    // 100 minutes = 1.7 hours of context
+            '5m': 60,     // 300 minutes = 5 hours of context  
+            '15m': 40,    // 600 minutes = 10 hours of context
+            '30m': 24,    // 720 minutes = 12 hours of context
+            '1h': 24,     // 24 hours = 1 day of context
+            '4h': 12,     // 48 hours = 2 days of context
+            '1d': 7       // 7 days of context
+        };
+        
+        return contextLimits[interval] || 50; // Default to 50 if interval not found
+    }
+    
+    async analyzeInitialPivots() {
+        console.log(`${colors.cyan}Analyzing initial pivots from historical data...${colors.reset}`);
+        
+        for (const tf of multiPivotConfig.timeframes) {
+            const candles = this.timeframeCandles.get(tf.interval) || [];
+            if (candles.length < tf.lookback + 10) continue;
+            
+            // Analyze last portion of historical data for existing pivots
+            for (let i = tf.lookback; i < candles.length; i++) {
+                const pivot = this.detectPivotAtCandle(candles, i, tf);
+                if (pivot) {
+                    const pivots = this.timeframePivots.get(tf.interval) || [];
+                    pivots.push(pivot);
+                    this.timeframePivots.set(tf.interval, pivots);
+                }
+            }
+            
+            const pivotCount = this.timeframePivots.get(tf.interval).length;
+            console.log(`${colors.yellow}[${tf.interval.padEnd(4)}] Found ${pivotCount.toString().padStart(2)} initial pivots${colors.reset}`);
+        }
+        
+        // CRITICAL: Check for existing primary windows that should be active
+        this.checkForExistingPrimaryWindows();
+    }
+    
+    checkForExistingPrimaryWindows() {
+        // This method displays existing active windows for monitoring (like backtester)
+        // Shows context of what windows are currently open, but doesn't execute old trades
+        
+        const currentTime = Date.now();
+        
+        // Find primary timeframes
+        const primaryTimeframes = multiPivotConfig.timeframes.filter(tf => tf.role === 'primary');
+        
+        for (const primaryTf of primaryTimeframes) {
+            const pivots = this.timeframePivots.get(primaryTf.interval) || [];
+            if (pivots.length === 0) continue;
+            
+            // Check recent pivots to see if any should have active windows
+            const recentPivots = pivots.slice(-5); // Check last 5 pivots
+            
+            for (const pivot of recentPivots) {
+                const confirmationWindow = multiPivotConfig.cascadeSettings.confirmationWindow[primaryTf.interval] || 60;
+                const windowEndTime = pivot.time + (confirmationWindow * 60 * 1000);
+                
+                // If this pivot's window is still active, show it for monitoring
+                if (currentTime <= windowEndTime) {
+                    const timeRemaining = Math.round((windowEndTime - currentTime) / (60 * 1000));
+                    console.log(`${colors.cyan}🔄 ACTIVE WINDOW: ${primaryTf.interval} ${pivot.signal.toUpperCase()} pivot from ${new Date(pivot.time).toLocaleTimeString()} (${timeRemaining}min remaining)${colors.reset}`);
+                    
+                    // Open window for monitoring but mark it as historical (no execution)
+                    this.openPrimaryWindow(pivot, currentTime, true); // true = historical mode
+                }
+            }
+        }
+    }
+    
+    // REMOVED: checkExistingConfirmations method
+    // Live mode should not execute trades based on historical confirmations
+    // Only new live pivots should trigger confirmations and executions
+    
+    displayActiveWindows() {
+        // Display all currently active windows (like backtester does on each candle)
+        const currentTime = Date.now();
+        const activeWindows = Array.from(this.activeWindows.values()).filter(w => 
+            w.status === 'active' && currentTime <= w.windowEndTime
+        );
+        
+        if (activeWindows.length > 0) {
+            console.log(`${colors.cyan}📊 ACTIVE WINDOWS (${activeWindows.length}):${colors.reset}`);
+            for (const window of activeWindows) {
+                const timeRemaining = Math.round((window.windowEndTime - currentTime) / (60 * 1000));
+                const confirmationCount = window.confirmations.length;
+                const status = window.isHistorical ? 'MONITORING' : 'LIVE';
+                console.log(`   ${window.id}: ${window.primaryPivot.timeframe} ${window.primaryPivot.signal.toUpperCase()} | ${confirmationCount} confirmations | ${timeRemaining}min left | ${status}`);
+            }
+        }
+    }
+    
+    async connectWebSocket() {
+        console.log(`${colors.cyan}Connecting to Bybit WebSocket...${colors.reset}`);
+        
+        const wsUrl = 'wss://stream.bybit.com/v5/public/linear';
+        this.ws = new WebSocket(wsUrl);
+        
+        this.ws.on('open', () => {
+            console.log(`${colors.green}✅ WebSocket connected${colors.reset}`);
+            
+            // Subscribe to ticker updates
+            const subscribeMsg = {
+                op: 'subscribe',
+                args: [`tickers.${symbol}`]
+            };
+            
+            this.ws.send(JSON.stringify(subscribeMsg));
+            console.log(`${colors.yellow}📡 Subscribed to ${symbol} ticker updates${colors.reset}`);
+            
+            // Start heartbeat
+            this.startHeartbeat();
+            
+            // Reset reconnect attempts
+            this.reconnectAttempts = 0;
+        });
+        
+        this.ws.on('message', (data) => {
+            try {
+                const message = JSON.parse(data.toString());
+                this.handleWebSocketMessage(message);
+            } catch (error) {
+                console.error(`${colors.red}WebSocket message parse error:${colors.reset}`, error);
+            }
+        });
+        
+        this.ws.on('error', (error) => {
+            console.error(`${colors.red}WebSocket error:${colors.reset}`, error);
+        });
+        
+        this.ws.on('close', () => {
+            console.log(`${colors.yellow}⚠️  WebSocket disconnected${colors.reset}`);
+            this.stopHeartbeat();
+            
+            if (this.isRunning) {
+                this.attemptReconnect();
+            }
+        });
+    }
+    
+    handleWebSocketMessage(message) {
+        if (message.topic && message.topic.startsWith('tickers.')) {
+            const ticker = message.data;
+            if (ticker && ticker.lastPrice) {
+                this.currentPrice = parseFloat(ticker.lastPrice);
+                this.lastPriceUpdate = Date.now();
+                
+                // Rate limit candle checking - only check every 30 seconds
+                if (Date.now() - this.lastCandleCheck >= this.candleCheckInterval) {
+                    this.lastCandleCheck = Date.now();
+                    this.checkForNewCandles();
+                }
+            }
+        }
+    }
+    
+    async checkForNewCandles() {
+        // This method will check if any timeframe has completed a new candle
+        // and fetch the latest candle data from API
+        const currentTime = Date.now();
+        let newCandlesFound = 0;
+        
+        for (const tf of multiPivotConfig.timeframes) {
+            const intervalMs = this.getIntervalInMs(tf.interval);
+            const candles = this.timeframeCandles.get(tf.interval) || [];
+            
+            if (candles.length === 0) continue;
+            
+            const lastCandle = candles[candles.length - 1];
+            const nextCandleTime = lastCandle.time + intervalMs;
+            
+            // Check if we should have a new candle by now
+            if (currentTime >= nextCandleTime + 5000) { // 5 second buffer
+                const hadNewCandle = await this.fetchLatestCandle(tf.interval);
+                if (hadNewCandle) newCandlesFound++;
+            }
+        }
+        
+        // Check for expired windows
+        this.checkExpiredWindows(currentTime);
+        
+        // Display active windows for monitoring (like backtester)
+        this.displayActiveWindows();
+        
+        // Single success message
+        if (newCandlesFound === 0) {
+            console.log(`${colors.dim}✅ Candle check complete - No new candles${colors.reset}`);
+        }
+    }
+    
+    async fetchLatestCandle(interval) {
+        try {
+            // Import the API function dynamically
+            const { getCandles } = await import('./apis/bybit.js');
+            
+            // Fetch the latest candle - FORCE API usage in live mode (forceLocal = false)
+            const newCandles = await getCandles(symbol, interval, 1, null, false);
+            
+            if (newCandles && newCandles.length > 0) {
+                const newCandle = newCandles[0];
+                const existingCandles = this.timeframeCandles.get(interval) || [];
+                
+                // Check if this is actually a new candle
+                const lastCandle = existingCandles[existingCandles.length - 1];
+                if (!lastCandle || newCandle.time > lastCandle.time) {
+                    // Add new candle
+                    existingCandles.push(newCandle);
+                    
+                    // Keep only recent candles (last 200)
+                    if (existingCandles.length > 200) {
+                        existingCandles.shift();
+                    }
+                    
+                    this.timeframeCandles.set(interval, existingCandles);
+                    
+                    console.log(`${colors.green}🕯️  New ${interval} candle: $${newCandle.close.toFixed(1)} at ${new Date(newCandle.time).toLocaleTimeString()}${colors.reset}`);
+                    
+                    // Check for new pivot at this candle
+                    this.checkForNewPivot(interval, existingCandles.length - 1);
+                    
+                    return true; // New candle found
+                }
+            }
+            return false; // No new candle
+        } catch (error) {
+            console.error(`${colors.red}Error fetching latest ${interval} candle:${colors.reset}`, error);
+            return false;
+        }
+    }
+    
+    checkForNewPivot(interval, candleIndex) {
+        const tf = multiPivotConfig.timeframes.find(t => t.interval === interval);
+        if (!tf) return;
+        
+        const candles = this.timeframeCandles.get(interval) || [];
+        if (candleIndex < tf.lookback) return;
+        
+        const pivot = this.detectPivotAtCandle(candles, candleIndex, tf);
+        if (pivot) {
+            const pivots = this.timeframePivots.get(interval) || [];
+            pivots.push(pivot);
+            this.timeframePivots.set(interval, pivots);
+            
+            console.log(`${colors.brightYellow}🎯 NEW ${pivot.signal.toUpperCase()} PIVOT: ${interval} @ $${pivot.price.toFixed(1)}${colors.reset}`);
+            
+            // Handle pivot based on role - SAME LOGIC AS PAST MODE
+            if (tf.role === 'primary') {
+                this.openPrimaryWindow(pivot, Date.now());
+            } else {
+                // Check if this pivot confirms any active windows
+                this.checkWindowConfirmations(pivot, tf, Date.now());
+            }
+        }
+    }
+    
+    getIntervalInMs(interval) {
+        const timeMap = {
+            '1m': 60 * 1000,
+            '5m': 5 * 60 * 1000,
+            '15m': 15 * 60 * 1000,
+            '30m': 30 * 60 * 1000,
+            '1h': 60 * 60 * 1000,
+            '4h': 4 * 60 * 60 * 1000,
+            '1d': 24 * 60 * 60 * 1000
+        };
+        return timeMap[interval] || 60 * 1000;
+    }
+    
+    startHeartbeat() {
+        this.heartbeatInterval = setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.ping();
+                
+                if (fronttesterconfig.showHeartbeat) {
+                    const timeSinceUpdate = Date.now() - this.lastPriceUpdate;
+                    console.log(`${colors.cyan}💓 Live: $${this.currentPrice.toFixed(1)} (${Math.floor(timeSinceUpdate/1000)}s ago)${colors.reset}`);
+                }
+            }
+        }, 30000); // 30 second heartbeat
+    }
+    
+    stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+    
+    attemptReconnect() {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.log(`${colors.red}❌ Max reconnection attempts reached. Stopping.${colors.reset}`);
+            this.stop();
+            return;
+        }
+        
+        this.reconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+        
+        console.log(`${colors.yellow}🔄 Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay/1000}s...${colors.reset}`);
+        
+        setTimeout(() => {
+            this.connectWebSocket();
+        }, delay);
     }
 
     async loadAllTimeframeData() {
@@ -697,14 +1085,58 @@ class CleanTimeProgressiveFronttester {
     }
 
     startSimulation() {
+        this.isRunning = true;
+        
+        if (this.isLiveMode) {
+            this.startLiveMode();
+        } else {
+            this.startHistoricalMode();
+        }
+    }
+    
+    startLiveMode() {
+        console.log(`${colors.cyan}🚀 Starting live WebSocket mode...${colors.reset}\n`);
+        console.log(`${colors.green}🟢 LIVE MODE ACTIVE - Monitoring real-time market data${colors.reset}`);
+        console.log(`${colors.yellow}Waiting for live pivots and cascade confirmations...${colors.reset}\n`);
+        
+        // In live mode, everything is event-driven through WebSocket
+        // The system will automatically detect new pivots as candles complete
+        // and execute trades when cascades are confirmed
+        
+        // Monitor open trades every minute
+        this.liveTradeMonitor = setInterval(() => {
+            if (this.openTrades.length > 0) {
+                // Create a mock candle with current price for trade monitoring
+                const mockCandle = {
+                    time: Date.now(),
+                    close: this.currentPrice,
+                    high: this.currentPrice,
+                    low: this.currentPrice,
+                    open: this.currentPrice
+                };
+                this.monitorTrades(mockCandle);
+            }
+        }, 60000); // Check every minute
+        
+        // Periodic candle check every 2 minutes (backup to WebSocket rate limiting)
+        this.candleCheckTimer = setInterval(() => {
+            this.checkForNewCandles();
+        }, 120000); // Check every 2 minutes
+        
+        // CRITICAL: Check for expired windows every minute (same as past mode)
+        this.windowCheckTimer = setInterval(() => {
+            this.checkExpiredWindows(Date.now());
+        }, 60000); // Check every minute
+    }
+    
+    startHistoricalMode() {
         if (this.oneMinuteCandles.length === 0) {
             console.error(`${colors.red}No 1-minute candles for simulation${colors.reset}`);
             return;
         }
 
-        console.log(`${colors.cyan}🚀 Starting clean time-progressive simulation...${colors.reset}\n`);
+        console.log(`${colors.cyan}🚀 Starting historical simulation...${colors.reset}\n`);
         
-        this.isRunning = true;
         this.currentMinute = 0;
         
         const simulationLoop = () => {
@@ -722,13 +1154,10 @@ class CleanTimeProgressiveFronttester {
             // Step 1: Check for new pivots at current time
             this.detectNewPivotsAtCurrentTime(currentTime);
             
-            // Step 2: Check for cascade confirmations (DISABLED - using window-based system instead)
-            // this.checkForCascadeAtCurrentTime(currentTime);
-            
-            // Step 3: Check for expired windows
+            // Step 2: Check for expired windows
             this.checkExpiredWindows(currentTime);
             
-            // Step 4: Monitor and manage open trades
+            // Step 3: Monitor and manage open trades
             this.monitorTrades(currentCandle);
             
             // Progress
@@ -915,10 +1344,10 @@ class CleanTimeProgressiveFronttester {
         return null;
     }
 
-    openPrimaryWindow(primaryPivot, currentTime) {
+    openPrimaryWindow(primaryPivot, currentTime, isHistorical = false) {
         this.windowCounter++;
         const windowId = `W${this.windowCounter}`;
-        const confirmationWindow = multiPivotConfig.cascadeSettings.confirmationWindow[primaryPivot.timeframe] || 240;
+        const confirmationWindow = multiPivotConfig.cascadeSettings.confirmationWindow[primaryPivot.timeframe];
         const windowEndTime = primaryPivot.time + (confirmationWindow * 60 * 1000);
         
         const window = {
@@ -927,7 +1356,8 @@ class CleanTimeProgressiveFronttester {
             openTime: currentTime,
             windowEndTime,
             confirmations: [],
-            status: 'active'
+            status: 'active',
+            isHistorical: isHistorical  // Mark if this is from historical data
         };
         
         this.activeWindows.set(windowId, window);
@@ -1009,6 +1439,15 @@ class CleanTimeProgressiveFronttester {
             if (totalConfirmed >= minRequiredTFs && window.status !== 'executed') {
                 const canExecute = this.checkHierarchicalExecution(window);
                 if (canExecute) {
+                    // CRITICAL: Do not execute trades for historical windows
+                    if (window.isHistorical) {
+                        if (fronttesterconfig.showWindow) {
+                            console.log(`${colors.yellow}   ⚠️ HISTORICAL CASCADE - Not executing (historical data)${colors.reset}`);
+                        }
+                        window.status = 'historical_complete';
+                        return; // Do not execute historical cascades
+                    }
+                    
                     if (fronttesterconfig.showWindow) {
                         console.log(`${colors.brightGreen}   ✅ EXECUTING CASCADE - Hierarchical confirmation complete!${colors.reset}`);
                     }
@@ -1350,6 +1789,9 @@ class CleanTimeProgressiveFronttester {
     }
 
     finishSimulation() {
+        // Cleanup live mode resources
+        this.cleanupLiveMode();
+        
         // Move final summary to the very bottom with colors
         // console.log(`\n${colors.green}🏁 Clean simulation completed!${colors.reset}`);
         // console.log(`${colors.cyan}${'─'.repeat(40)}${colors.reset}`);
@@ -1369,16 +1811,72 @@ class CleanTimeProgressiveFronttester {
         
         
     }
+    
+    cleanupLiveMode() {
+        if (this.isLiveMode) {
+            // Close WebSocket connection
+            if (this.ws) {
+                this.ws.close();
+                this.ws = null;
+            }
+            
+            // Clear all timers
+            if (this.liveTradeMonitor) {
+                clearInterval(this.liveTradeMonitor);
+                this.liveTradeMonitor = null;
+            }
+            
+            if (this.candleCheckTimer) {
+                clearInterval(this.candleCheckTimer);
+                this.candleCheckTimer = null;
+            }
+            
+            if (this.windowCheckTimer) {
+                clearInterval(this.windowCheckTimer);
+                this.windowCheckTimer = null;
+            }
+            
+            if (this.heartbeatInterval) {
+                clearInterval(this.heartbeatInterval);
+                this.heartbeatInterval = null;
+            }
+            
+            console.log(`${colors.yellow}🧹 Live mode resources cleaned up${colors.reset}`);
+        }
+    }
 
     stop() {
         this.isRunning = false;
-        console.log(`${colors.yellow}🛑 Simulation stopped${colors.reset}`);
+        
+        // Clean up WebSocket connection
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+        
+        // Clean up intervals
+        this.stopHeartbeat();
+        if (this.liveTradeMonitor) {
+            clearInterval(this.liveTradeMonitor);
+            this.liveTradeMonitor = null;
+        }
+        if (this.candleCheckTimer) {
+            clearInterval(this.candleCheckTimer);
+            this.candleCheckTimer = null;
+        }
+        if (this.windowCheckTimer) {
+            clearInterval(this.windowCheckTimer);
+            this.windowCheckTimer = null;
+        }
+        
+        const modeText = this.isLiveMode ? 'Live trading' : 'Simulation';
+        console.log(`${colors.yellow}🛑 ${modeText} stopped${colors.reset}`);
     }
 }
 
 // Main execution
 async function main() {
-    const fronttester = new CleanTimeProgressiveFronttester();
+    const fronttester = new LiveMultiPivotFronttester();
     
     try {
         await fronttester.initialize();

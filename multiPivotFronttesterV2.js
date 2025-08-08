@@ -276,7 +276,7 @@ class CleanTimeProgressiveFronttester {
     openPrimaryWindow(primaryPivot, currentTime) {
         this.windowCounter++;
         const windowId = `W${this.windowCounter}`;
-        const confirmationWindow = multiPivotConfig.cascadeSettings.confirmationWindow[primaryPivot.timeframe] || 240;
+        const confirmationWindow = multiPivotConfig.cascadeSettings.confirmationWindow[primaryPivot.timeframe];
         const windowEndTime = primaryPivot.time + (confirmationWindow * 60 * 1000);
         
         const window = {

@@ -1,5 +1,179 @@
 # User Guide
 
+## 🔴 LIVE WEBSOCKET TRADING MODE
+
+### 🚀 How to Enable Live Trading Mode
+
+**NEW FEATURE**: multiPivotFronttesterLive.js now supports real-time WebSocket trading!
+
+#### **Quick Setup**:
+1. **Enable Live Mode**: Set `pastMode: false` in `config/fronttesterconfig.js`
+2. **Run the System**: `node multiPivotFronttesterLive.js`
+3. **Watch Live Trading**: System will connect to Bybit WebSocket and trade in real-time
+
+#### **Configuration**:
+```javascript
+// config/fronttesterconfig.js
+export const fronttesterconfig = {
+    pastMode: false,        // 🔴 FALSE = Live WebSocket mode
+    showHeartbeat: true,    // Show live price updates every 30 seconds
+    enableTrading: true,    // Enable actual trade execution
+    showTrades: true,       // Show trade open/close messages
+    showWindow: true,       // Show cascade window progression
+    showRecentCascades: true // Show recent cascade history
+};
+```
+
+#### **Operating Modes**:
+
+**🟢 LIVE MODE** (`pastMode: false`):
+- Connects to Bybit WebSocket for real-time price feed
+- Automatically detects new candles as they complete
+- Executes trades at current market prices
+- Perfect for actual live trading
+- Shows live price updates every 30 seconds
+
+**🟡 HISTORICAL MODE** (`pastMode: true`):
+- Processes historical data minute-by-minute
+- Perfect for backtesting and strategy validation
+- Fast simulation with configurable speed
+- No real market risk
+
+#### **Live Mode Features**:
+- **📶 Real-time Connection**: Direct WebSocket to Bybit
+- **🕯️ Live Candles**: Automatic new candle detection
+- **🎯 Live Pivots**: Real-time pivot formation alerts
+- **💰 Live Trades**: Execute at current market prices
+- **💓 Heartbeat**: Connection status and price monitoring
+- **🔄 Auto-Reconnect**: Automatic reconnection if disconnected
+- **⚡ Immediate Execution**: Only executes market orders on fresh signals (≤1 minute old)
+
+#### **🚨 IMPORTANT: Market Order Timing Requirements**:
+
+**For Safe Market Order Execution**:
+- **Execution Signals**: Must be ≤1 minute old for market orders
+- **Confirmation Signals**: Can be up to 5 minutes old
+- **Stale Signal Protection**: System automatically rejects old execution signals
+
+**What You'll See**:
+- ✅ **Ready for Trading**: "🚀 IMMEDIATE EXECUTION: LONG @ $117920.0 (0min ago - READY FOR MARKET ORDER)"
+- ❌ **Wait for Fresh Signal**: "⚠️ No immediate execution pivot (need 0-1min old for market orders)"
+
+**Why This Matters**:
+- Prevents executing on stale price data (3+ minutes old)
+- Ensures market orders execute at expected prices
+- Maintains professional trading standards
+- Protects against slippage from outdated signals
+
+#### **What You'll See in Live Mode**:
+
+## 🎯 LIVE PIVOT SCANNER
+
+### 📊 Real-Time Market Analysis Tool
+
+**NEW TOOL**: `testApiCandles.js` is now a powerful live pivot scanner that gives you instant market analysis!
+
+#### **How to Use**:
+```bash
+# Run the live scanner
+node testApiCandles.js
+```
+
+#### **What It Does**:
+- **📊 Market Snapshot**: Takes current market snapshot across all timeframes
+- **🎯 Pivot Detection**: Finds recent pivot formations (1h, 15m, 1m)
+- **🔄 Cascade Analysis**: Checks for active cascade opportunities
+- **💪 Strength Rating**: Shows signal strength percentages
+- **💡 Trading Recommendations**: Gives actionable trading advice
+
+#### **Scanner Output Example**:
+```
+=== LIVE PIVOT SCANNER ===
+Symbol: BTCUSDT
+Snapshot Time: 8/8/2025, 10:15:55 AM
+
+📊 Loading candle data for pivot analysis...
+[1h  ] ✅ Loaded  24 candles | Latest: $116544.1 (16min ago)
+[15m ] ✅ Loaded  21 candles | Latest: $116544.1 (1min ago)
+[1m  ] ✅ Loaded  21 candles | Latest: $116544.1 (1min ago)
+
+🎯 Analyzing current pivot formations...
+[1h  ] ✅ 1 pivots | Latest: SHORT @ $116830.6 (496min ago)
+[15m ] ✅ 5 pivots | Latest: SHORT @ $116494.0 (46min ago)
+[1m  ] ✅ 7 pivots | Latest: SHORT @ $116539.1 (2min ago)
+
+🔄 Analyzing cascade opportunities...
+⚪ No active cascade opportunities detected at this time
+```
+
+#### **When Cascade Found**:
+```
+🎯 LIVE CASCADE OPPORTUNITY DETECTED!
+═══════════════════════════════════════════════════════════
+📊 PRIMARY SIGNAL: 1H LONG PIVOT
+   Time: Thu Aug 8 2025 9:00:00 AM (09:00:00)
+   Price: $116500.0
+   Age: 15.0 minutes ago
+
+⚡ CASCADE ANALYSIS:
+   Signal Strength: 67% (2/3 timeframes)
+   Confirmations: 1/2 required
+   Hierarchy: CONFIRMATION✅
+
+💡 RECOMMENDATION: MODERATE SIGNAL - PROCEED WITH CAUTION
+═══════════════════════════════════════════════════════════
+```
+
+#### **Perfect For**:
+- **Quick Market Check**: Instant analysis of current conditions
+- **Entry Timing**: Check if cascade opportunities exist right now
+- **Signal Validation**: Confirm your analysis with systematic detection
+- **Learning**: Understand how pivots and cascades form in real-time
+
+#### **Pro Tips**:
+- Run every few minutes to catch new formations
+- Strong signals (75%+) are high-confidence entries
+- Wait for hierarchical confirmation (CONFIRMATION✅ + EXECUTION✅)
+- Old pivots outside confirmation windows are automatically ignored
+
+#### **What You'll See in Live Mode**:
+```
+=== LIVE MULTI-PIVOT FRONTTESTER ===
+Symbol: BTCUSDT
+Operating Mode: LIVE WEBSOCKET
+Data Source: WebSocket + API
+Method: Real-time WebSocket + Live pivot detection
+
+✅ WebSocket connected
+📡 Subscribed to BTCUSDT ticker updates
+[4h  ] Found 12 initial pivots
+[1h  ] Found 28 initial pivots
+[15m ] Found 85 initial pivots
+[1m  ] Found 234 initial pivots
+
+🚀 Starting live WebSocket mode...
+🟢 LIVE MODE ACTIVE - Monitoring real-time market data
+Waiting for live pivots and cascade confirmations...
+
+💓 Live: $67,234.5 (12s ago)
+🕯️  New 1m candle: $67,245.2 at 3:45:00 PM
+🎯 NEW LONG PIVOT: 4h @ $67,245.2
+🟡 PRIMARY WINDOW OPENED [W1]: 4h LONG pivot detected
+```
+
+#### **Safety Notes**:
+- **Start with Small Capital**: Test with minimal amounts first
+- **Monitor Closely**: Watch the system during initial runs
+- **Check Configuration**: Ensure all settings are correct before going live
+- **Have Stop Loss**: Always use proper risk management settings
+
+#### **Switching Between Modes**:
+- **To Live Mode**: Set `pastMode: false` and run
+- **To Historical Mode**: Set `pastMode: true` and run
+- **No other changes needed** - same configuration files work for both modes
+
+---
+
 ## 📱 TELEGRAM NOTIFICATIONS SETUP
 
 ### 🔔 How to Set Up Telegram Alerts

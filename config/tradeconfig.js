@@ -11,11 +11,11 @@ export const tradeConfig = {
 
     // Profit and loss settings (in %)
     takeProfitPercent: 1,
-    stopLossPercent: 0.3,
+    stopLossPercent: 0.2,
     
     // Legacy names for compatibility
     takeProfit: 1,
-    stopLoss: 0.3,
+    stopLoss: 0.2,
     
     // Trailing stop settings
     enableTrailingStop: false,     // Enable trailing stop loss
@@ -33,8 +33,8 @@ export const tradeConfig = {
     showCandle: false,
     showPivot: false,
     showLimits: false,
-    showTradeDetails: true,
-    hideCascades: false,  // Hide cascade confirmation logs (keeps trade execution logs)
+    showTradeDetails: false,
+    hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
         
     // Position sizing settings
     positionSizeMode: 'percentage',  // 'fixed', 'percentage', or 'minimum'

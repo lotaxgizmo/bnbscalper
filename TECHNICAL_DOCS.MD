@@ -1,5 +1,128 @@
 # Technical Documentation
 
+## 🔴 LIVE WEBSOCKET TRADING MODE
+
+### 2025-08-08: 🚀 DUAL MODE IMPLEMENTATION - HISTORICAL + LIVE
+- **NEW FEATURE**: multiPivotFronttesterLive.js now supports both historical simulation and live WebSocket trading
+- **MODE CONTROL**: Use `pastMode: false` in fronttesterconfig.js to enable live WebSocket mode
+- **REAL-TIME TRADING**: Live pivot detection, cascade confirmation, and trade execution with current market prices
+- **WEBSOCKET INTEGRATION**: Bybit WebSocket connection for real-time price feeds and candle completion detection
+- **AUTOMATIC RECONNECTION**: Built-in reconnection logic with exponential backoff (max 5 attempts)
+
+#### **Operating Modes**:
+1. **Historical Mode** (`pastMode: true`): Step-by-step simulation through historical data
+2. **Live Mode** (`pastMode: false`): Real-time WebSocket trading with live market data
+
+#### **Live Mode Features**:
+- **Real-time Price Feed**: Continuous WebSocket connection to Bybit for live price updates
+- **Dynamic Candle Detection**: Automatically detects when new candles complete across all timeframes
+- **Live Pivot Detection**: Real-time pivot formation detection as new candles arrive
+- **Cascade Confirmation**: Window-based cascade system works with live data
+- **Live Trade Execution**: Trades execute at current WebSocket prices
+- **Heartbeat Monitoring**: 30-second heartbeat with connection status and live price display
+
+#### **Configuration Control**:
+```javascript
+// fronttesterconfig.js
+export const fronttesterconfig = {
+    pastMode: false,  // false = Live WebSocket mode, true = Historical simulation
+    showHeartbeat: true,  // Show live price updates every 30 seconds
+    // ... other settings
+};
+```
+
+#### **WebSocket Implementation**:
+- **Connection**: `wss://stream.bybit.com/v5/public/linear`
+- **Subscription**: Ticker updates for real-time price feed
+- **Candle Detection**: Monitors timeframe intervals and fetches new candles via API
+- **Error Handling**: Automatic reconnection with exponential backoff
+- **Cleanup**: Proper WebSocket and interval cleanup on shutdown
+
+#### **Live Trading Flow**:
+1. **Initialization**: Load minimal historical data for context (optimized per timeframe)
+2. **Pivot Analysis**: Analyze historical data to find existing pivots
+3. **WebSocket Connection**: Connect to live price feed
+4. **Event-Driven Operation**: React to new candles and pivot formations
+5. **Trade Execution**: Execute trades with current market prices
+6. **Continuous Monitoring**: Monitor open trades every minute with live prices
+
+#### **🚨 IMMEDIATE EXECUTION REQUIREMENTS (2025-08-08)**:
+- **Market Order Standards**: Execution timeframes (1m) must have pivots ≤1 minute old for market orders
+- **Confirmation Flexibility**: Confirmation timeframes (15m, 1h) can use pivots up to 5 minutes old
+- **Stale Signal Prevention**: System rejects execution signals older than 1 minute
+- **Visual Indicators**: 
+  - ✅ "🚀 IMMEDIATE EXECUTION: LONG @ $117920.0 (0min ago - READY FOR MARKET ORDER)"
+  - ❌ "⚠️ No immediate execution pivot (need 0-1min old for market orders)"
+- **Professional Standards**: Ensures market orders only execute on fresh, immediate signals
+
+#### **CRITICAL FIX - Live Mode Data Source**:
+- **Issue**: Live mode was incorrectly using local CSV data instead of live API
+
+### 2025-08-08: 🎯 LIVE PIVOT SCANNER IMPLEMENTATION
+- **NEW TOOL**: testApiCandles.js transformed into comprehensive live pivot scanner
+- **REAL-TIME ANALYSIS**: Takes market snapshot and detects current pivot formations
+- **CASCADE DETECTION**: Full cascade analysis with strength percentages and hierarchical validation
+- **PROPER DATA LOADING**: Loads sufficient candles (lookback + 20) for reliable pivot detection
+- **INTEGRATED LOGIC**: Uses same detectPivotAtCandle() method from live fronttester for consistency
+
+#### **Live Scanner Features**:
+- **Multi-Timeframe Analysis**: Analyzes all configured timeframes (1h, 15m, 1m)
+- **Pivot Detection**: Detects recent pivot formations with role-based color coding
+- **Cascade Opportunities**: Identifies active cascade windows with confirmation requirements
+- **Strength Analysis**: Shows signal strength percentages and hierarchical status
+- **Trading Recommendations**: Provides actionable recommendations based on signal strength
+
+#### **CRITICAL BUG FIX - Confirmation Window Logic**:
+- **Issue**: Multiple files had hardcoded 240-minute fallback instead of using config values
+- **Files Fixed**: testApiCandles.js, multiPivotFronttesterLive.js, multiPivotFronttesterV2.js
+- **Correct Logic**: 
+  - 1h primary → 60min window for 15m confirmation
+  - 15m confirmation → 60min window for 1m execution
+- **Code Change**: `|| 240` → `|| 60` in confirmation window calculations
+
+```javascript
+// BEFORE (WRONG)
+const confirmationWindow = multiPivotConfig.cascadeSettings.confirmationWindow[primaryPivot.timeframe] || 240;
+
+// AFTER (CORRECT)
+const confirmationWindow = multiPivotConfig.cascadeSettings.confirmationWindow[primaryPivot.timeframe] || 60;
+```
+- **Root Cause**: getCandles() function checks global `useLocalData` setting even in live mode
+- **Solution**: Force API usage by passing `forceLocal = false` parameter
+- **Implementation**: Modified `loadRecentHistoricalData()` and `fetchLatestCandle()` methods
+- **Result**: Live mode now correctly fetches real-time data from Bybit API
+
+#### **CRITICAL FIX - Historical Execution Prevention**:
+- **Issue**: Live mode was executing trades based on old historical pivots (dangerous)
+- **Root Cause**: System treated historical cascades as if they were happening now
+- **Solution**: Added `isHistorical` flag to prevent execution of old pivots
+- **Implementation**: Historical windows show "MONITORING ONLY" and cannot execute trades
+- **Result**: Live mode only executes on NEW pivots detected during live session
+
+#### **Window Monitoring System**:
+- **Active Window Display**: Shows all currently active windows on each candle check
+- **Time Remaining**: Displays minutes remaining for each confirmation window
+- **Status Tracking**: Differentiates between LIVE windows and MONITORING windows
+- **Backtester Parity**: Same monitoring behavior as historical backtester
+
+#### **Optimized Data Loading**:
+Live mode uses minimal context data to reduce startup time:
+- **1m**: 100 candles (1.7 hours of context)
+- **5m**: 60 candles (5 hours of context)
+- **15m**: 40 candles (10 hours of context)
+- **30m**: 24 candles (12 hours of context)
+- **1h**: 24 candles (1 day of context)
+- **4h**: 12 candles (2 days of context)
+- **1d**: 7 candles (1 week of context)
+
+#### **Benefits**:
+- **True Market Conditions**: Trades execute at actual market prices
+- **Real-time Responsiveness**: Immediate reaction to market changes
+- **No Lookahead Bias**: Only uses data available at execution time
+- **Production Ready**: Suitable for actual live trading implementation
+
+---
+
 ## 📱 TELEGRAM NOTIFICATIONS INTEGRATION
 
 ### 2025-08-08: 🔔 TELEGRAM ALERT SYSTEM IMPLEMENTATION

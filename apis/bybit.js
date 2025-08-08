@@ -101,8 +101,16 @@ export function isUsingLocalData() {
 getCandles.isUsingLocalData = isUsingLocalData;
 
 export async function getCandles(symbol = 'BNBUSDT', interval = '1', limit = 100, customEndTime = null, forceLocal = false) {
-  // If using local data or forced to use local, only use local CSV
-  if (forceLocal || isUsingLocalData()) {
+  // If forced to use local, use local CSV
+  if (forceLocal) {
+    return await readLocalCandles(symbol, interval, limit, customEndTime);
+  }
+  
+  // If forceLocal is explicitly false, use API regardless of global setting
+  if (forceLocal === false) {
+    // Skip local data check and go straight to API
+  } else if (isUsingLocalData()) {
+    // Only use local data if not explicitly forced to use API
     return await readLocalCandles(symbol, interval, limit, customEndTime);
   }
 
