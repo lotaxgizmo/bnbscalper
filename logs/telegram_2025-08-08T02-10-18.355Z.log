@@ -1,0 +1,249 @@
+[2025-08-08T02:10:24.304Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #1*
+
+💰 *Entry:* $108794.10...
+[2025-08-08T02:10:25.158Z] [SUCCESS] Message sent to chat 7209568450: 🟢 *TRADE OPENED: LONG #1*
+
+💰 *Entry:* $108794.10...
+[2025-08-08T02:10:25.220Z] [SUCCESS] Message sent to chat 1228994409: 🟢 *TRADE OPENED: LONG #1*
+
+💰 *Entry:* $108794.10...
+[2025-08-08T02:10:25.811Z] [QUEUE] Added message to queue: ❌ *TRADE CLOSED: LONG #1*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:10:26.402Z] [SUCCESS] Message sent to chat 1228994409: ❌ *TRADE CLOSED: LONG #1*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:10:26.412Z] [SUCCESS] Message sent to chat 7209568450: ❌ *TRADE CLOSED: LONG #1*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:10:28.928Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #2*
+
+💰 *Entry:* $108962.50...
+[2025-08-08T02:10:29.112Z] [SUCCESS] Message sent to chat 1228994409: 🟢 *TRADE OPENED: LONG #2*
+
+💰 *Entry:* $108962.50...
+[2025-08-08T02:10:29.114Z] [SUCCESS] Message sent to chat 7209568450: 🟢 *TRADE OPENED: LONG #2*
+
+💰 *Entry:* $108962.50...
+[2025-08-08T02:10:31.483Z] [QUEUE] Added message to queue: ❌ *TRADE CLOSED: LONG #2*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:10:31.740Z] [SUCCESS] Message sent to chat 1228994409: ❌ *TRADE CLOSED: LONG #2*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:10:31.742Z] [SUCCESS] Message sent to chat 7209568450: ❌ *TRADE CLOSED: LONG #2*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:10:36.673Z] [QUEUE] Added message to queue: 🔴 *TRADE OPENED: SHORT #3*
+
+💰 *Entry:* $108644.5...
+[2025-08-08T02:10:36.852Z] [SUCCESS] Message sent to chat 1228994409: 🔴 *TRADE OPENED: SHORT #3*
+
+💰 *Entry:* $108644.5...
+[2025-08-08T02:10:36.858Z] [SUCCESS] Message sent to chat 7209568450: 🔴 *TRADE OPENED: SHORT #3*
+
+💰 *Entry:* $108644.5...
+[2025-08-08T02:10:44.244Z] [QUEUE] Added message to queue: ❌ *TRADE CLOSED: SHORT #3*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:10:44.983Z] [SUCCESS] Message sent to chat 7209568450: ❌ *TRADE CLOSED: SHORT #3*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:10:45.025Z] [SUCCESS] Message sent to chat 1228994409: ❌ *TRADE CLOSED: SHORT #3*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:10:50.054Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #4*
+
+💰 *Entry:* $109140.00...
+[2025-08-08T02:10:50.625Z] [QUEUE] Added message to queue: ✅ *TRADE CLOSED: LONG #4*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:10:50.871Z] [SUCCESS] Message sent to chat 1228994409: 🟢 *TRADE OPENED: LONG #4*
+
+💰 *Entry:* $109140.00...
+[2025-08-08T02:10:50.890Z] [SUCCESS] Message sent to chat 7209568450: 🟢 *TRADE OPENED: LONG #4*
+
+💰 *Entry:* $109140.00...
+[2025-08-08T02:10:52.074Z] [SUCCESS] Message sent to chat 7209568450: ✅ *TRADE CLOSED: LONG #4*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:10:52.079Z] [SUCCESS] Message sent to chat 1228994409: ✅ *TRADE CLOSED: LONG #4*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:10:52.688Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #5*
+
+💰 *Entry:* $111166.90...
+[2025-08-08T02:10:53.257Z] [SUCCESS] Message sent to chat 7209568450: 🟢 *TRADE OPENED: LONG #5*
+
+💰 *Entry:* $111166.90...
+[2025-08-08T02:10:53.266Z] [SUCCESS] Message sent to chat 1228994409: 🟢 *TRADE OPENED: LONG #5*
+
+💰 *Entry:* $111166.90...
+[2025-08-08T02:10:53.871Z] [QUEUE] Added message to queue: ❌ *TRADE CLOSED: LONG #5*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:10:54.452Z] [SUCCESS] Message sent to chat 7209568450: ❌ *TRADE CLOSED: LONG #5*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:10:54.473Z] [SUCCESS] Message sent to chat 1228994409: ❌ *TRADE CLOSED: LONG #5*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:10:54.609Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #6*
+
+💰 *Entry:* $111512.90...
+[2025-08-08T02:10:54.672Z] [QUEUE] Added message to queue: ✅ *TRADE CLOSED: LONG #6*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:10:54.769Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #7*
+
+💰 *Entry:* $112641.90...
+[2025-08-08T02:10:55.478Z] [QUEUE] Added message to queue: ✅ *TRADE CLOSED: LONG #7*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:10:55.641Z] [SUCCESS] Message sent to chat 7209568450: 🟢 *TRADE OPENED: LONG #6*
+
+💰 *Entry:* $111512.90...
+[2025-08-08T02:10:55.651Z] [SUCCESS] Message sent to chat 1228994409: 🟢 *TRADE OPENED: LONG #6*
+
+💰 *Entry:* $111512.90...
+[2025-08-08T02:10:56.791Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #8*
+
+💰 *Entry:* $116904.00...
+[2025-08-08T02:10:56.834Z] [SUCCESS] Message sent to chat 1228994409: ✅ *TRADE CLOSED: LONG #6*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:10:56.838Z] [SUCCESS] Message sent to chat 7209568450: ✅ *TRADE CLOSED: LONG #6*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:10:56.984Z] [QUEUE] Added message to queue: ✅ *TRADE CLOSED: LONG #8*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:10:57.633Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #9*
+
+💰 *Entry:* $118104.60...
+[2025-08-08T02:10:58.018Z] [SUCCESS] Message sent to chat 1228994409: 🟢 *TRADE OPENED: LONG #7*
+
+💰 *Entry:* $112641.90...
+[2025-08-08T02:10:58.027Z] [SUCCESS] Message sent to chat 7209568450: 🟢 *TRADE OPENED: LONG #7*
+
+💰 *Entry:* $112641.90...
+[2025-08-08T02:10:58.037Z] [QUEUE] Added message to queue: ❌ *TRADE CLOSED: LONG #9*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:10:58.827Z] [QUEUE] Added message to queue: 🔴 *TRADE OPENED: SHORT #10*
+
+💰 *Entry:* $117828....
+[2025-08-08T02:10:59.057Z] [QUEUE] Added message to queue: ✅ *TRADE CLOSED: SHORT #10*
+
+📊 *Result:* WIN (TP)...
+[2025-08-08T02:10:59.199Z] [SUCCESS] Message sent to chat 7209568450: ✅ *TRADE CLOSED: LONG #7*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:10:59.208Z] [SUCCESS] Message sent to chat 1228994409: ✅ *TRADE CLOSED: LONG #7*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:10:59.766Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #11*
+
+💰 *Entry:* $117690.8...
+[2025-08-08T02:11:00.391Z] [SUCCESS] Message sent to chat 1228994409: 🟢 *TRADE OPENED: LONG #8*
+
+💰 *Entry:* $116904.00...
+[2025-08-08T02:11:00.477Z] [SUCCESS] Message sent to chat 7209568450: 🟢 *TRADE OPENED: LONG #8*
+
+💰 *Entry:* $116904.00...
+[2025-08-08T02:11:00.750Z] [QUEUE] Added message to queue: ❌ *TRADE CLOSED: LONG #11*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:11:01.649Z] [SUCCESS] Message sent to chat 1228994409: ✅ *TRADE CLOSED: LONG #8*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:11:01.665Z] [SUCCESS] Message sent to chat 7209568450: ✅ *TRADE CLOSED: LONG #8*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:11:02.840Z] [SUCCESS] Message sent to chat 7209568450: 🟢 *TRADE OPENED: LONG #9*
+
+💰 *Entry:* $118104.60...
+[2025-08-08T02:11:02.844Z] [SUCCESS] Message sent to chat 1228994409: 🟢 *TRADE OPENED: LONG #9*
+
+💰 *Entry:* $118104.60...
+[2025-08-08T02:11:03.140Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #12*
+
+💰 *Entry:* $117980.0...
+[2025-08-08T02:11:04.011Z] [SUCCESS] Message sent to chat 7209568450: ❌ *TRADE CLOSED: LONG #9*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:11:04.019Z] [SUCCESS] Message sent to chat 1228994409: ❌ *TRADE CLOSED: LONG #9*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:11:05.134Z] [QUEUE] Added message to queue: ❌ *TRADE CLOSED: LONG #12*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:11:05.192Z] [SUCCESS] Message sent to chat 7209568450: 🔴 *TRADE OPENED: SHORT #10*
+
+💰 *Entry:* $117828....
+[2025-08-08T02:11:05.219Z] [SUCCESS] Message sent to chat 1228994409: 🔴 *TRADE OPENED: SHORT #10*
+
+💰 *Entry:* $117828....
+[2025-08-08T02:11:06.451Z] [SUCCESS] Message sent to chat 1228994409: ✅ *TRADE CLOSED: SHORT #10*
+
+📊 *Result:* WIN (TP)...
+[2025-08-08T02:11:06.461Z] [SUCCESS] Message sent to chat 7209568450: ✅ *TRADE CLOSED: SHORT #10*
+
+📊 *Result:* WIN (TP)...
+[2025-08-08T02:11:07.652Z] [SUCCESS] Message sent to chat 1228994409: 🟢 *TRADE OPENED: LONG #11*
+
+💰 *Entry:* $117690.8...
+[2025-08-08T02:11:07.668Z] [SUCCESS] Message sent to chat 7209568450: 🟢 *TRADE OPENED: LONG #11*
+
+💰 *Entry:* $117690.8...
+[2025-08-08T02:11:08.867Z] [SUCCESS] Message sent to chat 7209568450: ❌ *TRADE CLOSED: LONG #11*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:11:08.876Z] [SUCCESS] Message sent to chat 1228994409: ❌ *TRADE CLOSED: LONG #11*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:11:10.216Z] [SUCCESS] Message sent to chat 7209568450: 🟢 *TRADE OPENED: LONG #12*
+
+💰 *Entry:* $117980.0...
+[2025-08-08T02:11:10.227Z] [SUCCESS] Message sent to chat 1228994409: 🟢 *TRADE OPENED: LONG #12*
+
+💰 *Entry:* $117980.0...
+[2025-08-08T02:11:11.394Z] [SUCCESS] Message sent to chat 7209568450: ❌ *TRADE CLOSED: LONG #12*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:11:11.403Z] [SUCCESS] Message sent to chat 1228994409: ❌ *TRADE CLOSED: LONG #12*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:11:11.669Z] [QUEUE] Added message to queue: 🔴 *TRADE OPENED: SHORT #13*
+
+💰 *Entry:* $117469....
+[2025-08-08T02:11:12.611Z] [SUCCESS] Message sent to chat 1228994409: 🔴 *TRADE OPENED: SHORT #13*
+
+💰 *Entry:* $117469....
+[2025-08-08T02:11:12.614Z] [SUCCESS] Message sent to chat 7209568450: 🔴 *TRADE OPENED: SHORT #13*
+
+💰 *Entry:* $117469....

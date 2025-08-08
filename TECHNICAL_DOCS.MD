@@ -1,5 +1,59 @@
 # Technical Documentation
 
+## 📱 TELEGRAM NOTIFICATIONS INTEGRATION
+
+### 2025-08-08: 🔔 TELEGRAM ALERT SYSTEM IMPLEMENTATION
+- **NEW FEATURE**: Full Telegram bot integration for real-time trading alerts
+- **COMPREHENSIVE NOTIFICATIONS**: Cascade confirmations, trade opens/closes, and final summaries
+- **CONFIGURABLE ALERTS**: Granular control over notification types via telegramConfig.js
+- **RATE LIMITED**: Built-in message queuing and rate limiting to respect Telegram API limits
+- **ERROR HANDLING**: Robust error handling with retry logic and logging
+
+#### **Key Components**:
+1. **telegramConfig.js**: Configuration file with bot credentials and notification settings
+2. **telegramNotifier.js**: Core notification utility with message formatting and API integration
+3. **Integration Points**: Seamlessly integrated into multiPivotFronttesterLive.js at key events
+
+#### **Notification Types**:
+- **🎯 Cascade Confirmations**: Multi-timeframe signal confirmations with strength and price
+- **🚀 Trade Opened**: Entry price, position size, leverage, stop loss, take profit
+- **✅/❌ Trade Closed**: Exit details, P&L, duration, final capital
+- **📊 Trading Summary**: Complete performance statistics at simulation end
+
+#### **Configuration Options**:
+```javascript
+// telegramConfig.js
+export const telegramConfig = {
+    token: 'YOUR_BOT_TOKEN',
+    chatIds: ['YOUR_CHAT_ID_1', 'YOUR_CHAT_ID_2'], // Multiple chat IDs supported
+    notifications: {
+        cascadeConfirmed: true,    // Notify on cascade confirmations
+        tradeOpen: true,           // Notify when trades open
+        tradeClose: true,          // Notify when trades close
+        tradeSummary: true         // Send final trading summary
+    }
+};
+```
+
+#### **Configuration Controls**:
+```javascript
+// fronttesterconfig.js
+export const fronttesterconfig = {
+    showTelegramTrades: true,    // Send Telegram notifications for trades (open/close)
+    showTelegramCascades: true   // Send Telegram notifications for cascade confirmations
+};
+```
+
+#### **Number Formatting**:
+- **Prices**: No commas (e.g., $45678.50) for clean price display
+- **Amounts**: Comma-separated (e.g., $10,000.00) for position sizes, P&L, capital
+- **Counts**: Comma-separated (e.g., 1,000 trades) for trade statistics
+
+#### **Message Format Examples**:
+- **Cascade**: "🟢 CASCADE CONFIRMED: LONG\n💪 Strength: 75%\n💰 Price: $45678.50"
+- **Trade Open**: "🟢 TRADE OPENED: LONG #1\n💰 Entry: $45678.50\n💵 Size: $10,000.00"
+- **Trade Close**: "✅ TRADE CLOSED: LONG #1\n📊 Result: WIN (TP)\n💵 P&L: +$1,321.50 (13.21%)"
+
 ## 🚀 LIVE TRADING INTEGRATION - multiPivotFronttesterLive.js
 
 ### 2025-08-07: 🔧 CRITICAL PIVOT DETECTION FIX - CASCADE DISCREPANCY RESOLVED

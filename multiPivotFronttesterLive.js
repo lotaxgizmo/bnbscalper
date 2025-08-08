@@ -15,6 +15,7 @@ import { multiPivotConfig } from './config/multiPivotConfig.js';
 import { fronttesterconfig } from './config/fronttesterconfig.js';
 import { MultiTimeframePivotDetector } from './utils/multiTimeframePivotDetector.js';
 import { formatNumber } from './utils/formatters.js';
+import telegramNotifier from './utils/telegramNotifier.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -126,6 +127,9 @@ class CleanTimeProgressiveFronttester {
         this.capital = tradeConfig.initialCapital;
         this.trades = [];
         this.openTrades = [];
+        
+        // Initialize Telegram notifier with initial capital
+        telegramNotifier.setInitialCapital(tradeConfig.initialCapital);
     }
 
     // Create a new trade
@@ -207,6 +211,11 @@ class CleanTimeProgressiveFronttester {
             console.log(`   Entry: $${formatNumberWithCommas(entryPrice)} | Size: $${formatNumberWithCommas(positionSize)} | Leverage: ${leverage}x`);
             console.log(`   SL: $${formatNumberWithCommas(stopLossPrice)} | TP: $${formatNumberWithCommas(takeProfitPrice)}`);
             console.log(`   Capital Remaining: $${formatNumberWithCommas(this.capital)}`);
+        }
+        
+        // Send Telegram notification for trade opened
+        if (fronttesterconfig.showTelegramTrades) {
+            telegramNotifier.notifyTradeOpened(trade);
         }
         
         return trade;
@@ -417,6 +426,12 @@ class CleanTimeProgressiveFronttester {
             console.log('--------------------------------------------------------------------------------');
         }
         
+        // Send Telegram notification for trade closed
+        if (fronttesterconfig.showTelegramTrades) {
+            const tradeWithFinalCapital = { ...trade, finalCapital: this.capital };
+            telegramNotifier.notifyTradeClosed(tradeWithFinalCapital);
+        }
+        
         return trade;
     }
 
@@ -597,6 +612,19 @@ class CleanTimeProgressiveFronttester {
         }
         
         console.log(`${colors.cyan}${'═'.repeat(50)}${colors.reset}`);
+        
+        // Send Telegram trading summary
+        const tradingStats = {
+            totalTrades,
+            winningTrades,
+            losingTrades,
+            initialCapital: tradeConfig.initialCapital,
+            totalPnL,
+            finalCapital,
+            winRate,
+            totalReturn: totalPnLPercent
+        };
+        telegramNotifier.sendTradingSummary(tradingStats);
     }
 
     async initialize() {
@@ -1256,6 +1284,17 @@ class CleanTimeProgressiveFronttester {
         console.log(`${colors.cyan}Strength:        ${(cascadeResult.strength * 100).toFixed(0)}%${colors.reset}`);
         console.log(`${colors.cyan}Confirming TFs:  ${confirmingTFs}${colors.reset}`);
         console.log(`${colors.cyan}${'─'.repeat(50)}${colors.reset}`);
+        
+        // Send Telegram notification for cascade confirmed
+        if (fronttesterconfig.showTelegramCascades) {
+            const cascadeForTelegram = {
+                signal: cascadeResult.signal,
+                strength: cascadeResult.strength,
+                price: cascadeResult.executionPrice,
+                time: cascadeResult.executionTime
+            };
+            telegramNotifier.notifyCascadeConfirmed(cascadeForTelegram);
+        }
         
         this.displayRecentCascades();
     }

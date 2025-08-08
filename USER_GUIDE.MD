@@ -1,5 +1,64 @@
 # User Guide
 
+## 📱 TELEGRAM NOTIFICATIONS SETUP
+
+### 🔔 How to Set Up Telegram Alerts
+
+**NEW FEATURE**: Get real-time notifications for all your trades and cascades directly in Telegram!
+
+#### **Step 1: Create a Telegram Bot**
+1. Open Telegram and search for `@BotFather`
+2. Send `/newbot` command
+3. Choose a name and username for your bot
+4. Copy the bot token (looks like: `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
+
+#### **Step 2: Get Your Chat ID**
+1. Start a conversation with your new bot
+2. Send any message to the bot
+3. Visit: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+4. Look for `"chat":{"id":123456789}` - this is your chat ID
+
+#### **Step 3: Configure the System**
+Update `config/telegramConfig.js` with your credentials:
+```javascript
+export const telegramConfig = {
+    token: 'YOUR_BOT_TOKEN_HERE',
+    chatIds: ['YOUR_CHAT_ID_HERE'], // Add multiple IDs: ['123456789', '987654321']
+    notifications: {
+        cascadeConfirmed: true,    // 🎯 Get cascade alerts
+        tradeOpen: true,           // 🚀 Get trade open alerts  
+        tradeClose: true,          // ✅ Get trade close alerts
+        tradeSummary: true         // 📊 Get final summary
+    }
+};
+```
+
+**📝 Multiple Recipients**: You can now send notifications to multiple Telegram chats by adding more chat IDs to the `chatIds` array. This is useful for:
+- Sending alerts to multiple team members
+- Having separate personal and team notification channels
+- Backup notification channels
+
+#### **Step 4: Configure Notification Controls**
+Control which notifications to send via `config/fronttesterconfig.js`:
+```javascript
+export const fronttesterconfig = {
+    showTelegramTrades: true,    // 🚀 Control trade notifications (open/close)
+    showTelegramCascades: true   // 🎯 Control cascade notifications
+};
+```
+
+#### **Step 5: Test Your Setup**
+Run the test script to verify everything works:
+```bash
+node testTelegram.js
+```
+
+#### **What You'll Receive**:
+- **🎯 Cascade Alerts**: When multi-timeframe signals confirm
+- **🚀 Trade Opens**: Entry price, size, leverage, stop loss, take profit
+- **✅/❌ Trade Closes**: Exit details, profit/loss, duration
+- **📊 Final Summary**: Complete trading performance statistics
+
 ## 🚀 LIVE TRADING SYSTEM - multiPivotFronttesterLive.js
 
 ### Complete Multi-Timeframe Trading System ✅ FULLY OPERATIONAL

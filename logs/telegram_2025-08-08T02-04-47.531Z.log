@@ -1,0 +1,76 @@
+[2025-08-08T02:04:54.404Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #1*
+
+💰 *Entry:* $115103.20...
+[2025-08-08T02:04:55.353Z] [SUCCESS] Message sent: 🟢 *TRADE OPENED: LONG #1*
+
+💰 *Entry:* $115103.20...
+[2025-08-08T02:04:55.863Z] [QUEUE] Added message to queue: ❌ *TRADE CLOSED: LONG #1*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:04:55.893Z] [QUEUE] Added message to queue: 🔴 *TRADE OPENED: SHORT #2*
+
+💰 *Entry:* $114825.8...
+[2025-08-08T02:04:56.569Z] [SUCCESS] Message sent: ❌ *TRADE CLOSED: LONG #1*
+
+📊 *Result:* LOSS (SL)
+...
+[2025-08-08T02:04:57.385Z] [QUEUE] Added message to queue: ✅ *TRADE CLOSED: SHORT #2*
+
+📊 *Result:* WIN (TP)
+...
+[2025-08-08T02:04:57.620Z] [QUEUE] Added message to queue: 🔴 *TRADE OPENED: SHORT #3*
+
+💰 *Entry:* $114279.0...
+[2025-08-08T02:04:57.707Z] [QUEUE] Added message to queue: ✅ *TRADE CLOSED: SHORT #3*
+
+📊 *Result:* WIN (TP)
+...
+[2025-08-08T02:04:57.917Z] [SUCCESS] Message sent: 🔴 *TRADE OPENED: SHORT #2*
+
+💰 *Entry:* $114825.8...
+[2025-08-08T02:04:59.166Z] [SUCCESS] Message sent: ✅ *TRADE CLOSED: SHORT #2*
+
+📊 *Result:* WIN (TP)
+...
+[2025-08-08T02:04:59.697Z] [QUEUE] Added message to queue: 🟢 *TRADE OPENED: LONG #4*
+
+💰 *Entry:* $113398.90...
+[2025-08-08T02:05:00.367Z] [SUCCESS] Message sent: 🔴 *TRADE OPENED: SHORT #3*
+
+💰 *Entry:* $114279.0...
+[2025-08-08T02:05:01.720Z] [SUCCESS] Message sent: ✅ *TRADE CLOSED: SHORT #3*
+
+📊 *Result:* WIN (TP)
+...
+[2025-08-08T02:05:02.977Z] [SUCCESS] Message sent: 🟢 *TRADE OPENED: LONG #4*
+
+💰 *Entry:* $113398.90...
+[2025-08-08T02:05:04.299Z] [QUEUE] Added message to queue: ✅ *TRADE CLOSED: LONG #4*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:05:04.486Z] [SUCCESS] Message sent: ✅ *TRADE CLOSED: LONG #4*
+
+📊 *Result:* WIN (TP)
+�...
+[2025-08-08T02:05:08.019Z] [QUEUE] Added message to queue: 🔴 *TRADE OPENED: SHORT #5*
+
+💰 *Entry:* $114730.0...
+[2025-08-08T02:05:08.327Z] [SUCCESS] Message sent: 🔴 *TRADE OPENED: SHORT #5*
+
+💰 *Entry:* $114730.0...
+[2025-08-08T02:05:09.784Z] [QUEUE] Added message to queue: ❌ *TRADE CLOSED: SHORT #5*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:05:09.950Z] [QUEUE] Added message to queue: 📊 *TRADING SUMMARY*
+
+📈 *Total Trades:* 5
+✅ *Winn...
+[2025-08-08T02:05:10.020Z] [SUCCESS] Message sent: ❌ *TRADE CLOSED: SHORT #5*
+
+📊 *Result:* LOSS (SL)...
+[2025-08-08T02:05:11.252Z] [SUCCESS] Message sent: 📊 *TRADING SUMMARY*
+
+📈 *Total Trades:* 5
+✅ *Winn...
