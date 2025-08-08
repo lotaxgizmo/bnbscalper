@@ -1386,9 +1386,34 @@ async function main() {
         
         // Handle graceful shutdown
         process.on('SIGINT', () => {
-            console.log(`\n${colors.yellow}Shutting down...${colors.reset}`);
+            console.log(`\n${colors.yellow}🛑 Ctrl+C detected - Shutting down gracefully...${colors.reset}`);
             fronttester.stop();
-            process.exit(0);
+            
+            // Display final trading statistics before exit
+            console.log(`\n${colors.cyan}=== FINAL SUMMARY (Interrupted) ===${colors.reset}`);
+            
+            // Display trading statistics if any trades were made
+            if (fronttester.trades.length > 0) {
+                fronttester.displayTradingStatistics();
+            } else {
+                console.log(`${colors.yellow}No trades executed during session${colors.reset}`);
+                
+                // Still send basic summary to Telegram
+                const basicStats = {
+                    totalTrades: 0,
+                    winningTrades: 0,
+                    losingTrades: 0,
+                    initialCapital: tradeConfig.initialCapital,
+                    totalPnL: 0,
+                    finalCapital: tradeConfig.initialCapital,
+                    winRate: 0,
+                    totalReturn: 0
+                };
+                telegramNotifier.sendTradingSummary(basicStats);
+            }
+            
+            console.log(`\n${colors.green}✅ Session ended gracefully${colors.reset}`);
+            setTimeout(() => process.exit(0), 1000); // Give time for Telegram messages to send
         });
         
     } catch (error) {
