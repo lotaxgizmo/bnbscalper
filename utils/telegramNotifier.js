@@ -24,12 +24,12 @@ class TelegramNotifier {
         };
         
         // Create logs directory if it doesn't exist
-        this.logsDir = path.join(process.cwd(), 'logs');
-        if (!fs.existsSync(this.logsDir)) {
-            fs.mkdirSync(this.logsDir, { recursive: true });
-        }
+        // this.logsDir = path.join(process.cwd(), 'logs');
+        // if (!fs.existsSync(this.logsDir)) {
+        //     fs.mkdirSync(this.logsDir, { recursive: true });
+        // }
         
-        this.logFile = path.join(this.logsDir, `telegram_${new Date().toISOString().replace(/:/g, '-')}.log`);
+        // this.logFile = path.join(this.logsDir, `telegram_${new Date().toISOString().replace(/:/g, '-')}.log`);
     }
     
     // Log message to file
