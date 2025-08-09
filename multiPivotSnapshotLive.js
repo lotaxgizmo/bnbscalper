@@ -17,7 +17,7 @@ const SNAPSHOT_CONFIG = {
     showRecentCascades: 10,     // Number of recent cascades to show
 
     // Auto-reload configuration
-    autoReload: false,           // Enable auto-reload functionality
+    autoReload: true,           // Enable auto-reload functionality
     reloadInterval: 6           // Reload interval in seconds
 };
 // ==================================
