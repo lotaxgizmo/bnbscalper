@@ -13,8 +13,8 @@ const compound = (capital, ratePercent, times) => {
   
   // Set your values here
   const capital = 100;       // Starting capital in $
-  const rate = 1;            // % increase per compounding
-  const times = 72;         // Number of compounding steps
+  const rate = 20;            // % increase per compounding
+  const times = 40;         // Number of compounding steps
   
   const finalAmount = compound(capital, rate, times);
   console.log(`\n📈 Final amount after ${times} times: $${finalAmount}`);

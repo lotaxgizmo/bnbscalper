@@ -4,13 +4,15 @@
 // ===== SNAPSHOT CONFIGURATION =====
 const SNAPSHOT_CONFIG = {
     // Target timestamp for analysis (YYYY-MM-DD HH:MM:SS format)
-    targetTime: "2025-08-08 02:15:00",
-    liveMode: true,
-
-    length: 720,    
+    targetTime: "2025-08-06 15:32:00",
+    liveMode: true, // Switch between CSV and API
+    currentMode: true, // Switch between current time and target time
+    // websocketMode: false,
+    length: 2880,    
     // Display options
     togglePivots: false,
     toggleCascades: true,
+    showData: false,
     showRecentPivots: 5,        // Number of recent pivots to show per timeframe
     showRecentCascades: 10      // Number of recent cascades to show
 };
@@ -31,6 +33,7 @@ import {
 import { multiPivotConfig } from './config/multiPivotConfig.js'; 
 import { getCandles as getBinanceCandles } from './apis/binance.js';
 import { getCandles as getBybitCandles } from './apis/bybit.js';
+import telegramNotifier from './utils/telegramNotifier.js';
 
 const colors = {
     reset: '\x1b[0m',
@@ -65,8 +68,12 @@ function formatTimeDifference(milliseconds) {
 }
 
 class MultiPivotSnapshotAnalyzer {
-    constructor(snapshotTime) {
-        this.snapshotTime = new Date(snapshotTime).getTime();
+    constructor(snapshotTime, isCurrentMode = false) {
+        if (isCurrentMode) {
+            this.snapshotTime = Date.now(); // Use current time
+        } else {
+            this.snapshotTime = new Date(snapshotTime).getTime();
+        }
         this.timeframeCandles = new Map();
         this.timeframePivots = new Map();
         this.lastPivots = new Map();
@@ -74,6 +81,7 @@ class MultiPivotSnapshotAnalyzer {
         this.windowCounter = 0;
         this.cascadeCounter = 0;
         this.allCascades = [];
+        this.telegramNotifier = telegramNotifier;
         
         // Validate snapshot time
         if (isNaN(this.snapshotTime)) {
@@ -88,7 +96,9 @@ class MultiPivotSnapshotAnalyzer {
     }
 
     async initialize() {
-        console.log(`${colors.cyan}Loading historical data up to snapshot time...${colors.reset}`);
+        if (SNAPSHOT_CONFIG.showData) {
+            console.log(`${colors.cyan}Loading historical data up to snapshot time...${colors.reset}`);
+        }
         
         // Load all timeframe data
         await this.loadAllTimeframeData();
@@ -99,14 +109,18 @@ class MultiPivotSnapshotAnalyzer {
             this.lastPivots.set(tf.interval, { type: null, price: null, time: null, index: 0 });
         }
         
-        console.log(`${colors.green}✅ Data loaded successfully${colors.reset}\n`);
+        if (SNAPSHOT_CONFIG.showData) {
+            console.log(`${colors.green}✅ Data loaded successfully${colors.reset}\n`);
+        }
     }
 
     async loadAllTimeframeData() {
         // Live mode overrides global useLocalData setting
         const shouldUseAPI = SNAPSHOT_CONFIG.liveMode || !useLocalData;
         const dataSourceType = shouldUseAPI ? `${api.toUpperCase()} API` : 'CSV FILES';
-        console.log(`${colors.cyan}Loading data from ${dataSourceType}...${colors.reset}`);
+        if (SNAPSHOT_CONFIG.showData) {
+            console.log(`${colors.cyan}Loading data from ${dataSourceType}...${colors.reset}`);
+        }
         
         // Calculate time window based on length parameter
         const windowStart = this.snapshotTime - (SNAPSHOT_CONFIG.length * 60 * 1000);
@@ -135,7 +149,9 @@ class MultiPivotSnapshotAnalyzer {
             
             const sourceIndicator = shouldUseAPI ? 'API' : 'CSV';
             const windowInfo = `${SNAPSHOT_CONFIG.length}min window`;
-            console.log(`${colors.yellow}[${interval.padEnd(4)}] Loaded ${candles.length.toString().padStart(4)} candles from ${sourceIndicator} (${windowInfo})${colors.reset}`);
+            if (SNAPSHOT_CONFIG.showData) {
+                console.log(`${colors.yellow}[${interval.padEnd(4)}] Loaded ${candles.length.toString().padStart(4)} candles from ${sourceIndicator} (${windowInfo})${colors.reset}`);
+            }
         }
     }
     
@@ -240,7 +256,9 @@ class MultiPivotSnapshotAnalyzer {
     }
 
     processHistoricalPivots() {
-        console.log(`${colors.cyan}Processing pivot history up to snapshot time...${colors.reset}`);
+        if (SNAPSHOT_CONFIG.showData) {
+            console.log(`${colors.cyan}Processing pivot history up to snapshot time...${colors.reset}`);
+        }
         
         // Calculate window from snapshot time based on configured length
         const windowStart = this.snapshotTime - (SNAPSHOT_CONFIG.length * 60 * 1000); // length minutes before snapshot
@@ -267,14 +285,20 @@ class MultiPivotSnapshotAnalyzer {
             
             this.timeframePivots.set(tf.interval, pivots);
             const windowInfo = SNAPSHOT_CONFIG.togglePivots || SNAPSHOT_CONFIG.toggleCascades ? 'all historical' : `${SNAPSHOT_CONFIG.length}min window`;
-            console.log(`${colors.yellow}[${tf.interval.padEnd(4)}] Found ${pivots.length.toString().padStart(3)} pivots (${windowInfo})${colors.reset}`);
+            if (SNAPSHOT_CONFIG.showData) {
+                console.log(`${colors.yellow}[${tf.interval.padEnd(4)}] Found ${pivots.length.toString().padStart(3)} pivots (${windowInfo})${colors.reset}`);
+            }
         }
         
-        console.log(`${colors.green}✅ Pivot processing complete${colors.reset}\n`);
+        if (SNAPSHOT_CONFIG.showData) {
+            console.log(`${colors.green}✅ Pivot processing complete${colors.reset}\n`);
+        }
     }
 
     simulateCascadeWindows() {
-        console.log(`${colors.cyan}Simulating cascade windows up to snapshot time...${colors.reset}`);
+        if (SNAPSHOT_CONFIG.showData) {
+            console.log(`${colors.cyan}Simulating cascade windows up to snapshot time...${colors.reset}`);
+        }
         
         // Get all pivots from all timeframes and sort by time
         const allPivots = [];
@@ -307,7 +331,9 @@ class MultiPivotSnapshotAnalyzer {
         // Final check for expired windows at snapshot time
         this.checkExpiredWindows(this.snapshotTime);
         
-        console.log(`${colors.green}✅ Cascade simulation complete${colors.reset}\n`);
+        if (SNAPSHOT_CONFIG.showData) {
+            console.log(`${colors.green}✅ Cascade simulation complete${colors.reset}\n`);
+        }
     }
 
     openPrimaryWindow(primaryPivot, currentTime) {
@@ -588,10 +614,14 @@ class MultiPivotSnapshotAnalyzer {
             w.status === 'active' && this.snapshotTime <= w.windowEndTime
         );
         
-        // Also get recently executed windows (within 5 minutes of snapshot time)
-        const recentlyExecutedWindows = Array.from(this.activeWindows.values()).filter(w => 
-            w.status === 'executed' && Math.abs(this.snapshotTime - w.executionTime) <= 5 * 60 * 1000
-        );
+        // Also get executed windows that are still within their original cascade window duration
+        const recentlyExecutedWindows = Array.from(this.activeWindows.values()).filter(w => {
+            if (w.status !== 'executed') return false;
+            
+            // Show if we're still within the original window's end time
+            // This uses the actual window duration calculated when the window was opened
+            return this.snapshotTime <= w.windowEndTime;
+        });
         
         console.log(`${colors.brightYellow}┌─ Cascade Windows at Snapshot Time ${'─'.repeat(25)}${colors.reset}`);
         
@@ -606,8 +636,27 @@ class MultiPivotSnapshotAnalyzer {
             if (activeWindows.length > 0) {
                 console.log(`${colors.brightYellow}│${colors.reset}`);
             }
-            console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}RECENTLY EXECUTED WINDOWS (±5min):${colors.reset}`);
-            this.displayWindowDetails(recentlyExecutedWindows, 'executed');
+            
+            // Group windows by timeframe to show appropriate duration
+            const timeframeGroups = new Map();
+            recentlyExecutedWindows.forEach(window => {
+                const tf = window.primaryPivot.timeframe;
+                if (!timeframeGroups.has(tf)) {
+                    timeframeGroups.set(tf, []);
+                }
+                timeframeGroups.get(tf).push(window);
+            });
+            
+            // Display each timeframe group
+            for (const [timeframe, windows] of timeframeGroups) {
+                const windowDurationMinutes = multiPivotConfig.cascadeSettings.confirmationWindow[timeframe] || 60;
+                const durationDisplay = windowDurationMinutes >= 60 ? 
+                    `${Math.floor(windowDurationMinutes / 60)}h${windowDurationMinutes % 60 ? ` ${windowDurationMinutes % 60}m` : ''}` : 
+                    `${windowDurationMinutes}m`;
+                
+                console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}EXECUTED WINDOWS (within ${durationDisplay} cascade):${colors.reset}`);
+                this.displayWindowDetails(windows, 'executed');
+            }
         }
         
         if (activeWindows.length === 0 && recentlyExecutedWindows.length === 0) {
@@ -645,13 +694,23 @@ class MultiPivotSnapshotAnalyzer {
                     console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   Status: ${totalConfirmed}/${minRequired} confirmations → ${colors.brightGreen}READY FOR EXECUTION${colors.reset}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   🎯 ${colors.bold}TRADE SIGNAL: ${window.primaryPivot.signal.toUpperCase()} @ $${window.executionTime ? this.getExecutionPrice(window) : window.primaryPivot.price.toFixed(1)}${colors.reset}`);
+                    
+                    // Send Telegram notification for execution
+                    this.sendCascadeWindowNotification('execute', { window }).catch(err => 
+                        console.error('Telegram notification error:', err.message)
+                    );
                 } else {
                     // Already executed and invalid for trading
                     console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}Window ${window.id}: ${window.primaryPivot.timeframe} ${signalColor}${window.primaryPivot.signal.toUpperCase()}${colors.reset} ${colors.bold}pivot ${colors.dim}[EXECUTED]${colors.reset}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   Executed: ${executionTime} (${executionTime24}) | ${timeDiff} ${timing}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   Final Status: ${totalConfirmed}/${minRequired} confirmations → ${colors.dim}EXECUTED${colors.reset}`);
-                    console.log(`${colors.brightYellow}│${colors.reset}   ${colors.red}⚠️ CASCADE INVALID - Already traded${colors.reset}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   ${colors.red}⚠️ CASCADE INVALID - Already executed${colors.reset}`);
+                    
+                    // Send Telegram notification for executed window
+                    this.sendCascadeWindowNotification('executed', { window }).catch(err => 
+                        console.error('Telegram notification error:', err.message)
+                    );
                 }
             } else {
                 const timeRemainingMs = window.windowEndTime - this.snapshotTime;
@@ -666,11 +725,21 @@ class MultiPivotSnapshotAnalyzer {
                     console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   Status: ${totalConfirmed}/${minRequired} confirmations → ${colors.brightGreen}READY FOR EXECUTION${colors.reset}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   🎯 ${colors.bold}TRADE SIGNAL: ${window.primaryPivot.signal.toUpperCase()} @ Current Market Price${colors.reset}`);
+                    
+                    // Send Telegram notification for ready execution
+                    this.sendCascadeWindowNotification('execute', { window }).catch(err => 
+                        console.error('Telegram notification error:', err.message)
+                    );
                 } else {
                     // Still waiting for confirmations
                     console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}Window ${window.id}: ${window.primaryPivot.timeframe} ${signalColor}${window.primaryPivot.signal.toUpperCase()}${colors.reset} ${colors.bold}pivot ${colors.yellow}[ACTIVE]${colors.reset}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   Status: ${totalConfirmed}/${minRequired} confirmations | ${timeRemainingFormatted} remaining`);
+                    
+                    // Send Telegram notification for waiting window
+                    this.sendCascadeWindowNotification('waiting', { window }).catch(err => 
+                        console.error('Telegram notification error:', err.message)
+                    );
                 }
             }
             
@@ -695,7 +764,7 @@ class MultiPivotSnapshotAnalyzer {
                         const role = multiPivotConfig.timeframes.find(t => t.interval === tf)?.role || 'unknown';
                         return `${tf}(${role})`;
                     });
-                    console.log(`${colors.brightYellow}│${colors.reset}   ${colors.yellow}⏳ WAITING: ${roles.join(' + ')}${colors.reset}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   ${colors.yellow}🟡⏳ WAITING: ${roles.join(' + ')}${colors.reset}`);
                 }
             }
         });
@@ -710,8 +779,8 @@ class MultiPivotSnapshotAnalyzer {
             const showCount = SNAPSHOT_CONFIG.showRecentCascades || 10;
             const recentCascades = this.allCascades.slice(-showCount); // Last N cascades
             
-            recentCascades.forEach(cascade => {
-                const { id, primaryPivot, cascadeResult } = cascade;
+            recentCascades.forEach((cascade, index) => {
+                const { primaryPivot, cascadeResult } = cascade;
                 const executionDate = new Date(cascadeResult.executionTime);
                 const dateStr = executionDate.toLocaleDateString('en-US', { 
                     weekday: 'short', 
@@ -726,7 +795,10 @@ class MultiPivotSnapshotAnalyzer {
                 const signalColor = signal === 'LONG' ? colors.green : colors.red;
                 const ageFormatted = formatTimeDifference(this.snapshotTime - cascadeResult.executionTime);
                 
-                console.log(`${colors.brightGreen}│${colors.reset} ${colors.yellow}[${id.toString().padStart(3)}]${colors.reset} ${dateStr} ${time.padEnd(11)} (${time24}) | ${signalColor}${signal.padEnd(5)}${colors.reset} | ${strength.padStart(2)}% | $${price} | ${ageFormatted} ago`);
+                // Reverse numbering: most recent cascade = #1
+                const displayNumber = recentCascades.length - index;
+                
+                console.log(`${colors.brightGreen}│${colors.reset} ${colors.yellow}[${displayNumber.toString().padStart(3)}]${colors.reset} ${dateStr} ${time.padEnd(11)} (${time24}) | ${signalColor}${signal.padEnd(5)}${colors.reset} | ${strength.padStart(2)}% | $${price} | ${ageFormatted} ago`);
             });
         }
         
@@ -768,31 +840,180 @@ class MultiPivotSnapshotAnalyzer {
         if (this.timeframeCandles.get('1m')?.length > 0) {
             const oneMinCandles = this.timeframeCandles.get('1m');
             const startTime = oneMinCandles[0].time;
-            const timespanHours = (this.snapshotTime - startTime) / (1000 * 60 * 60);
-            console.log(`${colors.cyan}│${colors.reset} Analysis Timespan: ${timespanHours.toFixed(1)} hours`);
+            const timespanMs = this.snapshotTime - startTime;
+            const timespanFormatted = formatTimeDifference(timespanMs);
+            console.log(`${colors.cyan}│${colors.reset} Analysis Timespan: ${timespanFormatted}`);
         }
         
         console.log(`${colors.cyan}└${'─'.repeat(70)}${colors.reset}\n`);
+    }
+
+    // Telegram notification methods
+    async sendCascadeWindowNotification(windowStatus, windowDetails) {
+        try {
+            let message = '';
+            const timeFormatted = new Date(this.snapshotTime).toLocaleString();
+            const time24 = new Date(this.snapshotTime).toLocaleTimeString('en-GB', { hour12: false });
+            
+            if (windowStatus === 'waiting') {
+                const { window } = windowDetails;
+                const confirmationCount = window.confirmations.length;
+                const totalConfirmed = 1 + confirmationCount;
+                const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
+                const timeRemaining = formatTimeDifference(window.windowEndTime - this.snapshotTime);
+                const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢' : '🔴';
+                const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+                
+                message = `🟡⏳ *CASCADE WINDOW WAITING*\n\n` +
+                    `${signalEmoji} *Signal:* ${direction}\n` +
+                    `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
+                    `📊 *Status:* ${totalConfirmed}/${minRequired} confirmations\n` +
+                    `💰 *Price:* $${window.primaryPivot.price.toFixed(2)}\n` +
+                    `⏰ *Time Remaining:* ${timeRemaining}\n` +
+                    `🕐 *Snapshot:* ${timeFormatted} (${time24})\n`;
+                    
+                if (window.confirmations.length > 0) {
+                    message += `\n*Confirmations:*\n`;
+                    window.confirmations.forEach(conf => {
+                        message += `• ${conf.timeframe}: $${conf.pivot.price.toFixed(2)}\n`;
+                    });
+                }
+                
+            } else if (windowStatus === 'execute') {
+                const { window } = windowDetails;
+                const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢⬆️' : '🔴⬇️';
+                const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+                const executionPrice = this.getExecutionPrice(window);
+                
+                message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
+                    `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
+                    `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
+                    `💰 *Execution Price:* $${executionPrice}\n` +
+                    `📊 *Confirmations:* ${1 + window.confirmations.length}/${multiPivotConfig.cascadeSettings.minTimeframesRequired}\n` +
+                    `🕐 *Snapshot:* ${timeFormatted} (${time24})\n\n` +
+                    `*Confirmed Timeframes:*\n` +
+                    `• ${window.primaryPivot.timeframe}: $${window.primaryPivot.price.toFixed(2)} (Primary)\n`;
+                    
+                window.confirmations.forEach(conf => {
+                    message += `• ${conf.timeframe}: $${conf.pivot.price.toFixed(2)}\n`;
+                });
+            } else if (windowStatus === 'executed') {
+                const { window } = windowDetails;
+                const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢✅' : '🔴✅';
+                const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+                const executionPrice = this.getExecutionPrice(window);
+                const executionTime = new Date(window.executionTime).toLocaleString();
+                const executionTime24 = new Date(window.executionTime).toLocaleTimeString('en-GB', { hour12: false });
+                const timeAgo = formatTimeDifference(this.snapshotTime - window.executionTime);
+                
+                message = `🔴✅ *CASCADE EXECUTED*\n\n` +
+                    `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
+                    `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
+                    `💰 *Execution Price:* $${executionPrice}\n` +
+                    `📊 *Final Confirmations:* ${1 + window.confirmations.length}/${multiPivotConfig.cascadeSettings.minTimeframesRequired}\n` +
+                    `⏰ *Executed:* ${executionTime} (${executionTime24})\n` +
+                    `🕐 *Time Ago:* ${timeAgo}\n` +
+                    `🕐 *Snapshot:* ${timeFormatted} (${time24})\n\n` +
+                    `*Confirmed Timeframes:*\n` +
+                    `• ${window.primaryPivot.timeframe}: $${window.primaryPivot.price.toFixed(2)} (Primary)\n`;
+                    
+                window.confirmations.forEach(conf => {
+                    message += `• ${conf.timeframe}: $${conf.pivot.price.toFixed(2)}\n`;
+                });
+            }
+            
+            if (message) {
+                await this.telegramNotifier.sendMessage(message);
+            }
+        } catch (error) {
+            console.error('Error sending Telegram notification:', error.message);
+        }
+    }
+
+    async sendSnapshotSummaryNotification() {
+        try {
+            const activeWindows = Array.from(this.activeWindows.values()).filter(w => 
+                w.status === 'active' && this.snapshotTime <= w.windowEndTime
+            );
+            
+            const recentlyExecutedWindows = Array.from(this.activeWindows.values()).filter(w => {
+                if (w.status !== 'executed') return false;
+                return this.snapshotTime <= w.windowEndTime;
+            });
+            
+            const timeFormatted = new Date(this.snapshotTime).toLocaleString();
+            const time24 = new Date(this.snapshotTime).toLocaleTimeString('en-GB', { hour12: false });
+            
+            let message = `📊 *SNAPSHOT ANALYSIS SUMMARY*\n\n` +
+                `🕐 *Analysis Time:* ${timeFormatted} (${time24})\n` +
+                `📈 *Total Cascades:* ${this.allCascades.length}\n` +
+                `🟡 *Active Windows:* ${activeWindows.length}\n` +
+                `🟢 *Recently Executed:* ${recentlyExecutedWindows.length}\n\n`;
+            
+            if (activeWindows.length > 0) {
+                message += `*Active Windows:*\n`;
+                activeWindows.forEach(window => {
+                    const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢' : '🔴';
+                    const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+                    const confirmations = 1 + window.confirmations.length;
+                    const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
+                    const canExecute = this.checkHierarchicalExecution(window);
+                    const status = canExecute && confirmations >= minRequired ? '🚀 READY' : '🟡⏳ WAITING';
+                    
+                    message += `${signalEmoji} ${window.id}: ${direction} ${status} (${confirmations}/${minRequired})\n`;
+                });
+                message += '\n';
+            }
+            
+            if (recentlyExecutedWindows.length > 0) {
+                message += `*Recently Executed:*\n`;
+                recentlyExecutedWindows.forEach(window => {
+                    const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢' : '🔴';
+                    const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+                    const timeAgo = formatTimeDifference(this.snapshotTime - window.executionTime);
+                    
+                    message += `${signalEmoji} ${window.id}: ${direction} EXECUTED (${timeAgo} ago)\n`;
+                });
+            }
+            
+            await this.telegramNotifier.sendMessage(message);
+        } catch (error) {
+            console.error('Error sending Telegram summary notification:', error.message);
+        }
     }
 }
 
 // Main execution
 async function main() {
-    // Use snapshot time from config
-    const snapshotTimeArg = SNAPSHOT_CONFIG.targetTime;
+    let analyzer;
     
-    if (!snapshotTimeArg) {
-        console.log(`${colors.red}❌ Error: No snapshot time configured${colors.reset}`);
-        console.log(`${colors.yellow}Please set SNAPSHOT_CONFIG.targetTime at the top of this file${colors.reset}`);
-        console.log(`${colors.yellow}Format: "YYYY-MM-DD HH:MM:SS"${colors.reset}`);
-        console.log(`${colors.yellow}Example: "2025-08-09 15:30:00"${colors.reset}`);
-        process.exit(1);
+    if (SNAPSHOT_CONFIG.currentMode) {
+        // LIVE MODE: Use current time
+        console.log(`${colors.red}🔴 LIVE MODE: Analyzing current market state${colors.reset}`);
+        console.log(`${colors.cyan}Current time: ${colors.brightYellow}${new Date().toLocaleString()}${colors.reset}`);
+        console.log(`CANDLE LENGTH : ${SNAPSHOT_CONFIG.length}\n`);
+        
+        
+        analyzer = new MultiPivotSnapshotAnalyzer(null, true); // Pass true for currentMode
+    } else {
+        // HISTORICAL MODE: Use configured target time
+        const snapshotTimeArg = SNAPSHOT_CONFIG.targetTime;
+        
+        if (!snapshotTimeArg) {
+            console.log(`${colors.red}❌ Error: No snapshot time configured${colors.reset}`);
+            console.log(`${colors.yellow}Please set SNAPSHOT_CONFIG.targetTime at the top of this file${colors.reset}`);
+            console.log(`${colors.yellow}Format: "YYYY-MM-DD HH:MM:SS"${colors.reset}`);
+            console.log(`${colors.yellow}Example: "2025-08-09 15:30:00"${colors.reset}`);
+            process.exit(1);
+        }
+        
+        console.log(`${colors.cyan}📅 HISTORICAL MODE: Using configured snapshot time${colors.reset}`);
+        console.log(`${colors.cyan}Target time: ${colors.brightYellow}${snapshotTimeArg}${colors.reset}\n`);
+        
+        analyzer = new MultiPivotSnapshotAnalyzer(snapshotTimeArg, false);
     }
     
     try {
-        console.log(`${colors.cyan}Using configured snapshot time: ${colors.brightYellow}${snapshotTimeArg}${colors.reset}\n`);
-        
-        const analyzer = new MultiPivotSnapshotAnalyzer(snapshotTimeArg);
         await analyzer.initialize();
         analyzer.analyzeSnapshot();
         

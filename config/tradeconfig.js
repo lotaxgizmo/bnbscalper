@@ -16,7 +16,7 @@ export const tradeConfig = {
     // Legacy names for compatibility
     takeProfit: 0.5,
     stopLoss: 0.3,
-    leverage: 1,        
+    leverage: 100,        
     
     // Trailing stop settings
     enableTrailingStop: false,     // Enable trailing stop loss
@@ -33,8 +33,8 @@ export const tradeConfig = {
     showCandle: false,
     showPivot: false,
     showLimits: false,
-    showTradeDetails: false,
-    hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
+    showTradeDetails: true,
+    hideCascades: false,  // Hide cascade confirmation logs (keeps trade execution logs)
         
     // Position sizing settings
     positionSizeMode: 'percentage',  // 'fixed', 'percentage', or 'minimum'
