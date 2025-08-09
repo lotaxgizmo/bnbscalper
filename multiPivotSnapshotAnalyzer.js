@@ -7,7 +7,7 @@ const SNAPSHOT_CONFIG = {
     targetTime: "2025-08-08 02:15:00",
     liveMode: true,
 
-    length: 1440,    
+    length: 720,    
     // Display options
     togglePivots: false,
     toggleCascades: true,
@@ -28,8 +28,9 @@ import {
     limit as configLimit
 } from './config/config.js';
 
-import { multiPivotConfig } from './config/multiPivotConfig.js';
-import { MultiTimeframePivotDetector } from './utils/multiTimeframePivotDetector.js';
+import { multiPivotConfig } from './config/multiPivotConfig.js'; 
+import { getCandles as getBinanceCandles } from './apis/binance.js';
+import { getCandles as getBybitCandles } from './apis/bybit.js';
 
 const colors = {
     reset: '\x1b[0m',
@@ -102,32 +103,39 @@ class MultiPivotSnapshotAnalyzer {
     }
 
     async loadAllTimeframeData() {
-        const dataSourceType = useLocalData ? 'CSV FILES' : `${api.toUpperCase()} API`;
+        // Live mode overrides global useLocalData setting
+        const shouldUseAPI = SNAPSHOT_CONFIG.liveMode || !useLocalData;
+        const dataSourceType = shouldUseAPI ? `${api.toUpperCase()} API` : 'CSV FILES';
         console.log(`${colors.cyan}Loading data from ${dataSourceType}...${colors.reset}`);
         
         // Calculate time window based on length parameter
         const windowStart = this.snapshotTime - (SNAPSHOT_CONFIG.length * 60 * 1000);
         
-        for (const tf of multiPivotConfig.timeframes) {
+        // OPTIMIZATION: Load all timeframes in parallel
+        const loadPromises = multiPivotConfig.timeframes.map(async (tf) => {
             let candles = [];
             
-            if (useLocalData) {
+            if (shouldUseAPI) {
+                // Load from API with precise time window
+                candles = await this.loadTimeframeFromAPI(tf.interval, windowStart, this.snapshotTime);
+            } else {
                 // Load directly from CSV with time filtering
                 candles = await this.loadTimeframeFromCSV(tf.interval, windowStart, this.snapshotTime);
-            } else {
-                // Use API loading (fallback to detector for API)
-                const detector = new MultiTimeframePivotDetector(symbol, multiPivotConfig);
-                await detector.loadTimeframeData(tf, false);
-                candles = detector.timeframeData.get(tf.interval) || [];
-                // Filter to time window and snapshot time
-                candles = candles.filter(candle => candle.time >= windowStart && candle.time <= this.snapshotTime);
             }
             
-            this.timeframeCandles.set(tf.interval, candles);
+            return { interval: tf.interval, candles };
+        });
+        
+        // Wait for all timeframes to load simultaneously
+        const results = await Promise.all(loadPromises);
+        
+        // Store results and log
+        for (const { interval, candles } of results) {
+            this.timeframeCandles.set(interval, candles);
             
-            const sourceIndicator = useLocalData ? 'CSV' : 'API';
+            const sourceIndicator = shouldUseAPI ? 'API' : 'CSV';
             const windowInfo = `${SNAPSHOT_CONFIG.length}min window`;
-            console.log(`${colors.yellow}[${tf.interval.padEnd(4)}] Loaded ${candles.length.toString().padStart(4)} candles from ${sourceIndicator} (${windowInfo})${colors.reset}`);
+            console.log(`${colors.yellow}[${interval.padEnd(4)}] Loaded ${candles.length.toString().padStart(4)} candles from ${sourceIndicator} (${windowInfo})${colors.reset}`);
         }
     }
     
@@ -172,6 +180,50 @@ class MultiPivotSnapshotAnalyzer {
         candles.sort((a, b) => a.time - b.time);
         
         return candles;
+    }
+    
+    async loadTimeframeFromAPI(interval, startTime, endTime) {
+        // Get the appropriate API function
+        const getCandles = api === 'binance' ? getBinanceCandles : getBybitCandles;
+        
+        // Calculate how many candles we need based on time window
+        const intervalMinutes = {
+            '1m': 1,
+            '5m': 5,
+            '15m': 15,
+            '30m': 30,
+            '1h': 60,
+            '4h': 240,
+            '1d': 1440
+        };
+        
+        const minutesPerCandle = intervalMinutes[interval] || 1;
+        const timeWindowMinutes = (endTime - startTime) / (60 * 1000);
+        const estimatedCandles = Math.ceil(timeWindowMinutes / minutesPerCandle) + 10; // Add buffer
+        
+        try {
+            // Fetch candles from API
+            const allCandles = await getCandles(symbol, interval, estimatedCandles, endTime, false);
+            
+            if (!allCandles || allCandles.length === 0) {
+                console.warn(`${colors.yellow}[${interval}] No candles received from API${colors.reset}`);
+                return [];
+            }
+            
+            // Filter to exact time window
+            const filteredCandles = allCandles.filter(candle => 
+                candle.time >= startTime && candle.time <= endTime
+            );
+            
+            // Sort chronologically
+            filteredCandles.sort((a, b) => a.time - b.time);
+            
+            return filteredCandles;
+            
+        } catch (error) {
+            console.error(`${colors.red}[${interval}] Error loading from API:${colors.reset}`, error.message);
+            return [];
+        }
     }
 
     analyzeSnapshot() {
@@ -584,17 +636,42 @@ class MultiPivotSnapshotAnalyzer {
                 const timeDiff = formatTimeDifference(Math.abs(this.snapshotTime - window.executionTime));
                 const timing = window.executionTime <= this.snapshotTime ? 'ago' : 'from now';
                 
-                console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}Window ${window.id}: ${window.primaryPivot.timeframe} ${signalColor}${window.primaryPivot.signal.toUpperCase()}${colors.reset} ${colors.bold}pivot ${colors.brightGreen}[EXECUTED]${colors.reset}`);
-                console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
-                console.log(`${colors.brightYellow}│${colors.reset}   Executed: ${executionTime} (${executionTime24}) | ${timeDiff} ${timing}`);
-                console.log(`${colors.brightYellow}│${colors.reset}   Final Status: ${totalConfirmed}/${minRequired} confirmations → ${colors.brightGreen}EXECUTED${colors.reset}`);
+                // Check if this is the exact execution moment (same minute as snapshot)
+                const isExecutionMoment = Math.abs(this.snapshotTime - window.executionTime) <= 60000; // Within 1 minute
+                
+                if (isExecutionMoment && timing === 'ago' && timeDiff === '0m') {
+                    // This is the EXACT moment when cascade becomes complete - show EXECUTE TRADE
+                    console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}Window ${window.id}: ${window.primaryPivot.timeframe} ${signalColor}${window.primaryPivot.signal.toUpperCase()}${colors.reset} ${colors.bold}pivot ${colors.brightGreen}[🚀 EXECUTE TRADE]${colors.reset}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   Status: ${totalConfirmed}/${minRequired} confirmations → ${colors.brightGreen}READY FOR EXECUTION${colors.reset}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   🎯 ${colors.bold}TRADE SIGNAL: ${window.primaryPivot.signal.toUpperCase()} @ $${window.executionTime ? this.getExecutionPrice(window) : window.primaryPivot.price.toFixed(1)}${colors.reset}`);
+                } else {
+                    // Already executed and invalid for trading
+                    console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}Window ${window.id}: ${window.primaryPivot.timeframe} ${signalColor}${window.primaryPivot.signal.toUpperCase()}${colors.reset} ${colors.bold}pivot ${colors.dim}[EXECUTED]${colors.reset}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   Executed: ${executionTime} (${executionTime24}) | ${timeDiff} ${timing}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   Final Status: ${totalConfirmed}/${minRequired} confirmations → ${colors.dim}EXECUTED${colors.reset}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   ${colors.red}⚠️ CASCADE INVALID - Already traded${colors.reset}`);
+                }
             } else {
                 const timeRemainingMs = window.windowEndTime - this.snapshotTime;
                 const timeRemainingFormatted = formatTimeDifference(timeRemainingMs);
                 
-                console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}Window ${window.id}: ${window.primaryPivot.timeframe} ${signalColor}${window.primaryPivot.signal.toUpperCase()}${colors.reset} ${colors.bold}pivot ${colors.yellow}[ACTIVE]${colors.reset}`);
-                console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
-                console.log(`${colors.brightYellow}│${colors.reset}   Status: ${totalConfirmed}/${minRequired} confirmations | ${timeRemainingFormatted} remaining`);
+                // Check if this window is ready for execution
+                const canExecute = this.checkHierarchicalExecution(window);
+                
+                if (canExecute && totalConfirmed >= minRequired) {
+                    // Window is complete and ready for execution
+                    console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}Window ${window.id}: ${window.primaryPivot.timeframe} ${signalColor}${window.primaryPivot.signal.toUpperCase()}${colors.reset} ${colors.bold}pivot ${colors.brightGreen}[🚀 EXECUTE TRADE]${colors.reset}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   Status: ${totalConfirmed}/${minRequired} confirmations → ${colors.brightGreen}READY FOR EXECUTION${colors.reset}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   🎯 ${colors.bold}TRADE SIGNAL: ${window.primaryPivot.signal.toUpperCase()} @ Current Market Price${colors.reset}`);
+                } else {
+                    // Still waiting for confirmations
+                    console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}Window ${window.id}: ${window.primaryPivot.timeframe} ${signalColor}${window.primaryPivot.signal.toUpperCase()}${colors.reset} ${colors.bold}pivot ${colors.yellow}[ACTIVE]${colors.reset}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
+                    console.log(`${colors.brightYellow}│${colors.reset}   Status: ${totalConfirmed}/${minRequired} confirmations | ${timeRemainingFormatted} remaining`);
+                }
             }
             
             if (window.confirmations.length > 0) {
@@ -602,16 +679,16 @@ class MultiPivotSnapshotAnalyzer {
                 window.confirmations.forEach(conf => {
                     const confTime = new Date(conf.confirmTime).toLocaleString();
                     const confTime24 = new Date(conf.confirmTime).toLocaleTimeString('en-GB', { hour12: false });
-                    const timeAfterFormatted = formatTimeDifference(conf.confirmTime - window.primaryPivot.time);
-                    console.log(`${colors.brightYellow}│${colors.reset}     • ${conf.timeframe}: ${confTime} (${confTime24}) @ $${conf.pivot.price.toFixed(1)} (+${timeAfterFormatted})`);
+                    const timeAgoFormatted = formatTimeDifference(this.snapshotTime - conf.confirmTime);
+                    console.log(`${colors.brightYellow}│${colors.reset}     • ${colors.green}${conf.timeframe}: ${confTime} (${confTime24}) @ $${conf.pivot.price.toFixed(1)} (${timeAgoFormatted} ago)${colors.reset}`);
                 });
             }
             
             if (windowType === 'active') {
                 // Check execution readiness for active windows
                 const canExecute = this.checkHierarchicalExecution(window);
-                if (canExecute) {
-                    console.log(`${colors.brightYellow}│${colors.reset}   ${colors.brightGreen}✅ READY FOR EXECUTION${colors.reset}`);
+                if (canExecute && totalConfirmed >= minRequired) {
+                    // Already handled above in EXECUTE TRADE case
                 } else {
                     const confirmedTFs = [window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)];
                     const roles = confirmedTFs.map(tf => {
@@ -654,6 +731,15 @@ class MultiPivotSnapshotAnalyzer {
         }
         
         console.log(`${colors.brightGreen}└${'─'.repeat(70)}${colors.reset}\n`);
+    }
+
+    getExecutionPrice(window) {
+        if (!window.executionTime) return window.primaryPivot.price.toFixed(1);
+        
+        // Find execution price from 1-minute candles
+        const oneMinuteCandles = this.timeframeCandles.get('1m') || [];
+        const executionCandle = oneMinuteCandles.find(c => Math.abs(c.time - window.executionTime) <= 30000);
+        return executionCandle ? executionCandle.close.toFixed(1) : window.primaryPivot.price.toFixed(1);
     }
 
     displaySummaryStatistics() {
