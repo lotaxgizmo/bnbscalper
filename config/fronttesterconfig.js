@@ -20,12 +20,12 @@ export const fronttesterconfig = {
     hideProgressDisplay: true, // Hide progress percentage display (Progress: 15.4%...)
     
     showTrades: true,          // Show/hide trade opening and closing logs
-    showWindow: true,          // Show/hide window opening, confirmation, and execution logs
-    showRecentCascades: true,  // Show/hide recent cascades display section
+    showWindow: false,          // Show/hide window opening, confirmation, and execution logs
+    showRecentCascades: false,  // Show/hide recent cascades display section
     showAllTrades: true,        // Show/hide "All Trades Taken" detailed summary section
     
     // Past Mode Simulation Settings
-    pastMode: false,             // Enable past mode simulation (false = live WebSocket mode)
+    pastMode: true,             // Enable past mode simulation (false = live WebSocket mode)
     speedMultiplier: 100000,     // Simulation speed: 1=normal, 2=2x, 10=10x speed
     startFromEnd: true,         // Start simulation from most recent data
     simulationLength: null,     // Number of candles to simulate (null = use full limit)
@@ -47,6 +47,6 @@ export const fronttesterconfig = {
     beepVolume: 1,              // Beep volume (1-3, 1=single beep, 2=double, 3=triple)
     
     // Telegram Notification Controls
-    showTelegramTrades: false,    // Send Telegram notifications for trades (open/close)
+    showTelegramTrades: true,    // Send Telegram notifications for trades (open/close)
     showTelegramCascades: false   // Send Telegram notifications for cascade confirmations
 };

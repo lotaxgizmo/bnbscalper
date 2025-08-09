@@ -10,12 +10,13 @@ export const tradeConfig = {
     direction: 'both',
 
     // Profit and loss settings (in %)
-    takeProfitPercent: 1,
-    stopLossPercent: 0.2,
+    takeProfitPercent: 0.5,
+    stopLossPercent: 0.3,
     
     // Legacy names for compatibility
-    takeProfit: 1,
-    stopLoss: 0.2,
+    takeProfit: 0.5,
+    stopLoss: 0.3,
+    leverage: 1,        
     
     // Trailing stop settings
     enableTrailingStop: false,     // Enable trailing stop loss
@@ -27,7 +28,6 @@ export const tradeConfig = {
     trailingTakeProfitDistance: 0.3, // Distance to trail behind best price for TP (in %)
     
  
-    leverage: 100,        
     
     
     showCandle: false,

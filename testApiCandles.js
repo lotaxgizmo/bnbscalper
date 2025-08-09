@@ -8,9 +8,14 @@ import path from 'path';
 const scannerConfig = {
     useHistoricalMode: true,        // true = CSV data, false = live API
     historicalSettings: {
-        minutesBack: 24005,           // How many 1m candles back from CSV end (24 hours)
+        minutesBack: 1458,           // How many 1m candles back from CSV end (24 hours)
+        // minutesBack: 39698,           // How many 1m candles back from CSV end (24 hours)
         simulateRealTime: true,      // Simulate as if it's happening "now"
         showActualTimestamp: true   // Show real historical time vs simulated
+    },
+    displaySettings: {
+        useHumanReadableTime: true,  // If true, shows time as "2d 5h 30m" instead of "3050min ago"
+        showTimeFormats: true       // If true, shows both 12h and 24h time formats
     }
 };
 
@@ -40,6 +45,42 @@ class LivePivotScanner {
         this.activeWindows = new Map();    // Track active cascade windows
         this.windowCounter = 0;            // Counter for window IDs
         this.currentTime = Date.now();     // Current snapshot time
+    }
+    
+    // Format time difference in a human-readable way
+    formatTimeDifference(milliseconds) {
+        // If human-readable time is disabled, just return minutes
+        if (!scannerConfig.displaySettings?.useHumanReadableTime) {
+            return `${Math.round(milliseconds / (60 * 1000))}min ago`;
+        }
+        
+        const seconds = Math.floor(milliseconds / 1000);
+        
+        if (seconds < 60) {
+            return `${seconds}s ago`;
+        }
+        
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) {
+            return `${minutes}m ago`;
+        }
+        
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) {
+            const remainingMinutes = minutes % 60;
+            return remainingMinutes > 0 ? 
+                `${hours}h ${remainingMinutes}m ago` : 
+                `${hours}h ago`;
+        }
+        
+        const days = Math.floor(hours / 24);
+        const remainingHours = hours % 24;
+        
+        if (remainingHours === 0) {
+            return `${days}d ago`;
+        }
+        
+        return `${days}d ${remainingHours}h ago`;
     }
 
     async scanMarket() {
@@ -313,16 +354,28 @@ class LivePivotScanner {
             const latestPivot = pivots.length > 0 ? pivots[pivots.length - 1] : null;
             
             if (latestPivot) {
-                const pivotAge = Math.round((this.currentTime - latestPivot.time) / (60 * 1000));
+                const pivotAgeMs = this.currentTime - latestPivot.time;
+                const pivotAgeMin = Math.round(pivotAgeMs / (60 * 1000)); // Keep minutes for window status check
                 const roleColor = tf.role === 'primary' ? colors.brightYellow : tf.role === 'confirmation' ? colors.brightCyan : colors.white;
                 
                 // Check window status for all timeframes with hierarchical logic
-                let windowStatus = this.getWindowStatus(tf, pivotAge);
+                let windowStatus = this.getWindowStatus(tf, pivotAgeMin);
                 
                 // Show cascade-relevant pivot info if different from latest
                 let cascadeInfo = this.getCascadeRelevantPivotInfo(tf, pivots);
                 
-                console.log(`${colors.green}[${tf.interval.padEnd(4)}] ✅ ${pivots.length} pivots | Latest: ${roleColor}${latestPivot.signal.toUpperCase()}${colors.reset} @ $${latestPivot.price.toFixed(1)} (${pivotAge}min ago) ${windowStatus}${cascadeInfo}`);
+                // Format time in both 12h and 24h formats
+                const pivotTime12 = new Date(latestPivot.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const pivotTime24 = new Date(latestPivot.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                
+                // Format the time display based on configuration
+                const timeDisplay = this.formatTimeDifference(pivotAgeMs);
+                
+                // Conditionally include time formats based on configuration
+                const timeFormats = scannerConfig.displaySettings?.showTimeFormats ? 
+                    ` | ${pivotTime12} | ${pivotTime24}` : '';
+                
+                console.log(`${colors.green}[${tf.interval.padEnd(4)}] ✅ ${pivots.length} pivots | Latest: ${roleColor}${latestPivot.signal.toUpperCase()}${colors.reset} @ $${latestPivot.price.toFixed(1)} (${timeDisplay}${timeFormats}) ${windowStatus}${cascadeInfo}`);
             } else {
                 console.log(`${colors.dim}[${tf.interval.padEnd(4)}] ⚪ No recent pivots detected${colors.reset}`);
             }
@@ -359,20 +412,42 @@ class LivePivotScanner {
                 }
             }
             
-            // For confirmation timeframes, they're always "within window" but usefulness depends on primary
+            // Check signal alignment with active primary signals
+            const activePrimarySignals = this.getActivePrimarySignals();
+            const pivots = this.timeframePivots.get(timeframe.interval) || [];
+            const latestPivot = pivots.length > 0 ? pivots[pivots.length - 1] : null;
+            
+            // Check if latest pivot aligns with any active primary signal
+            const isAligned = latestPivot && activePrimarySignals.includes(latestPivot.signal.toLowerCase());
+            
+            // For confirmation timeframes
             if (timeframe.role === 'confirmation') {
-                return hasActivePrimary ? 
-                    `${colors.brightGreen}(Active for Cascade)${colors.reset}` : 
-                    `${colors.yellow}(Ready, awaiting Primary)${colors.reset}`;
+                if (!hasActivePrimary) {
+                    return `${colors.yellow}(Ready, awaiting Primary)${colors.reset}`;
+                }
+                
+                return isAligned ? 
+                    `${colors.brightGreen}(Aligned for Cascade)${colors.reset}` : 
+                    `${colors.red}(Signal Conflict - ${latestPivot?.signal.toUpperCase() || 'None'} vs Primary)${colors.reset}`;
+                    
             } else if (timeframe.role === 'execution') {
                 if (!hasActivePrimary) {
                     return `${colors.dim}(Idle, no Active Primary)${colors.reset}`;
                 }
                 
-                // For execution timeframes, check if we have immediate execution pivots available
-                const pivots = this.timeframePivots.get(timeframe.interval) || [];
-                const activePrimarySignals = this.getActivePrimarySignals();
+                if (!isAligned) {
+                    return `${colors.red}(Signal Conflict - ${latestPivot?.signal.toUpperCase() || 'None'} vs Primary)${colors.reset}`;
+                }
                 
+                // Check if we have enough aligned timeframes for cascade execution
+                const alignedTimeframes = this.countAlignedTimeframes(activePrimarySignals);
+                const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
+                
+                if (alignedTimeframes < minRequired) {
+                    return `${colors.yellow}(Aligned but Insufficient - ${alignedTimeframes}/${minRequired} timeframes)${colors.reset}`;
+                }
+                
+                // For execution timeframes, check if we have immediate execution pivots available
                 // Look for immediate execution pivots (0-1 minutes old)
                 let hasImmediateExecution = false;
                 for (const pivot of pivots) {
@@ -410,6 +485,34 @@ class LivePivotScanner {
         }
         
         return activePrimarySignals;
+    }
+
+    countAlignedTimeframes(activePrimarySignals) {
+        let alignedCount = 0;
+        
+        for (const tf of multiPivotConfig.timeframes) {
+            const pivots = this.timeframePivots.get(tf.interval) || [];
+            if (pivots.length > 0) {
+                const latestPivot = pivots[pivots.length - 1];
+                
+                // For primary timeframes, check if they're within window
+                if (tf.role === 'primary') {
+                    const pivotAge = Math.round((this.currentTime - latestPivot.time) / (60 * 1000));
+                    const confirmationWindow = multiPivotConfig.cascadeSettings.confirmationWindow[tf.interval];
+                    
+                    if (pivotAge <= confirmationWindow && activePrimarySignals.includes(latestPivot.signal.toLowerCase())) {
+                        alignedCount++;
+                    }
+                } else {
+                    // For confirmation/execution timeframes, check signal alignment
+                    if (activePrimarySignals.includes(latestPivot.signal.toLowerCase())) {
+                        alignedCount++;
+                    }
+                }
+            }
+        }
+        
+        return alignedCount;
     }
 
     getCascadeRelevantPivotInfo(timeframe, pivots) {
@@ -482,17 +585,49 @@ class LivePivotScanner {
             }
         }
         
-        // If the latest pivot doesn't match active primaries, show the relevant one
-        if (relevantPivot && relevantPivot !== latestPivot) {
+        // For execution timeframes, always show window information when we have matching pivots
+        if (timeframe.role === 'execution' && activePrimarySignals.length > 0) {
+            // Count all matching pivots for window information
+            let matchingPivotCount = 0;
+            for (let i = pivots.length - 1; i >= 0; i--) {
+                const pivot = pivots[i];
+                if (activePrimarySignals.includes(pivot.signal.toLowerCase())) {
+                    matchingPivotCount++;
+                }
+            }
+            
+            if (matchingPivotCount > 0) {
+                const windowInfo = matchingPivotCount === 1 ? 'first window' : `${matchingPivotCount} windows total`;
+                
+                // If we have an immediate execution pivot, show it with window info
+                if (relevantPivot && relevantPivot !== latestPivot) {
+                    const relevantAge = Math.round((this.currentTime - relevantPivot.time) / (60 * 1000));
+                    const signalColor = relevantPivot.signal.toLowerCase() === 'long' ? colors.brightGreen : colors.brightRed;
+                    
+                    if (relevantAge <= 1) {
+                        return `\n${colors.dim}                    → ${colors.brightGreen}🚀 IMMEDIATE EXECUTION: ${signalColor}${relevantPivot.signal.toUpperCase()}${colors.reset} @ $${relevantPivot.price.toFixed(1)} ${colors.brightGreen}(${relevantAge}min ago - ${windowInfo})${colors.reset}`;
+                    }
+                }
+                
+                // If the latest pivot is the matching one and it's immediate, show window info
+                if (relevantPivot === latestPivot || (!relevantPivot && activePrimarySignals.includes(latestPivot?.signal.toLowerCase()))) {
+                    const pivotToCheck = relevantPivot || latestPivot;
+                    const pivotAge = Math.round((this.currentTime - pivotToCheck.time) / (60 * 1000));
+                    
+                    if (pivotAge <= 1) {
+                        const signalColor = pivotToCheck.signal.toLowerCase() === 'long' ? colors.brightGreen : colors.brightRed;
+                        return `\n${colors.dim}                    → ${colors.brightGreen}🚀 IMMEDIATE EXECUTION: ${signalColor}${pivotToCheck.signal.toUpperCase()}${colors.reset} @ $${pivotToCheck.price.toFixed(1)} ${colors.brightGreen}(${pivotAge}min ago - ${windowInfo})${colors.reset}`;
+                    }
+                }
+            }
+        }
+        
+        // If the latest pivot doesn't match active primaries, show the relevant one (for non-execution timeframes)
+        if (relevantPivot && relevantPivot !== latestPivot && timeframe.role !== 'execution') {
             const relevantAge = Math.round((this.currentTime - relevantPivot.time) / (60 * 1000));
             const signalColor = relevantPivot.signal.toLowerCase() === 'long' ? colors.brightGreen : colors.brightRed;
             
-            // For execution timeframes, highlight immediate availability
-            if (timeframe.role === 'execution' && relevantAge <= 1) {
-                return `\n${colors.dim}                    → ${colors.brightGreen}🚀 IMMEDIATE EXECUTION: ${signalColor}${relevantPivot.signal.toUpperCase()}${colors.reset} @ $${relevantPivot.price.toFixed(1)} ${colors.brightGreen}(${relevantAge}min ago - READY FOR MARKET ORDER)${colors.reset}`;
-            } else {
-                return `\n${colors.dim}                    → Cascade-relevant: ${signalColor}${relevantPivot.signal.toUpperCase()}${colors.reset} @ $${relevantPivot.price.toFixed(1)} ${colors.dim}(${relevantAge}min ago)${colors.reset}`;
-            }
+            return `\n${colors.dim}                    → Cascade-relevant: ${signalColor}${relevantPivot.signal.toUpperCase()}${colors.reset} @ $${relevantPivot.price.toFixed(1)} ${colors.dim}(${relevantAge}min ago)${colors.reset}`;
         }
         
         return '';
@@ -686,9 +821,10 @@ class LivePivotScanner {
         const hasConfirmation = confirmations.some(c => c.role === 'confirmation');
         const hasExecution = confirmations.some(c => c.role === 'execution');
         
-        // Apply door logic: execution can only confirm if confirmation is present
-        if (hasExecution && !hasConfirmation) {
-            return null; // Door is closed
+        // Apply hierarchical validation if enabled
+        const requireHierarchical = multiPivotConfig.cascadeSettings.requireHierarchicalValidation !== false;
+        if (requireHierarchical && hasExecution && !hasConfirmation) {
+            return null; // Door is closed when hierarchical validation is enabled
         }
         
         // Calculate strength based on total timeframes
@@ -725,7 +861,10 @@ class LivePivotScanner {
         console.log(`${colors.yellow}📊 PRIMARY SIGNAL: ${primaryPivot.timeframe.toUpperCase()} ${primaryPivot.signal.toUpperCase()} PIVOT${colors.reset}`);
         console.log(`${colors.cyan}   Time: ${primaryTime} (${primaryTime24})${colors.reset}`);
         console.log(`${colors.cyan}   Price: $${primaryPivot.price.toFixed(1)}${colors.reset}`);
-        console.log(`${colors.cyan}   Age: ${ageMinutes.toFixed(1)} minutes ago${colors.reset}`);
+        // Format the age using the human-readable time function
+        const pivotAge = this.currentTime - primaryPivot.time;
+        const formattedAge = this.formatTimeDifference(pivotAge);
+        console.log(`${colors.cyan}   Age: ${formattedAge}${colors.reset}`);
         
         // Cascade strength and confirmations
         const strengthPercent = (cascadeResult.strength * 100).toFixed(0);
@@ -751,7 +890,12 @@ class LivePivotScanner {
             console.log(`\n${colors.yellow}🚀 EXECUTION DETAILS:${colors.reset}`);
             console.log(`${colors.cyan}   Execution Time: ${executionTime} (${executionTime24})${colors.reset}`);
             console.log(`${colors.cyan}   Execution Price: $${cascadeResult.executionPrice.toFixed(1)}${colors.reset}`);
-            console.log(`${colors.cyan}   Delay: +${cascadeResult.minutesAfterPrimary} minutes after primary${colors.reset}`);
+            // Format the delay using human-readable time if enabled
+            const delayMs = cascadeResult.minutesAfterPrimary * 60 * 1000;
+            const formattedDelay = scannerConfig.displaySettings?.useHumanReadableTime ?
+                this.formatTimeDifference(delayMs).replace(' ago', '') : // Remove 'ago' suffix
+                `${cascadeResult.minutesAfterPrimary} minutes`;
+            console.log(`${colors.cyan}   Delay: +${formattedDelay} after primary${colors.reset}`);
         }
         
         // Confirming timeframes breakdown

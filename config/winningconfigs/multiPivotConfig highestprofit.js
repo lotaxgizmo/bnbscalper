@@ -21,7 +21,7 @@ export const multiPivotConfig = {
             role: 'primary',      // Confirmation timeframe
             minSwingPct: 0.4,       // Same settings for easy testing
             minLegBars: 1,          // Same settings for easy testing
-            lookback: 4,
+            lookback: 1,
             weight: 2
         },
         {
@@ -36,7 +36,7 @@ export const multiPivotConfig = {
             interval: '1m',
             role: 'execution',      // Final execution timeframe
             minSwingPct: 0.01,       // Same settings for easy testing
-            minLegBars: 3,          // Same settings for easy testing
+            minLegBars: 1,          // Same settings for easy testing
             lookback: 1,
             weight: 1
         }
@@ -60,7 +60,9 @@ export const multiPivotConfig = {
         minTimeframesRequired: 3,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         
         // Must include primary timeframe in confirmation
-        requirePrimaryTimeframe: true
+        requirePrimaryTimeframe: true,
+
+        requireHierarchicalValidation: false
     },
     
     // Signal strength and filtering
@@ -238,10 +240,10 @@ export const validateConfig = (config) => {
     if (!config.timeframes || config.timeframes.length === 0) {
         throw new Error('At least one timeframe must be configured');
     }
-    
+
     // Ensure timeframes are in descending order (largest to smallest)
     const intervals = config.timeframes.map(tf => tf.interval);
     // Add validation logic here if needed
-    
+
     return true;
 };

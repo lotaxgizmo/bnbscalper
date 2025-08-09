@@ -1,5 +1,59 @@
 # Issues Log
 
+## CRITICAL FIX: Fronttester Execution Timing Discrepancy (2025-08-08)
+
+### Issue:
+The fronttester (`multiPivotFronttesterLive.js`) was using LATEST execution timing (`Math.max(...allTimes)`) while the backtester used superior EARLIEST execution timing. This caused:
+- **Performance Gap**: Fronttester 74.1% win rate vs Backtester 85.2% win rate
+- **Execution Price Differences**: ~5% of trades had different entry prices
+- **Suboptimal Strategy**: Waiting for all confirmations instead of executing when criteria met
+- **Unrealistic Behavior**: Real traders execute when minimum criteria are met, not when all possible confirmations arrive
+
+### Root Cause:
+```javascript
+// PROBLEMATIC CODE in fronttester executeWindow function:
+const allTimes = [window.primaryPivot.time, ...window.confirmations.map(c => c.pivot.time)];
+const executionTime = Math.max(...allTimes); // LATEST execution - WRONG!
+```
+
+### Solution Applied:
+Replaced LATEST execution logic with EARLIEST execution logic to match backtester:
+
+```javascript
+// FIXED CODE in fronttester executeWindow function:
+const minRequiredTFs = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
+const allConfirmations = [...window.confirmations].sort((a, b) => a.confirmTime - b.confirmTime);
+
+let executionTime = window.primaryPivot.time;
+let confirmedCount = 1; // Primary counts as 1
+
+// Execute at EARLIEST time when minimum confirmations reached
+for (const confirmation of allConfirmations) {
+    confirmedCount++;
+    if (confirmedCount >= minRequiredTFs) {
+        executionTime = confirmation.confirmTime; // EARLIEST valid execution
+        break;
+    }
+}
+```
+
+### Benefits:
+1. **✅ Better Entry Prices**: Execute faster = better entry prices
+2. **✅ Higher Expected Win Rate**: Should match backtester's 85.2% win rate
+3. **✅ More Realistic**: Matches actual trading behavior
+4. **✅ Unified Systems**: Both systems now use identical execution logic
+5. **✅ Same Safety**: Still respects `minTimeframesRequired: 3` threshold
+
+### Files Modified:
+- `multiPivotFronttesterLive.js` - executeWindow function (lines ~1528-1550)
+- `TECHNICAL_DOCS.MD` - Added execution timing unification documentation
+- `USER_GUIDE.MD` - Added user-friendly explanation of the fix
+
+### Status: ✅ RESOLVED
+Both fronttester and backtester now use identical EARLIEST execution logic for optimal performance.
+
+---
+
 ## Enhanced Log Control System Implementation
 
 ### Issue:

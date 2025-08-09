@@ -60,7 +60,10 @@ export const multiPivotConfig = {
         minTimeframesRequired: 3,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         
         // Must include primary timeframe in confirmation
-        requirePrimaryTimeframe: true
+        requirePrimaryTimeframe: true,
+
+        requireHierarchicalValidation: false
+        
     },
     
     // Signal strength and filtering

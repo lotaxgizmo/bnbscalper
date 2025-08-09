@@ -8,26 +8,26 @@ export const multiPivotConfig = {
     // Timeframes to analyze (in hierarchical order - largest to smallest)
     // The system will cascade from largest to smallest timeframe
     timeframes: [
-        {
-            interval: '4h',
-            role: 'primary',        // This timeframe triggers the cascade
-            minSwingPct: 1,       // Same settings for easy testing
-            minLegBars: 3,          // Same settings for easy testing
-            lookback: 1,            // Pivot lookback for this timeframe
-            weight: 3               // Importance weight (higher = more important)
-        },
+        // {
+        //     interval: '4h',
+        //     role: 'primary',        // This timeframe triggers the cascade
+        //     minSwingPct: 0.2,       // Same settings for easy testing
+        //     minLegBars: 1,          // Same settings for easy testing
+        //     lookback: 1,            // Pivot lookback for this timeframe
+        //     weight: 3               // Importance weight (higher = more important)
+        // },
         {
             interval: '1h',
-            role: 'confirmation',      // Confirmation timeframe
+            role: 'primary',      // Confirmation timeframe
             minSwingPct: 0.4,       // Same settings for easy testing
             minLegBars: 1,          // Same settings for easy testing
-            lookback: 4,
+            lookback: 1,
             weight: 2
         },
         {
             interval: '15m',
             role: 'confirmation',   // Additional confirmation
-            minSwingPct: 0.3,       // Same settings for easy testing
+            minSwingPct: 0.1,       // Same settings for easy testing
             minLegBars: 1,          // Same settings for easy testing
             lookback: 1,
             weight: 1
@@ -36,7 +36,7 @@ export const multiPivotConfig = {
             interval: '1m',
             role: 'execution',      // Final execution timeframe
             minSwingPct: 0.01,       // Same settings for easy testing
-            minLegBars: 3,          // Same settings for easy testing
+            minLegBars: 1,          // Same settings for easy testing
             lookback: 1,
             weight: 1
         }
@@ -60,7 +60,9 @@ export const multiPivotConfig = {
         minTimeframesRequired: 3,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         
         // Must include primary timeframe in confirmation
-        requirePrimaryTimeframe: true
+        requirePrimaryTimeframe: true,
+
+        requireHierarchicalValidation: false
     },
     
     // Signal strength and filtering

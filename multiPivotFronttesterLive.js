@@ -1401,19 +1401,22 @@ class LiveMultiPivotFronttester {
             const alreadyConfirmed = window.confirmations.some(c => c.timeframe === timeframe.interval);
             if (alreadyConfirmed) continue;
             
-            // CRITICAL VALIDATION: Execution timeframe (1m) can ONLY confirm if at least one confirmation timeframe is already present
-            const timeframeRole = multiPivotConfig.timeframes.find(tf => tf.interval === timeframe.interval)?.role;
-            if (timeframeRole === 'execution') {
-                // Check if we have any confirmation timeframes already
-                const hasConfirmation = window.confirmations.some(c => {
-                    const role = multiPivotConfig.timeframes.find(tf => tf.interval === c.timeframe)?.role;
-                    return role === 'confirmation';
-                });
-                
-                if (!hasConfirmation) {
-                    // Block execution timeframe from confirming without confirmation timeframes
-                    // console.log(`${colors.red}   🚫 BLOCKED: ${timeframe.interval} execution cannot confirm without confirmation timeframes (1h or 15m)${colors.reset}`);
-                    continue; // Skip this confirmation
+            // HIERARCHICAL VALIDATION: Execution timeframe (1m) can only confirm if confirmation timeframes are present
+            // This is controlled by the requireHierarchicalValidation toggle in multiPivotConfig
+            const requireHierarchical = multiPivotConfig.cascadeSettings.requireHierarchicalValidation !== false;
+            if (requireHierarchical) {
+                const timeframeRole = multiPivotConfig.timeframes.find(tf => tf.interval === timeframe.interval)?.role;
+                if (timeframeRole === 'execution') {
+                    // Check if we have any confirmation timeframes already
+                    const hasConfirmation = window.confirmations.some(c => {
+                        const role = multiPivotConfig.timeframes.find(tf => tf.interval === c.timeframe)?.role;
+                        return role === 'confirmation';
+                    });
+                    
+                    if (!hasConfirmation) {
+                        // Block execution timeframe from confirming without confirmation timeframes
+                        continue; // Skip this confirmation
+                    }
                 }
             }
             
@@ -1421,7 +1424,7 @@ class LiveMultiPivotFronttester {
             window.confirmations.push({
                 timeframe: timeframe.interval,
                 pivot,
-                confirmTime: currentTime
+                confirmTime: pivot.time // CRITICAL FIX: Use actual pivot time, not processing time!
             });
             
             const minRequiredTFs = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
@@ -1526,11 +1529,65 @@ class LiveMultiPivotFronttester {
     }
     
     executeWindow(window, currentTime) {
-        // Find execution time and price
-        const allTimes = [window.primaryPivot.time, ...window.confirmations.map(c => c.pivot.time)];
-        const executionTime = Math.max(...allTimes);
-        const executionCandle = this.oneMinuteCandles.find(c => Math.abs(c.time - executionTime) <= 30000);
-        const executionPrice = executionCandle ? executionCandle.close : window.primaryPivot.price;
+        // EXACT BACKTESTER LOGIC: Use backtester's checkWindowBasedCascade logic
+        const confirmationWindow = multiPivotConfig.cascadeSettings.confirmationWindow[window.primaryPivot.timeframe] || 60;
+        const windowEndTime = window.primaryPivot.time + (confirmationWindow * 60 * 1000);
+        const minRequiredTFs = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
+        
+        // DEBUG: Enabled for investigation
+        const isFirstFew = true;
+        
+        // Find all confirming timeframes (exclude primary)
+        const confirmingTimeframes = multiPivotConfig.timeframes.slice(1); // Skip primary (first)
+        const confirmations = [];
+        
+        // Collect all confirmations within window
+        const allConfirmations = [...window.confirmations].sort((a, b) => a.confirmTime - b.confirmTime);
+        
+        // Find the earliest time when we have minimum required confirmations
+        let executionTime = window.primaryPivot.time;
+        let executionPrice = window.primaryPivot.price;
+        const confirmedTimeframes = new Set(['4h']); // Primary timeframe
+        
+        for (const confirmation of allConfirmations) {
+            confirmedTimeframes.add(confirmation.timeframe);
+            
+            if (isFirstFew) {
+                console.log(`   ✅ ${confirmation.timeframe} confirms at ${new Date(confirmation.confirmTime).toISOString()} ($${confirmation.pivot.price})`);
+            }
+            
+            // Check if we now have minimum required confirmations
+            if (confirmedTimeframes.size >= minRequiredTFs) {
+                // EXACT BACKTESTER LOGIC: Build final confirmations list first
+                confirmations.length = 0;
+                const usedTimeframes = new Set();
+                for (const conf of allConfirmations) {
+                    if (conf.confirmTime <= confirmation.confirmTime && !usedTimeframes.has(conf.timeframe)) {
+                        confirmations.push(conf);
+                        usedTimeframes.add(conf.timeframe);
+                    }
+                }
+                
+                // CRITICAL FIX: Use EARLIEST execution time when minimum confirmations are met
+                // This is the confirmation time of the CURRENT confirmation that met the threshold
+                // This matches backtester behavior which executes as soon as minimum confirmations are met
+                executionTime = confirmation.confirmTime;
+                
+                // EXACT BACKTESTER LOGIC: Use 1-minute candle close price at execution time
+                const executionCandle = this.oneMinuteCandles.find(c => Math.abs(c.time - executionTime) <= 30000);
+                executionPrice = executionCandle ? executionCandle.close : window.primaryPivot.price;
+                
+                // Store the execution candle for later use in trade creation
+                this.lastExecutionCandle = executionCandle || null;
+                
+                if (isFirstFew) {
+                    console.log(`   ⏰ EXECUTION: ${confirmedTimeframes.size}/${minRequiredTFs} confirmations met at ${new Date(executionTime).toISOString()} ($${executionPrice})`);
+                }
+                
+                break; // CRITICAL: Break immediately like backtester
+            }
+        }
+        
         const minutesAfterPrimary = Math.round((executionTime - window.primaryPivot.time) / (1000 * 60));
         
         const cascadeResult = {
@@ -1570,7 +1627,8 @@ class LiveMultiPivotFronttester {
                 confirmations: cascadeResult.confirmations
             };
             
-            const trade = this.createTrade(tradeSignal, executionCandle || {
+            // Use the stored execution candle or create a synthetic one
+            const trade = this.createTrade(tradeSignal, this.lastExecutionCandle || {
                 time: executionTime,
                 close: executionPrice,
                 high: executionPrice,
