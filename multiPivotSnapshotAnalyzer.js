@@ -4,7 +4,7 @@
 // ===== SNAPSHOT CONFIGURATION =====
 const SNAPSHOT_CONFIG = {
     // Target timestamp for analysis (YYYY-MM-DD HH:MM:SS format)
-    targetTime: "2025-08-06 15:32:00",
+    targetTime: "2025-08-06 14:00:00",
     liveMode: true, // Switch between CSV and API
     currentMode: true, // Switch between current time and target time
     // websocketMode: false,

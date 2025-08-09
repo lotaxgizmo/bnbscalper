@@ -4,20 +4,21 @@
 // ===== SNAPSHOT CONFIGURATION =====
 const SNAPSHOT_CONFIG = {
     // Target timestamp for analysis (YYYY-MM-DD HH:MM:SS format)
-    targetTime: "2025-08-06 15:32:00",
+    targetTime: "2025-08-08 16:00:00",
     liveMode: true, // Switch between CSV and API
-    currentMode: true, // Switch between current time and target time
+    currentMode: false, // Switch between current time and target time
     // websocketMode: false,
-    length: 2880,
-    // Auto-reload settings
-    autoReload: true,           // Enable auto-reload functionality
-    reloadIntervalSeconds: 5,  // Reload every X seconds (60 = 1 minute)
+    length: 2880,    
     // Display options
     togglePivots: false,
     toggleCascades: true,
     showData: false,
     showRecentPivots: 5,        // Number of recent pivots to show per timeframe
-    showRecentCascades: 10      // Number of recent cascades to show
+    showRecentCascades: 10,     // Number of recent cascades to show
+    
+    // Auto-reload configuration
+    autoReload: true,           // Enable auto-reload functionality
+    reloadInterval: 5          // Reload interval in seconds
 };
 // ==================================
 
@@ -71,7 +72,7 @@ function formatTimeDifference(milliseconds) {
 }
 
 class MultiPivotSnapshotAnalyzer {
-    constructor(snapshotTime, isCurrentMode = false, isReload = false) {
+    constructor(snapshotTime, isCurrentMode = false) {
         if (isCurrentMode) {
             this.snapshotTime = Date.now(); // Use current time
         } else {
@@ -85,21 +86,17 @@ class MultiPivotSnapshotAnalyzer {
         this.cascadeCounter = 0;
         this.allCascades = [];
         this.telegramNotifier = telegramNotifier;
-        this.isReload = isReload;
-        this.lastExecuteWindows = new Set(); // Track windows that were ready for execution
         
         // Validate snapshot time
         if (isNaN(this.snapshotTime)) {
             throw new Error('Invalid snapshot time format. Use: YYYY-MM-DD HH:MM:SS');
         }
         
-        if (!isReload) {
-            console.log(`${colors.cyan}=== MULTI-PIVOT SNAPSHOT ANALYZER ===${colors.reset}`);
-            console.log(`${colors.yellow}Target Time: ${new Date(this.snapshotTime).toLocaleString()}${colors.reset}`);
-            console.log(`${colors.yellow}Target Time (24h): ${new Date(this.snapshotTime).toLocaleString('en-GB', { hour12: false })}${colors.reset}`);
-            console.log(`${colors.yellow}Symbol: ${symbol}${colors.reset}`);
-            console.log(`${colors.cyan}${'='.repeat(60)}${colors.reset}\n`);
-        }
+        console.log(`${colors.cyan}=== MULTI-PIVOT SNAPSHOT ANALYZER ===${colors.reset}`);
+        console.log(`${colors.yellow}Target Time: ${new Date(this.snapshotTime).toLocaleString()}${colors.reset}`);
+        console.log(`${colors.yellow}Target Time (24h): ${new Date(this.snapshotTime).toLocaleString('en-GB', { hour12: false })}${colors.reset}`);
+        console.log(`${colors.yellow}Symbol: ${symbol}${colors.reset}`);
+        console.log(`${colors.cyan}${'='.repeat(60)}${colors.reset}\n`);
     }
 
     async initialize() {
@@ -702,13 +699,10 @@ class MultiPivotSnapshotAnalyzer {
                     console.log(`${colors.brightYellow}│${colors.reset}   Status: ${totalConfirmed}/${minRequired} confirmations → ${colors.brightGreen}READY FOR EXECUTION${colors.reset}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   🎯 ${colors.bold}TRADE SIGNAL: ${window.primaryPivot.signal.toUpperCase()} @ $${window.executionTime ? this.getExecutionPrice(window) : window.primaryPivot.price.toFixed(1)}${colors.reset}`);
                     
-                    // Send Telegram notification only for NEW execute-ready windows (not on reload)
-                    if (!this.lastExecuteWindows.has(window.id)) {
-                        this.sendCascadeWindowNotification('execute', { window }).catch(err => 
-                            console.error('Telegram notification error:', err.message)
-                        );
-                        this.lastExecuteWindows.add(window.id);
-                    }
+                    // Send Telegram notification for execution
+                    this.sendCascadeWindowNotification('execute', { window }).catch(err => 
+                        console.error('Telegram notification error:', err.message)
+                    );
                 } else {
                     // Already executed and invalid for trading
                     console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}Window ${window.id}: ${window.primaryPivot.timeframe} ${signalColor}${window.primaryPivot.signal.toUpperCase()}${colors.reset} ${colors.bold}pivot ${colors.dim}[EXECUTED]${colors.reset}`);
@@ -717,7 +711,10 @@ class MultiPivotSnapshotAnalyzer {
                     console.log(`${colors.brightYellow}│${colors.reset}   Final Status: ${totalConfirmed}/${minRequired} confirmations → ${colors.dim}EXECUTED${colors.reset}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   ${colors.red}⚠️ CASCADE INVALID - Already executed${colors.reset}`);
                     
-                    // No Telegram notification for executed windows on reload
+                    // Send Telegram notification for executed window
+                    this.sendCascadeWindowNotification('executed', { window }).catch(err => 
+                        console.error('Telegram notification error:', err.message)
+                    );
                 }
             } else {
                 const timeRemainingMs = window.windowEndTime - this.snapshotTime;
@@ -733,20 +730,20 @@ class MultiPivotSnapshotAnalyzer {
                     console.log(`${colors.brightYellow}│${colors.reset}   Status: ${totalConfirmed}/${minRequired} confirmations → ${colors.brightGreen}READY FOR EXECUTION${colors.reset}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   🎯 ${colors.bold}TRADE SIGNAL: ${window.primaryPivot.signal.toUpperCase()} @ Current Market Price${colors.reset}`);
                     
-                    // Send Telegram notification only for NEW execute-ready windows (not on reload)
-                    if (!this.lastExecuteWindows.has(window.id)) {
-                        this.sendCascadeWindowNotification('execute', { window }).catch(err => 
-                            console.error('Telegram notification error:', err.message)
-                        );
-                        this.lastExecuteWindows.add(window.id);
-                    }
+                    // Send Telegram notification for ready execution
+                    this.sendCascadeWindowNotification('execute', { window }).catch(err => 
+                        console.error('Telegram notification error:', err.message)
+                    );
                 } else {
                     // Still waiting for confirmations
                     console.log(`${colors.brightYellow}│${colors.reset} ${colors.bold}Window ${window.id}: ${window.primaryPivot.timeframe} ${signalColor}${window.primaryPivot.signal.toUpperCase()}${colors.reset} ${colors.bold}pivot ${colors.yellow}[ACTIVE]${colors.reset}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   Primary: ${primaryTime} (${primaryTime24}) @ $${window.primaryPivot.price.toFixed(1)}`);
                     console.log(`${colors.brightYellow}│${colors.reset}   Status: ${totalConfirmed}/${minRequired} confirmations | ${timeRemainingFormatted} remaining`);
                     
-                    // No Telegram notification for waiting windows on reload
+                    // Send Telegram notification for waiting window
+                    this.sendCascadeWindowNotification('waiting', { window }).catch(err => 
+                        console.error('Telegram notification error:', err.message)
+                    );
                 }
             }
             
@@ -990,110 +987,57 @@ class MultiPivotSnapshotAnalyzer {
     }
 }
 
-// Global variables for auto-reload
-let globalExecuteWindows = new Set();
-let isFirstRun = true;
-let historicalCurrentTime = null; // Track current time in historical mode
-
-// Single analysis run
-async function runAnalysis(isReload = false) {
+// Main execution
+async function main() {
     let analyzer;
+    let targetTime = SNAPSHOT_CONFIG.targetTime;
+    const isCurrentMode = SNAPSHOT_CONFIG.currentMode;
     
-    if (SNAPSHOT_CONFIG.currentMode) {
-        // LIVE MODE: Use current time
-        if (!isReload) {
-            console.log(`${colors.red}🔴 LIVE MODE: Analyzing current market state${colors.reset}`);
-            console.log(`${colors.cyan}Current time: ${colors.brightYellow}${new Date().toLocaleString()}${colors.reset}`);
-            console.log(`${colors.cyan}Candle Length: ${SNAPSHOT_CONFIG.length} minutes${colors.reset}`);
-            if (SNAPSHOT_CONFIG.autoReload) {
-                console.log(`${colors.cyan}Auto-reload: Every ${SNAPSHOT_CONFIG.reloadIntervalSeconds} seconds${colors.reset}`);
-            }
-            console.log();
-        }
-        
-        analyzer = new MultiPivotSnapshotAnalyzer(null, true, isReload); // Pass true for currentMode, isReload flag
-    } else {
-        // HISTORICAL MODE: Use configured target time
-        const snapshotTimeArg = SNAPSHOT_CONFIG.targetTime;
-        
-        if (!snapshotTimeArg) {
-            console.log(`${colors.red}❌ Error: No snapshot time configured${colors.reset}`);
-            console.log(`${colors.yellow}Please set SNAPSHOT_CONFIG.targetTime at the top of this file${colors.reset}`);
-            console.log(`${colors.yellow}Format: "YYYY-MM-DD HH:MM:SS"${colors.reset}`);
-            console.log(`${colors.yellow}Example: "2025-08-09 15:30:00"${colors.reset}`);
-            process.exit(1);
-        }
-        
-        if (!isReload) {
-            console.log(`${colors.cyan}📅 HISTORICAL MODE: Using configured snapshot time${colors.reset}`);
-            console.log(`${colors.cyan}Target time: ${colors.brightYellow}${snapshotTimeArg}${colors.reset}\n`);
-        }
-        
-        analyzer = new MultiPivotSnapshotAnalyzer(snapshotTimeArg, false, isReload);
+    // Store the current target time in a static variable to track advancement
+    if (!main.currentTargetTime) {
+        main.currentTargetTime = new Date(targetTime).getTime();
     }
     
-    // Transfer previous execute windows to avoid duplicate notifications
-    analyzer.lastExecuteWindows = globalExecuteWindows;
+    if (isCurrentMode) {
+        console.log(`${colors.cyan}Using current time for analysis${colors.reset}\n`);
+    } else {
+        // Format the target time for display
+        const displayTime = new Date(main.currentTargetTime).toLocaleString();
+        console.log(`${colors.cyan}Target time: ${colors.brightYellow}${displayTime}${colors.reset}\n`);
+    }
+    
+    // Use the current target time for analysis
+    analyzer = new MultiPivotSnapshotAnalyzer(isCurrentMode ? targetTime : new Date(main.currentTargetTime).toISOString(), isCurrentMode);
     
     try {
         await analyzer.initialize();
         analyzer.analyzeSnapshot();
         
-        // Update global execute windows
-        globalExecuteWindows = analyzer.lastExecuteWindows;
+        console.log(`${colors.green}✅ Snapshot analysis complete!${colors.reset}`);
         
-        if (!isReload) {
-            console.log(`${colors.green}✅ Snapshot analysis complete!${colors.reset}`);
-        } else {
-            const timeStr = new Date().toLocaleTimeString();
-            console.log(`${colors.dim}[${timeStr}] Analysis updated${colors.reset}`);
+        // Auto-reload functionality
+        if (SNAPSHOT_CONFIG.autoReload) {
+            if (isCurrentMode) {
+                console.log(`${colors.cyan}Auto-reload enabled. Will refresh in ${SNAPSHOT_CONFIG.reloadInterval} seconds...${colors.reset}`);
+            } else {
+                // Advance time by the reload interval for historical mode
+                main.currentTargetTime += SNAPSHOT_CONFIG.reloadInterval * 1000; // Convert seconds to milliseconds for advancement
+                const nextTime = new Date(main.currentTargetTime).toLocaleString();
+                console.log(`${colors.cyan}Auto-reload enabled. Will advance to ${nextTime} in ${SNAPSHOT_CONFIG.reloadInterval} seconds...${colors.reset}`);
+            }
+            
+            setTimeout(() => {
+                console.clear(); // Clear console for clean output
+                main(); // Restart the analysis
+            }, SNAPSHOT_CONFIG.reloadInterval * 1000);
         }
-        
     } catch (error) {
         console.error(`${colors.red}❌ Error:${colors.reset}`, error.message);
-        if (!isReload) {
-            process.exit(1);
-        }
+        process.exit(1);
     }
 }
 
-// Main execution with auto-reload
-async function main() {
-    // Run initial analysis
-    await runAnalysis(false);
-    
-    // Set up auto-reload if enabled
-    if (SNAPSHOT_CONFIG.autoReload && SNAPSHOT_CONFIG.currentMode) {
-        console.log(`\n${colors.cyan}🔄 Auto-reload enabled - monitoring every ${SNAPSHOT_CONFIG.reloadIntervalSeconds} seconds${colors.reset}`);
-        console.log(`${colors.dim}Press Ctrl+C to stop${colors.reset}\n`);
-        
-        setInterval(async () => {
-            try {
-                // Clear console for clean reload display
-                console.clear();
-                
-                // Show reload header
-                const timeStr = new Date().toLocaleString();
-                const time24 = new Date().toLocaleTimeString('en-GB', { hour12: false });
-                console.log(`${colors.cyan}🔄 AUTO-RELOAD: ${timeStr} (${time24})${colors.reset}`);
-                console.log(`${colors.cyan}${'='.repeat(60)}${colors.reset}\n`);
-                
-                await runAnalysis(true);
-            } catch (error) {
-                console.error(`${colors.red}❌ Reload error:${colors.reset}`, error.message);
-            }
-        }, SNAPSHOT_CONFIG.reloadIntervalSeconds * 1000);
-        
-    } else if (SNAPSHOT_CONFIG.autoReload && !SNAPSHOT_CONFIG.currentMode) {
-        console.log(`\n${colors.yellow}⚠️  Auto-reload is only available in currentMode (live mode)${colors.reset}`);
-        console.log(`${colors.yellow}Set currentMode: true to enable auto-reload${colors.reset}`);
-    }
-}
-
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-    console.log(`\n${colors.yellow}🛑 Shutting down gracefully...${colors.reset}`);
-    process.exit(0);
+main().catch(error => {
+    console.error('Unhandled error:', error);
+    process.exit(1);
 });
-
-main().catch(error =
