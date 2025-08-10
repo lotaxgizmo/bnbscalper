@@ -95,6 +95,18 @@ function parseTargetTimeInZone(str) {
 
 // -------------------------------------
 
+// Helper function to convert timeframe string to milliseconds
+function timeframeToMilliseconds(timeframe) {
+    const unit = timeframe.slice(-1);
+    const value = parseInt(timeframe.slice(0, -1));
+    switch (unit) {
+        case 'm': return value * 60 * 1000;
+        case 'h': return value * 60 * 60 * 1000;
+        case 'd': return value * 24 * 60 * 60 * 1000;
+        default: return NaN;
+    }
+}
+
 // Helper function to format time differences in days, hours, minutes
 function formatTimeDifference(milliseconds) {
     const totalMinutes = Math.floor(milliseconds / (1000 * 60));
@@ -224,22 +236,28 @@ class MultiPivotSnapshotAnalyzer {
             if (isNaN(candleTime) || isNaN(parseFloat(open))) continue;
             
             // Only include candles within our time window
-            if (candleTime >= startTime && candleTime <= endTime) {
+            if (candleTime >= startTime && candleTime <= this.snapshotTime) {
                 candles.push({
                     time: candleTime,
                     open: parseFloat(open),
                     high: parseFloat(high),
                     low: parseFloat(low),
                     close: parseFloat(close),
-                    volume: parseFloat(volume || '0')
+                    volume: parseFloat(volume)
                 });
             }
         }
-        
-        // Sort chronologically
-        candles.sort((a, b) => a.time - b.time);
-        
-        return candles;
+
+        // Filter out candles that are not yet closed based on the snapshot time
+        const timeframeMs = timeframeToMilliseconds(interval);
+        const closedCandles = candles.filter(c => (c.time + timeframeMs) <= this.snapshotTime);
+
+        const discardedCount = candles.length - closedCandles.length;
+        if (discardedCount > 0) {
+            console.log(`${colors.yellow}Discarded ${discardedCount} open candle(s) for ${interval}.${colors.reset}`);
+        }
+
+        return closedCandles;
     }
     
     async loadTimeframeFromAPI(interval, startTime, endTime) {
@@ -271,14 +289,23 @@ class MultiPivotSnapshotAnalyzer {
             }
             
             // Filter to exact time window
-            const filteredCandles = allCandles.filter(candle => 
-                candle.time >= startTime && candle.time <= endTime
+            let candles = allCandles.filter(candle => 
+                candle.time >= startTime && candle.time <= this.snapshotTime
             );
+
+            // Filter out candles that are not yet closed based on the snapshot time
+            const timeframeMs = timeframeToMilliseconds(interval);
+            const closedCandles = candles.filter(c => (c.time + timeframeMs) <= this.snapshotTime);
+
+            const discardedCount = candles.length - closedCandles.length;
+            if (discardedCount > 0) {
+                console.log(`${colors.yellow}Discarded ${discardedCount} open candle(s) for ${interval}.${colors.reset}`);
+            }
             
             // Sort chronologically
-            filteredCandles.sort((a, b) => a.time - b.time);
+            closedCandles.sort((a, b) => a.time - b.time);
             
-            return filteredCandles;
+            return closedCandles;
             
         } catch (error) {
             console.error(`${colors.red}[${interval}] Error loading from API:${colors.reset}`, error.message);
@@ -485,10 +512,17 @@ class MultiPivotSnapshotAnalyzer {
             if (confirmedTimeframes.size >= minRequiredTFs) {
                 executionTime = confirmation.confirmTime;
                 
-                // Find execution price from 1-minute candles
-                const oneMinuteCandles = this.timeframeCandles.get('1m') || [];
-                const executionCandle = oneMinuteCandles.find(c => Math.abs(c.time - executionTime) <= 30000);
-                executionPrice = executionCandle ? executionCandle.close : window.primaryPivot.price;
+                // Find execution price dynamically
+                const executionTF = multiPivotConfig.timeframes.find(tf => tf.role === 'execution');
+                const executionTFCandles = executionTF ? this.timeframeCandles.get(executionTF.interval) || [] : [];
+
+                if (executionTFCandles.length > 0) {
+                    const executionCandle = executionTFCandles.find(c => Math.abs(c.time - executionTime) <= 30000);
+                    executionPrice = executionCandle ? executionCandle.close : window.primaryPivot.price;
+                } else {
+                    // Fallback to the price of the pivot that triggered the execution
+                    executionPrice = allConfirmations.find(c => c.confirmTime === executionTime)?.pivot.price || window.primaryPivot.price;
+                }
                 break;
             }
         }
@@ -851,11 +885,22 @@ class MultiPivotSnapshotAnalyzer {
 
     getExecutionPrice(window) {
         if (!window.executionTime) return window.primaryPivot.price.toFixed(1);
-        
-        // Find execution price from 1-minute candles
-        const oneMinuteCandles = this.timeframeCandles.get('1m') || [];
-        const executionCandle = oneMinuteCandles.find(c => Math.abs(c.time - window.executionTime) <= 30000);
-        return executionCandle ? executionCandle.close.toFixed(1) : window.primaryPivot.price.toFixed(1);
+
+        // Find execution price dynamically from the 'execution' role timeframe
+        const executionTF = multiPivotConfig.timeframes.find(tf => tf.role === 'execution');
+        const executionTFCandles = executionTF ? this.timeframeCandles.get(executionTF.interval) || [] : [];
+
+        if (executionTFCandles.length > 0) {
+            const executionCandle = executionTFCandles.find(c => Math.abs(c.time - window.executionTime) <= 30000);
+            if (executionCandle) return executionCandle.close.toFixed(1);
+        }
+
+        // Fallback to the price of the pivot that triggered the execution
+        const triggeringConfirmation = window.confirmations.find(c => c.confirmTime === window.executionTime);
+        if (triggeringConfirmation) return triggeringConfirmation.pivot.price.toFixed(1);
+
+        // Final fallback to the primary pivot's price
+        return window.primaryPivot.price.toFixed(1);
     }
 
     displaySummaryStatistics() {
@@ -880,11 +925,16 @@ class MultiPivotSnapshotAnalyzer {
         const expiredWindows = Array.from(this.activeWindows.values()).filter(w => w.status === 'expired');
         console.log(`${colors.cyan}│${colors.reset} Expired Windows: ${expiredWindows.length}`);
         
-        // Calculate timespan
-        if (this.timeframeCandles.get('1m')?.length > 0) {
-            const oneMinCandles = this.timeframeCandles.get('1m');
-            const startTime = oneMinCandles[0].time;
-            const timespanMs = this.snapshotTime - startTime;
+        // Calculate timespan from the earliest available candle across all timeframes
+        let earliestTime = Infinity;
+        for (const candles of this.timeframeCandles.values()) {
+            if (candles.length > 0 && candles[0].time < earliestTime) {
+                earliestTime = candles[0].time;
+            }
+        }
+
+        if (isFinite(earliestTime)) {
+            const timespanMs = this.snapshotTime - earliestTime;
             const timespanFormatted = formatTimeDifference(timespanMs);
             console.log(`${colors.cyan}│${colors.reset} Analysis Timespan: ${timespanFormatted}`);
         }

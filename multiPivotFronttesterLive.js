@@ -152,22 +152,22 @@ class LiveMultiPivotFronttester {
             return null;
         }
         
-        const slippagePercent = calculateSlippage(tradeConfig.positionSize, tradeConfig);
+        const slippagePercent = calculateSlippage(tradeConfig.amountPerTrade, tradeConfig);
         const entryPrice = applySlippage(candle.close, signal.direction, slippagePercent);
         
         let positionSize;
-        switch (tradeConfig.positionSizeMode) {
+        switch (tradeConfig.amountPerTradeMode) {
             case 'fixed':
-                positionSize = tradeConfig.positionSize;
+                positionSize = tradeConfig.amountPerTrade;
                 break;
             case 'percentage':
-                positionSize = this.capital * (tradeConfig.positionSizePercent / 100);
+                positionSize = this.capital * (tradeConfig.initialCapital / 100);
                 break;
             case 'minimum':
-                positionSize = Math.max(tradeConfig.positionSize, this.capital * (tradeConfig.positionSizePercent / 100));
+                positionSize = Math.max(tradeConfig.amountPerTrade, this.capital * (tradeConfig.initialCapital / 100));
                 break;
             default:
-                positionSize = tradeConfig.positionSize;
+                positionSize = tradeConfig.amountPerTrade;
         }
         
         // Check if we have enough capital
@@ -660,10 +660,10 @@ class LiveMultiPivotFronttester {
             console.log(`${colors.yellow}Trading: ${colors.green}ENABLED${colors.reset}`);
             console.log(`${colors.yellow}Direction: ${tradeConfig.direction.toUpperCase()}${colors.reset}`);
             console.log(`${colors.yellow}Initial Capital: $${formatNumberWithCommas(tradeConfig.initialCapital)}${colors.reset}`);
-            const sizeMode = tradeConfig.positionSizeMode || 'percentage';
+            const sizeMode = tradeConfig.amountPerTradeMode || 'percentage';
             const sizeDisplay = sizeMode === 'fixed' 
-                ? `$${formatNumberWithCommas(tradeConfig.positionSize || 100)}` 
-                : `${tradeConfig.positionSizePercent || tradeConfig.riskPerTrade || 100}%`;
+                ? `$${formatNumberWithCommas(tradeConfig.amountPerTrade || 100)}` 
+                : `${tradeConfig.initialCapital || tradeConfig.riskPerTrade || 100}%`;
             console.log(`${colors.yellow}Position Size: ${sizeMode} (${sizeDisplay})${colors.reset}`);
             console.log(`${colors.yellow}Leverage: ${tradeConfig.leverage}x${colors.reset}`);
             console.log(`${colors.yellow}Stop Loss: ${tradeConfig.stopLoss || tradeConfig.stopLoss}% | Take Profit: ${tradeConfig.takeProfit || tradeConfig.takeProfit}%${colors.reset}`);

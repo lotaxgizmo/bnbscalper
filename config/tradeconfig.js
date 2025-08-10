@@ -9,9 +9,10 @@ export const tradeConfig = {
     // Trade direction ('buy' or 'sell' or 'both' or 'alternate')
     direction: 'both',
   
+    
 
-    takeProfit: 0.5,
-    stopLoss: 0.3,
+    takeProfit: 1,
+    stopLoss: 0.5,
     leverage: 100,        
     
     // Flip mode: close opposite and switch to new confirmed signal
@@ -33,14 +34,14 @@ export const tradeConfig = {
     showCandle: false,
     showPivot: false,
     showLimits: false,
-    showTradeDetails: true,
-    hideCascades: false,  // Hide cascade confirmation logs (keeps trade execution logs)
-        
+    showTradeDetails: false,
+    hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
+
     // Position sizing settings
-    positionSizeMode: 'percentage',  // 'fixed', 'percentage', or 'minimum'
-    positionSize: 100,               // Fixed position size in USDT (for 'fixed' mode)
-    positionSizePercent: 100,        // Percentage of capital to use (for 'percentage' mode)
-    
+    // positionSizeMode: 'percent',  // 'fixed', 'percentage', or 'minimum'
+    // positionSize: 1,               // Fixed position size in USDT (for 'fixed' mode)
+    // positionSizePercent: 100,        // Percentage of capital to use (for 'percentage' mode)
+
     // Multi-trade settings
     singleTradeMode: true,      // Only allow one trade at a time (prevents concurrent trades)
     maxConcurrentTrades: 1,     // Number of trades that can be open at once (default: 1)
@@ -49,19 +50,10 @@ export const tradeConfig = {
     minimumTradeAmount: 100, // Minimum trade amount in USDT (only used if positionSizingMode is 'minimum')
 
 
-    // riskPerTrade = Percentage of capital to risk per trade (100 = full capital)
-        // initialCapital: 1000, 
-        // riskPerTrade: 50,   
-    // initialCapital: 300, 
-    // riskPerTrade: 54.39,   
-    // initialCapital: 200, 
-    // riskPerTrade: 67.235,   
+ 
     initialCapital: 100,
     riskPerTrade: 100,
-    // initialCapital: 200, 
-    // riskPerTrade: 50,   
-    
-// 2110
+ 
 
     // Display settings
     // Export settings
