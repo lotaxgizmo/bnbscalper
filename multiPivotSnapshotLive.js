@@ -31,7 +31,8 @@ import {
     useLocalData,
     api,
     pivotDetectionMode,
-    limit as configLimit
+    limit as configLimit,
+    timezone
 } from './config/config.js';
 
 import { multiPivotConfig } from './config/multiPivotConfig.js';
@@ -97,6 +98,53 @@ const notificationManager = globalThis.__MP_SNAPSHOT_NOTIFIER__ || new Notificat
 globalThis.__MP_SNAPSHOT_NOTIFIER__ = notificationManager;
 // ----------------------------------------------------------------------------------------
 
+// ===== Timezone helpers =====
+// Extract parts as they would appear in the configured timezone for a UTC timestamp
+function partsFromTS(ts) {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+    });
+    const parts = dtf.formatToParts(new Date(ts));
+    const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    return {
+        year: Number(map.year),
+        month: Number(map.month),
+        day: Number(map.day),
+        hour: Number(map.hour),
+        minute: Number(map.minute),
+        second: Number(map.second)
+    };
+}
+
+// Parse a "YYYY-MM-DD HH:MM:SS" wall-clock time in configured timezone to UTC ms
+function parseTargetTimeInZone(str) {
+    if (typeof str === 'number' && Number.isFinite(str)) return Number(str);
+    const m = /^\s*(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\s*$/.exec(str || '');
+    if (!m) return NaN;
+    const [, y, mo, d, h, mi, s] = m.map(v => Number(v));
+    let guess = Date.UTC(y, mo - 1, d, h, mi, s);
+    const shown = partsFromTS(guess);
+    const shownUTC = Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour, shown.minute, shown.second);
+    const desiredUTC = Date.UTC(y, mo - 1, d, h, mi, s);
+    let adjusted = guess + (desiredUTC - shownUTC);
+    const shown2 = partsFromTS(adjusted);
+    const shownUTC2 = Date.UTC(shown2.year, shown2.month - 1, shown2.day, shown2.hour, shown2.minute, shown2.second);
+    adjusted = adjusted + (desiredUTC - shownUTC2);
+    return adjusted;
+}
+
+function fmtDateTime(ts) {
+    return new Date(ts).toLocaleString('en-US', { timeZone: timezone });
+}
+
+function fmtTime24(ts) {
+    return new Date(ts).toLocaleTimeString('en-GB', { hour12: false, timeZone: timezone });
+}
+// ==============================
+
 // Helper function to format time differences in days, hours, minutes
 function formatTimeDifference(milliseconds) {
     const totalMinutes = Math.floor(milliseconds / (1000 * 60));
@@ -118,7 +166,12 @@ class MultiPivotSnapshotAnalyzer {
         if (isCurrentMode) {
             this.snapshotTime = Date.now(); // Use current time
         } else {
-            this.snapshotTime = new Date(snapshotTime).getTime();
+            // Accept either a UTC ms timestamp or a wall-clock string in configured timezone
+            if (typeof snapshotTime === 'number' && Number.isFinite(snapshotTime)) {
+                this.snapshotTime = Number(snapshotTime);
+            } else {
+                this.snapshotTime = parseTargetTimeInZone(snapshotTime);
+            }
         }
         this.timeframeCandles = new Map();
         this.timeframePivots = new Map();
@@ -141,8 +194,8 @@ class MultiPivotSnapshotAnalyzer {
             console.log(`${colors.brightYellow}${colors.bold}[🔄 AUTO-RELOAD MODE ACTIVE - ${SNAPSHOT_CONFIG.reloadInterval}s INTERVAL]${colors.reset}`);
         }
         
-        console.log(`${colors.yellow}Target Time: ${new Date(this.snapshotTime).toLocaleString()}${colors.reset}`);
-        console.log(`${colors.yellow}Target Time (24h): ${new Date(this.snapshotTime).toLocaleString('en-GB', { hour12: false })}${colors.reset}`);
+        console.log(`${colors.yellow}Target Time: ${fmtDateTime(this.snapshotTime)}${colors.reset}`);
+        console.log(`${colors.yellow}Target Time (24h): ${fmtTime24(this.snapshotTime)}${colors.reset}`);
         console.log(`${colors.yellow}Symbol: ${symbol}${colors.reset}`);
         console.log(`${colors.cyan}${'='.repeat(60)}${colors.reset}\n`);
     }
@@ -654,8 +707,8 @@ class MultiPivotSnapshotAnalyzer {
                 console.log(`${colors.magenta}│${colors.reset}   ${colors.dim}No pivots found${colors.reset}`);
             } else {
                 recentPivots.forEach((pivot, index) => {
-                    const timeStr = new Date(pivot.time).toLocaleString();
-                    const time24 = new Date(pivot.time).toLocaleTimeString('en-GB', { hour12: false });
+                    const timeStr = fmtDateTime(pivot.time);
+                    const time24 = fmtTime24(pivot.time);
                     const ageFormatted = formatTimeDifference(this.snapshotTime - pivot.time);
                     const signalColor = pivot.signal === 'long' ? colors.green : colors.red;
                     const swingStr = pivot.swingPct ? ` (${pivot.swingPct.toFixed(2)}%)` : '';
@@ -732,15 +785,15 @@ class MultiPivotSnapshotAnalyzer {
             const totalConfirmed = 1 + confirmationCount;
             const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
 
-            const primaryTime = new Date(window.primaryPivot.time).toLocaleString();
-            const primaryTime24 = new Date(window.primaryPivot.time).toLocaleTimeString('en-GB', { hour12: false });
+            const primaryTime = fmtDateTime(window.primaryPivot.time);
+            const primaryTime24 = fmtTime24(window.primaryPivot.time);
             const signalColor = window.primaryPivot.signal === 'long' ? colors.green : colors.red;
 
             console.log(`${colors.brightYellow}│${colors.reset}`);
 
             if (windowType === 'executed') {
-                const executionTime = new Date(window.executionTime).toLocaleString();
-                const executionTime24 = new Date(window.executionTime).toLocaleTimeString('en-GB', { hour12: false });
+                const executionTime = fmtDateTime(window.executionTime);
+                const executionTime24 = fmtTime24(window.executionTime);
                 const timeDiff = formatTimeDifference(Math.abs(this.snapshotTime - window.executionTime));
                 const timing = window.executionTime <= this.snapshotTime ? 'ago' : 'from now';
 
@@ -925,8 +978,8 @@ class MultiPivotSnapshotAnalyzer {
             }
 
             let message = '';
-            const timeFormatted = new Date(this.snapshotTime).toLocaleString();
-            const time24 = new Date(this.snapshotTime).toLocaleTimeString('en-GB', { hour12: false });
+            const timeFormatted = fmtDateTime(this.snapshotTime);
+            const time24 = fmtTime24(this.snapshotTime);
 
             if (windowStatus === 'waiting') {
                 const timeRemaining = formatTimeDifference(window.windowEndTime - this.snapshotTime);
@@ -1059,19 +1112,20 @@ async function main() {
 
     // Store the current target time in a static variable to track advancement
     if (!main.currentTargetTime) {
-        main.currentTargetTime = new Date(targetTime).getTime();
+        // Initialize using configured timezone parsing
+        main.currentTargetTime = parseTargetTimeInZone(targetTime);
     }
 
     if (isCurrentMode) {
         console.log(`${colors.cyan}Using current time for analysis${colors.reset}\n`);
     } else {
-        // Format the target time for display
-        const displayTime = new Date(main.currentTargetTime).toLocaleString();
+        // Format the target time for display (timezone-aware)
+        const displayTime = fmtDateTime(main.currentTargetTime);
         console.log(`${colors.cyan}Target time: ${colors.brightYellow}${displayTime}${colors.reset}\n`);
     }
 
     // Use the current target time for analysis
-    analyzer = new MultiPivotSnapshotAnalyzer(isCurrentMode ? targetTime : new Date(main.currentTargetTime).toISOString(), isCurrentMode);
+    analyzer = new MultiPivotSnapshotAnalyzer(isCurrentMode ? targetTime : main.currentTargetTime, isCurrentMode);
 
     try {
         await analyzer.initialize();
@@ -1090,14 +1144,15 @@ async function main() {
             } else {
                 // Advance time by the reload interval for historical mode
                 main.currentTargetTime += SNAPSHOT_CONFIG.reloadInterval * 1000; // Convert seconds to milliseconds for advancement
-                const nextTime = new Date(main.currentTargetTime).toLocaleString();
+                const nextTime = fmtDateTime(main.currentTargetTime);
                 console.log(`${colors.cyan}🔄 AUTO-RELOAD MODE ACTIVE. Will advance to ${nextTime} in ${SNAPSHOT_CONFIG.reloadInterval} seconds...${colors.reset}`);
             }
             
             // Send one-time Telegram notification that auto-reload has started
             if (notificationManager.shouldSendAutoReloadStart()) {
-                const currentTime = new Date().toLocaleString();
-                const time24 = new Date().toLocaleTimeString('en-GB', { hour12: false });
+                const nowTs = Date.now();
+                const currentTime = fmtDateTime(nowTs);
+                const time24 = fmtTime24(nowTs);
                 const message = `🔄 *AUTO-RELOAD MODE STARTED*\n\n` +
                     `⏰ *Start Time:* ${currentTime} (${time24})\n` +
                     `🔁 *Reload Interval:* ${SNAPSHOT_CONFIG.reloadInterval} seconds\n` +

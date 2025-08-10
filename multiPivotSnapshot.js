@@ -27,7 +27,8 @@ import {
     useLocalData,
     api,
     pivotDetectionMode,
-    limit as configLimit
+    limit as configLimit,
+    timezone
 } from './config/config.js';
 
 import { multiPivotConfig } from './config/multiPivotConfig.js'; 
@@ -50,6 +51,51 @@ const colors = {
     dim: '\x1b[2m'
 };
 
+// ===== Timezone helpers =====
+function partsFromTS(ts) {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+    });
+    const parts = dtf.formatToParts(new Date(ts));
+    const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    return {
+        year: Number(map.year),
+        month: Number(map.month),
+        day: Number(map.day),
+        hour: Number(map.hour),
+        minute: Number(map.minute),
+        second: Number(map.second)
+    };
+}
+
+function parseTargetTimeInZone(str) {
+    if (typeof str === 'number' && Number.isFinite(str)) return Number(str);
+    const m = /^\s*(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\s*$/.exec(str || '');
+    if (!m) return NaN;
+    const [, y, mo, d, h, mi, s] = m.map(v => Number(v));
+    let guess = Date.UTC(y, mo - 1, d, h, mi, s);
+    const shown = partsFromTS(guess);
+    const shownUTC = Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour, shown.minute, shown.second);
+    const desiredUTC = Date.UTC(y, mo - 1, d, h, mi, s);
+    let adjusted = guess + (desiredUTC - shownUTC);
+    const shown2 = partsFromTS(adjusted);
+    const shownUTC2 = Date.UTC(shown2.year, shown2.month - 1, shown2.day, shown2.hour, shown2.minute, shown2.second);
+    adjusted = adjusted + (desiredUTC - shownUTC2);
+    return adjusted;
+}
+
+function fmtDateTime(ts) {
+    return new Date(ts).toLocaleString('en-US', { timeZone: timezone });
+}
+
+function fmtTime24(ts) {
+    return new Date(ts).toLocaleTimeString('en-GB', { hour12: false, timeZone: timezone });
+}
+// ==============================
+
 // Helper function to format time differences in days, hours, minutes
 function formatTimeDifference(milliseconds) {
     const totalMinutes = Math.floor(milliseconds / (1000 * 60));
@@ -71,7 +117,11 @@ class MultiPivotSnapshotAnalyzer {
         if (isCurrentMode) {
             this.snapshotTime = Date.now(); // Use current time
         } else {
-            this.snapshotTime = new Date(snapshotTime).getTime();
+            if (typeof snapshotTime === 'number' && Number.isFinite(snapshotTime)) {
+                this.snapshotTime = Number(snapshotTime);
+            } else {
+                this.snapshotTime = parseTargetTimeInZone(snapshotTime);
+            }
         }
         this.timeframeCandles = new Map();
         this.timeframePivots = new Map();
@@ -87,8 +137,8 @@ class MultiPivotSnapshotAnalyzer {
         }
         
         console.log(`${colors.cyan}=== MULTI-PIVOT SNAPSHOT ANALYZER ===${colors.reset}`);
-        console.log(`${colors.yellow}Target Time: ${new Date(this.snapshotTime).toLocaleString()}${colors.reset}`);
-        console.log(`${colors.yellow}Target Time (24h): ${new Date(this.snapshotTime).toLocaleString('en-GB', { hour12: false })}${colors.reset}`);
+        console.log(`${colors.yellow}Target Time: ${fmtDateTime(this.snapshotTime)}${colors.reset}`);
+        console.log(`${colors.yellow}Target Time (24h): ${fmtTime24(this.snapshotTime)}${colors.reset}`);
         console.log(`${colors.yellow}Symbol: ${symbol}${colors.reset}`);
         console.log(`${colors.cyan}${'='.repeat(60)}${colors.reset}\n`);
     }
@@ -593,8 +643,8 @@ class MultiPivotSnapshotAnalyzer {
                 console.log(`${colors.magenta}│${colors.reset}   ${colors.dim}No pivots found${colors.reset}`);
             } else {
                 recentPivots.forEach((pivot, index) => {
-                    const timeStr = new Date(pivot.time).toLocaleString();
-                    const time24 = new Date(pivot.time).toLocaleTimeString('en-GB', { hour12: false });
+                    const timeStr = fmtDateTime(pivot.time);
+                    const time24 = fmtTime24(pivot.time);
                     const ageFormatted = formatTimeDifference(this.snapshotTime - pivot.time);
                     const signalColor = pivot.signal === 'long' ? colors.green : colors.red;
                     const swingStr = pivot.swingPct ? ` (${pivot.swingPct.toFixed(2)}%)` : '';
@@ -671,15 +721,15 @@ class MultiPivotSnapshotAnalyzer {
             const totalConfirmed = 1 + confirmationCount;
             const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
             
-            const primaryTime = new Date(window.primaryPivot.time).toLocaleString();
-            const primaryTime24 = new Date(window.primaryPivot.time).toLocaleTimeString('en-GB', { hour12: false });
+            const primaryTime = fmtDateTime(window.primaryPivot.time);
+            const primaryTime24 = fmtTime24(window.primaryPivot.time);
             const signalColor = window.primaryPivot.signal === 'long' ? colors.green : colors.red;
             
             console.log(`${colors.brightYellow}│${colors.reset}`);
             
             if (windowType === 'executed') {
-                const executionTime = new Date(window.executionTime).toLocaleString();
-                const executionTime24 = new Date(window.executionTime).toLocaleTimeString('en-GB', { hour12: false });
+                const executionTime = fmtDateTime(window.executionTime);
+                const executionTime24 = fmtTime24(window.executionTime);
                 const timeDiff = formatTimeDifference(Math.abs(this.snapshotTime - window.executionTime));
                 const timing = window.executionTime <= this.snapshotTime ? 'ago' : 'from now';
                 
@@ -724,8 +774,8 @@ class MultiPivotSnapshotAnalyzer {
             if (window.confirmations.length > 0) {
                 console.log(`${colors.brightYellow}│${colors.reset}   Confirmations:`);
                 window.confirmations.forEach(conf => {
-                    const confTime = new Date(conf.confirmTime).toLocaleString();
-                    const confTime24 = new Date(conf.confirmTime).toLocaleTimeString('en-GB', { hour12: false });
+                    const confTime = fmtDateTime(conf.confirmTime);
+                    const confTime24 = fmtTime24(conf.confirmTime);
                     const timeAgoFormatted = formatTimeDifference(this.snapshotTime - conf.confirmTime);
                     console.log(`${colors.brightYellow}│${colors.reset}     • ${colors.green}${conf.timeframe}: ${confTime} (${confTime24}) @ $${conf.pivot.price.toFixed(1)} (${timeAgoFormatted} ago)${colors.reset}`);
                 });
@@ -834,7 +884,7 @@ async function main() {
     if (SNAPSHOT_CONFIG.currentMode) {
         // LIVE MODE: Use current time
         console.log(`${colors.red}🔴 LIVE MODE: Analyzing current market state${colors.reset}`);
-        console.log(`${colors.cyan}Current time: ${colors.brightYellow}${new Date().toLocaleString()}${colors.reset}\n`);
+        console.log(`${colors.cyan}Current time: ${colors.brightYellow}${fmtDateTime(Date.now())}${colors.reset}\n`);
         
         analyzer = new MultiPivotSnapshotAnalyzer(null, true); // Pass true for currentMode
     } else {
@@ -850,7 +900,9 @@ async function main() {
         }
         
         console.log(`${colors.cyan}📅 HISTORICAL MODE: Using configured snapshot time${colors.reset}`);
-        console.log(`${colors.cyan}Target time: ${colors.brightYellow}${snapshotTimeArg}${colors.reset}\n`);
+        const parsedTs = parseTargetTimeInZone(snapshotTimeArg);
+        const display = isNaN(parsedTs) ? snapshotTimeArg : fmtDateTime(parsedTs);
+        console.log(`${colors.cyan}Target time: ${colors.brightYellow}${display}${colors.reset}\n`);
         
         analyzer = new MultiPivotSnapshotAnalyzer(snapshotTimeArg, false);
     }

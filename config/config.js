@@ -10,6 +10,11 @@ export const api = 'bybit'; // 'binance' or 'bybit'
 export const time = '1m';
 export const symbol = 'BTCUSDT';
 
+// Timezone settings
+// Set the IANA timezone to use for parsing input times and formatting outputs
+// Examples: 'UTC', 'America/New_York', 'Europe/London', 'Africa/Lagos', 'Asia/Dubai'
+export const timezone = 'Africa/Lagos';
+
 // candle limit below
 
 // Helper function to convert interval string to number of candles per time period

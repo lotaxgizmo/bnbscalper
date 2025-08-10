@@ -27,7 +27,8 @@ import {
     useLocalData,
     api,
     pivotDetectionMode,
-    limit as configLimit
+    limit as configLimit,
+    timezone
 } from './config/config.js';
 
 import { multiPivotConfig } from './config/multiPivotConfig.js'; 
@@ -51,6 +52,54 @@ const colors = {
     dim: '\x1b[2m'
 };
 
+// ---------- Timezone helpers ----------
+const dtfTZ = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+});
+
+function partsFromTS(ts) {
+    const parts = dtfTZ.formatToParts(new Date(ts));
+    const get = (type) => Number(parts.find(p => p.type === type)?.value);
+    return {
+        year: get('year'),
+        month: get('month'),
+        day: get('day'),
+        hour: get('hour'),
+        minute: get('minute'),
+        second: get('second')
+    };
+}
+
+// Parse 'YYYY-MM-DD HH:MM:SS' in configured timezone to UTC ms
+function parseTargetTimeInZone(str) {
+    const m = /^\s*(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\s*$/.exec(str);
+    if (!m) return NaN;
+    const [ , y, mo, d, h, mi, s ] = m.map(v => Number(v));
+    // Initial guess as if components are UTC
+    let guess = Date.UTC(y, mo - 1, d, h, mi, s);
+    // What does this guess look like in the target timezone?
+    const shown = partsFromTS(guess);
+    const shownUTC = Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour, shown.minute, shown.second);
+    const desiredUTC = Date.UTC(y, mo - 1, d, h, mi, s);
+    // Adjust by difference so display equals desired wall time
+    let adjusted = guess + (desiredUTC - shownUTC);
+    // One more refinement pass for DST boundaries
+    const shown2 = partsFromTS(adjusted);
+    const shownUTC2 = Date.UTC(shown2.year, shown2.month - 1, shown2.day, shown2.hour, shown2.minute, shown2.second);
+    adjusted = adjusted + (desiredUTC - shownUTC2);
+    return adjusted;
+}
+
+function fmtDateTime(ts) {
+    return new Date(ts).toLocaleString('en-US', { timeZone: timezone });
+}
+function fmtTime24(ts) {
+    return new Date(ts).toLocaleTimeString('en-GB', { hour12: false, timeZone: timezone });
+}
+// -------------------------------------
+
 // Helper function to format time differences in days, hours, minutes
 function formatTimeDifference(milliseconds) {
     const totalMinutes = Math.floor(milliseconds / (1000 * 60));
@@ -72,7 +121,7 @@ class MultiPivotSnapshotAnalyzer {
         if (isCurrentMode) {
             this.snapshotTime = Date.now(); // Use current time
         } else {
-            this.snapshotTime = new Date(snapshotTime).getTime();
+            this.snapshotTime = parseTargetTimeInZone(snapshotTime);
         }
         this.timeframeCandles = new Map();
         this.timeframePivots = new Map();
@@ -89,8 +138,8 @@ class MultiPivotSnapshotAnalyzer {
         }
         
         console.log(`${colors.cyan}=== MULTI-PIVOT SNAPSHOT ANALYZER ===${colors.reset}`);
-        console.log(`${colors.yellow}Target Time: ${new Date(this.snapshotTime).toLocaleString()}${colors.reset}`);
-        console.log(`${colors.yellow}Target Time (24h): ${new Date(this.snapshotTime).toLocaleString('en-GB', { hour12: false })}${colors.reset}`);
+        console.log(`${colors.yellow}Target Time: ${fmtDateTime(this.snapshotTime)}${colors.reset}`);
+        console.log(`${colors.yellow}Target Time (24h): ${fmtTime24(this.snapshotTime)}${colors.reset}`);
         console.log(`${colors.yellow}Symbol: ${symbol}${colors.reset}`);
         console.log(`${colors.cyan}${'='.repeat(60)}${colors.reset}\n`);
     }
