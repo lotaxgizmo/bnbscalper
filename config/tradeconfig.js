@@ -8,17 +8,17 @@ const minute = hour * 60;
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell' or 'both' or 'alternate')
     direction: 'both',
+  
 
-    // Profit and loss settings (in %)
-    takeProfitPercent: 0.5,
-    stopLossPercent: 0.3,
-    
-    // Legacy names for compatibility
     takeProfit: 0.5,
     stopLoss: 0.3,
     leverage: 100,        
     
-    // Trailing stop settings
+    // Flip mode: close opposite and switch to new confirmed signal
+    switchOnOppositeSignal: true,        // When true: if an opposite signal confirms, close open opposite trade(s) and enter new one
+    switchPolicy: 'flip',                 // Reserved for future strategies; currently only 'flip' is supported
+
+        // Trailing stop settings
     enableTrailingStop: false,     // Enable trailing stop loss
     trailingStopPercent: 0.5,      // Distance to trail behind best price (in %)
     trailingStopActivationPercent: 1.0,  // Profit % required to activate trailing stop
@@ -33,8 +33,8 @@ export const tradeConfig = {
     showCandle: false,
     showPivot: false,
     showLimits: false,
-    showTradeDetails: false,
-    hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
+    showTradeDetails: true,
+    hideCascades: false,  // Hide cascade confirmation logs (keeps trade execution logs)
         
     // Position sizing settings
     positionSizeMode: 'percentage',  // 'fixed', 'percentage', or 'minimum'
@@ -47,7 +47,8 @@ export const tradeConfig = {
     positionSizingMode: 'percent', // 'percent', 'fixed', or 'minimum' - legacy
     amountPerTrade: 100,    // Fixed amount per trade in USDT (only used if positionSizingMode is 'fixed')
     minimumTradeAmount: 100, // Minimum trade amount in USDT (only used if positionSizingMode is 'minimum')
-    
+
+
     // riskPerTrade = Percentage of capital to risk per trade (100 = full capital)
         // initialCapital: 1000, 
         // riskPerTrade: 50,   

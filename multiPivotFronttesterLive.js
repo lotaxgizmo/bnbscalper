@@ -181,12 +181,12 @@ class LiveMultiPivotFronttester {
         
         // Calculate stop loss and take profit
         const stopLossPrice = signal.direction === 'long' 
-            ? entryPrice * (1 - tradeConfig.stopLossPercent / 100)
-            : entryPrice * (1 + tradeConfig.stopLossPercent / 100);
+            ? entryPrice * (1 - tradeConfig.stopLoss / 100)
+            : entryPrice * (1 + tradeConfig.stopLoss / 100);
             
         const takeProfitPrice = signal.direction === 'long'
-            ? entryPrice * (1 + tradeConfig.takeProfitPercent / 100)
-            : entryPrice * (1 - tradeConfig.takeProfitPercent / 100);
+            ? entryPrice * (1 + tradeConfig.takeProfit / 100)
+            : entryPrice * (1 - tradeConfig.takeProfit / 100);
         
         const trade = {
             id: this.trades.length + 1,
@@ -666,7 +666,7 @@ class LiveMultiPivotFronttester {
                 : `${tradeConfig.positionSizePercent || tradeConfig.riskPerTrade || 100}%`;
             console.log(`${colors.yellow}Position Size: ${sizeMode} (${sizeDisplay})${colors.reset}`);
             console.log(`${colors.yellow}Leverage: ${tradeConfig.leverage}x${colors.reset}`);
-            console.log(`${colors.yellow}Stop Loss: ${tradeConfig.stopLossPercent || tradeConfig.stopLoss}% | Take Profit: ${tradeConfig.takeProfitPercent || tradeConfig.takeProfit}%${colors.reset}`);
+            console.log(`${colors.yellow}Stop Loss: ${tradeConfig.stopLoss || tradeConfig.stopLoss}% | Take Profit: ${tradeConfig.takeProfit || tradeConfig.takeProfit}%${colors.reset}`);
             if (tradeConfig.enableTrailingStop) {
                 console.log(`${colors.yellow}Trailing Stop: ${tradeConfig.trailingStopPercent}% (activates at ${tradeConfig.trailingStopActivationPercent}%)${colors.reset}`);
             }
@@ -1627,17 +1627,34 @@ class LiveMultiPivotFronttester {
                 confirmations: cascadeResult.confirmations
             };
             
-            // Use the stored execution candle or create a synthetic one
-            const trade = this.createTrade(tradeSignal, this.lastExecutionCandle || {
-                time: executionTime,
-                close: executionPrice,
-                high: executionPrice,
-                low: executionPrice,
-                open: executionPrice
-            });
-            
-            if (trade) {
-                cascadeInfo.tradeId = trade.id;
+            // Flip-on-opposite-signal: close opposite trades at execution time, ignore same-direction duplicates
+            if (fronttesterconfig.enableTrading) {
+                // Determine execution candle/price for accurate flip exit
+                const execCandle = this.lastExecutionCandle || { time: executionTime, close: executionPrice, high: executionPrice, low: executionPrice, open: executionPrice };
+                const flipExitPriceRaw = execCandle.close;
+
+                if (tradeConfig.switchOnOppositeSignal) {
+                    const oppositeDir = tradeSignal.direction === 'long' ? 'short' : 'long';
+                    // Close all opposite open trades
+                    for (let i = this.openTrades.length - 1; i >= 0; i--) {
+                        const t = this.openTrades[i];
+                        if (t.direction !== oppositeDir) continue;
+                        this.closeTrade(t, flipExitPriceRaw, execCandle.time, 'flip');
+                        this.openTrades.splice(i, 1);
+                    }
+                }
+
+                // If a same-direction trade is already open, ignore this signal
+                const hasSameDirectionOpen = this.openTrades.some(t => t.direction === tradeSignal.direction);
+                if (!hasSameDirectionOpen) {
+                    // Use the stored execution candle or create a synthetic one
+                    const trade = this.createTrade(tradeSignal, execCandle);
+                    if (trade) {
+                        cascadeInfo.tradeId = trade.id;
+                    }
+                } else if (fronttesterconfig.showTrades) {
+                    console.log(`${colors.yellow}↪ Ignored duplicate ${tradeSignal.direction.toUpperCase()} signal: same-direction trade already open${colors.reset}`);
+                }
             }
         }
         

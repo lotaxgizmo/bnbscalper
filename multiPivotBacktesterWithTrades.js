@@ -840,7 +840,75 @@ async function runMultiTimeframeBacktest() {
             }
             
             if (shouldOpenTrade && capital > 0) {
-                if (openTrades.length < tradeConfig.maxConcurrentTrades) {
+                // If flip mode is enabled, first close opposite trades at execution time
+                if (tradeConfig.switchOnOppositeSignal) {
+                    const oppositeType = (tradeType === 'long') ? 'short' : 'long';
+                    // Determine execution candle for accurate close price
+                    const execTime = cascadeResult.executionTime;
+                    const executionCandle = oneMinuteCandles.find(c => Math.abs(c.time - execTime) <= 30000);
+                    const flipExitPriceRaw = executionCandle ? executionCandle.close : cascadeResult.executionPrice;
+
+                    for (let j = openTrades.length - 1; j >= 0; j--) {
+                        const t = openTrades[j];
+                        if (t.type !== oppositeType) continue;
+
+                        // Compute slippage-adjusted exit
+                        const exitSlippage = calculateSlippage(t.size, tradeConfig);
+                        const slippageAdjustedExitPrice = applySlippage(flipExitPriceRaw, t.type, exitSlippage);
+
+                        // Funding up to execution time
+                        const fundingCost = calculateFundingRate(
+                            tradeConfig,
+                            execTime,
+                            t.entryTime,
+                            t.size,
+                            tradeConfig.leverage
+                        );
+
+                        const pnlPct = (t.type === 'long'
+                            ? (slippageAdjustedExitPrice - t.entryPrice) / t.entryPrice
+                            : (t.entryPrice - slippageAdjustedExitPrice) / t.entryPrice) * tradeConfig.leverage;
+                        const grossPnl = t.size * pnlPct;
+                        const tradingFee = (t.size * tradeConfig.leverage * (tradeConfig.totalMakerFee / 100));
+                        const pnl = grossPnl - tradingFee - fundingCost;
+
+                        capital += pnl;
+                        if (capital <= 0) {
+                            capital = 0;
+                            console.log(`  ${colors.red}${colors.bold}[LIQUIDATION] Account liquidated! Trading stopped.${colors.reset}`);
+                        }
+
+                        if (tradeConfig.showTradeDetails) {
+                            const tradeTypeLabel = t.type.toUpperCase();
+                            const pnlColor = pnl >= 0 ? colors.green : colors.red;
+                            const pnlText = `${pnlColor}${pnl >= 0 ? '+' : ''}${formatNumberWithCommas(pnl)}${colors.reset}`;
+                            console.log(`  \x1b[35;1m└─> [FLIP] ${tradeTypeLabel} trade closed @ ${formatNumberWithCommas(flipExitPriceRaw)}. PnL: ${pnlText}${colors.reset}`);
+                        }
+
+                        trades.push({
+                            ...t,
+                            exitPrice: slippageAdjustedExitPrice,
+                            originalExitPrice: flipExitPriceRaw,
+                            exitTime: execTime,
+                            status: 'closed',
+                            result: 'FLIP',
+                            grossPnl,
+                            pnl,
+                            tradingFee,
+                            fundingCost,
+                            exitSlippage: exitSlippage * 100,
+                            capitalAfter: capital
+                        });
+
+                        openTrades.splice(j, 1);
+                    }
+                }
+
+                // Ignore same-direction signal if a same-direction trade is already open
+                const hasSameDirectionOpen = openTrades.some(t => t.type === tradeType);
+                if (hasSameDirectionOpen) {
+                    // Do not open another same-direction trade
+                } else if (openTrades.length < tradeConfig.maxConcurrentTrades) {
                     const usedCapital = openTrades.reduce((sum, trade) => sum + trade.size, 0);
                     const availableCapital = capital - usedCapital;
                     
