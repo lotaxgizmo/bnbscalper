@@ -56,13 +56,13 @@ const colors = {
     dim: '\x1b[2m'
 };
 
-
 // ---------- Notification Deduper (persists across auto-reloads in same process) ----------
 class NotificationManager {
     constructor() {
         this.sent = new Set(); // keys of notifications sent
         this.autoReloadStartNotified = false; // Track if auto-reload start notification was sent
     }
+    
     /**
      * Key scheme (stable across runs):
      * windowKey = timeframe|signal|primaryTime
