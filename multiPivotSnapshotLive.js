@@ -18,7 +18,7 @@ const SNAPSHOT_CONFIG = {
 
     // Auto-reload configuration
     autoReload: true,           // Enable auto-reload functionality
-    reloadInterval: 10           // Reload interval in seconds
+    reloadInterval: 8           // Reload interval in seconds
 };
 // ==================================
 
