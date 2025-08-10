@@ -18,7 +18,7 @@ const SNAPSHOT_CONFIG = {
 
     // Auto-reload configuration
     autoReload: true,           // Enable auto-reload functionality
-    reloadInterval: 6           // Reload interval in seconds
+    reloadInterval: 10           // Reload interval in seconds
 };
 // ==================================
 
@@ -59,6 +59,7 @@ const colors = {
 class NotificationManager {
     constructor() {
         this.sent = new Set(); // keys of notifications sent
+        this.autoReloadStartNotified = false; // Track if auto-reload start notification was sent
     }
     /**
      * Key scheme (stable across runs):
@@ -80,6 +81,13 @@ class NotificationManager {
         ]);
         if (this.sent.has(key)) return false;
         this.sent.add(key);
+        return true;
+    }
+    
+    // Check if we should send auto-reload start notification
+    shouldSendAutoReloadStart() {
+        if (this.autoReloadStartNotified) return false;
+        this.autoReloadStartNotified = true;
         return true;
     }
 }
@@ -127,6 +135,12 @@ class MultiPivotSnapshotAnalyzer {
         }
 
         console.log(`${colors.cyan}=== MULTI-PIVOT SNAPSHOT ANALYZER ===${colors.reset}`);
+        
+        // Display auto-reload mode if enabled
+        if (SNAPSHOT_CONFIG.autoReload) {
+            console.log(`${colors.brightYellow}${colors.bold}[🔄 AUTO-RELOAD MODE ACTIVE - ${SNAPSHOT_CONFIG.reloadInterval}s INTERVAL]${colors.reset}`);
+        }
+        
         console.log(`${colors.yellow}Target Time: ${new Date(this.snapshotTime).toLocaleString()}${colors.reset}`);
         console.log(`${colors.yellow}Target Time (24h): ${new Date(this.snapshotTime).toLocaleString('en-GB', { hour12: false })}${colors.reset}`);
         console.log(`${colors.yellow}Symbol: ${symbol}${colors.reset}`);
@@ -1064,16 +1078,36 @@ async function main() {
         analyzer.analyzeSnapshot();
 
         console.log(`${colors.green}✅ Snapshot analysis complete!${colors.reset}`);
-
+        
         // Auto-reload functionality
         if (SNAPSHOT_CONFIG.autoReload) {
+            // Display prominent auto-reload banner
+            console.log(`\n${colors.brightYellow}${colors.bold}┌${'─'.repeat(60)}┐${colors.reset}`);
+            console.log(`${colors.brightYellow}${colors.bold}│${' '.repeat(22)}🔄 AUTO-RELOAD MODE${' '.repeat(22)}│${colors.reset}`);
+            console.log(`${colors.brightYellow}${colors.bold}└${'─'.repeat(60)}┘${colors.reset}\n`);
             if (isCurrentMode) {
-                console.log(`${colors.cyan}Auto-reload enabled. Will refresh in ${SNAPSHOT_CONFIG.reloadInterval} seconds...${colors.reset}`);
+                console.log(`${colors.cyan}🔄 AUTO-RELOAD MODE ACTIVE. Will refresh in ${SNAPSHOT_CONFIG.reloadInterval} seconds...${colors.reset}`);
             } else {
                 // Advance time by the reload interval for historical mode
                 main.currentTargetTime += SNAPSHOT_CONFIG.reloadInterval * 1000; // Convert seconds to milliseconds for advancement
                 const nextTime = new Date(main.currentTargetTime).toLocaleString();
-                console.log(`${colors.cyan}Auto-reload enabled. Will advance to ${nextTime} in ${SNAPSHOT_CONFIG.reloadInterval} seconds...${colors.reset}`);
+                console.log(`${colors.cyan}🔄 AUTO-RELOAD MODE ACTIVE. Will advance to ${nextTime} in ${SNAPSHOT_CONFIG.reloadInterval} seconds...${colors.reset}`);
+            }
+            
+            // Send one-time Telegram notification that auto-reload has started
+            if (notificationManager.shouldSendAutoReloadStart()) {
+                const currentTime = new Date().toLocaleString();
+                const time24 = new Date().toLocaleTimeString('en-GB', { hour12: false });
+                const message = `🔄 *AUTO-RELOAD MODE STARTED*\n\n` +
+                    `⏰ *Start Time:* ${currentTime} (${time24})\n` +
+                    `🔁 *Reload Interval:* ${SNAPSHOT_CONFIG.reloadInterval} seconds\n` +
+                    `📊 *Analysis Mode:* ${isCurrentMode ? 'Current Time (Live)' : 'Historical'}\n` +
+                    `🔍 *Data Source:* ${SNAPSHOT_CONFIG.liveMode ? 'API (Live)' : 'CSV Files'}\n\n` +
+                    `Snapshot analyzer is now running in continuous auto-reload mode.`;
+                
+                telegramNotifier.sendMessage(message).catch(err => 
+                    console.error('Error sending auto-reload start notification:', err.message)
+                );
             }
 
             setTimeout(() => {
