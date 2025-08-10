@@ -19,7 +19,7 @@ export const multiPivotConfig = {
         {
             interval: '1h',
             role: 'primary',      // Confirmation timeframe
-            minSwingPct: 0.4,       // Same settings for easy testing
+            minSwingPct: 0.2,       // Same settings for easy testing
             minLegBars: 1,          // Same settings for easy testing
             lookback: 1,
             weight: 2
@@ -35,7 +35,7 @@ export const multiPivotConfig = {
         {
             interval: '1m',
             role: 'execution',      // Final execution timeframe
-            minSwingPct: 0,       // Same settings for easy testing
+            minSwingPct: 100,       // Same settings for easy testing
             minLegBars: 1,          // Same settings for easy testing
             lookback: 1,
             weight: 1
@@ -62,7 +62,7 @@ export const multiPivotConfig = {
         // Must include primary timeframe in confirmation
         requirePrimaryTimeframe: true,
 
-        requireHierarchicalValidation: false
+        requireHierarchicalValidation: true
     },
     
     // Signal strength and filtering

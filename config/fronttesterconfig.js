@@ -47,6 +47,6 @@ export const fronttesterconfig = {
     beepVolume: 1,              // Beep volume (1-3, 1=single beep, 2=double, 3=triple)
     
     // Telegram Notification Controls
-    showTelegramTrades: true,    // Send Telegram notifications for trades (open/close)
+    showTelegramTrades: false,    // Send Telegram notifications for trades (open/close)
     showTelegramCascades: false   // Send Telegram notifications for cascade confirmations
 };
