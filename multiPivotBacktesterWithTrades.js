@@ -1,3 +1,4 @@
+
 // multiPivotBacktesterWithTrades.js
 // Complete multi-timeframe pivot backtester that trades confirmed cascades with full trade execution
 

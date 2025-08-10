@@ -35,7 +35,7 @@ export const multiPivotConfig = {
         {
             interval: '1m',
             role: 'execution',      // Final execution timeframe
-            minSwingPct: 0.01,       // Same settings for easy testing
+            minSwingPct: 0,       // Same settings for easy testing
             minLegBars: 1,          // Same settings for easy testing
             lookback: 1,
             weight: 1
@@ -57,7 +57,7 @@ export const multiPivotConfig = {
         requireAllTimeframes: false,  // 🔧 RELAXED: Allow partial confirmation
         
         // If partial confirmation allowed, minimum number of timeframes needed
-        minTimeframesRequired: 3,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
+        minTimeframesRequired: 2,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         
         // Must include primary timeframe in confirmation
         requirePrimaryTimeframe: true,

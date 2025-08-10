@@ -33,8 +33,8 @@ export const tradeConfig = {
     showCandle: false,
     showPivot: false,
     showLimits: false,
-    showTradeDetails: true,
-    hideCascades: false,  // Hide cascade confirmation logs (keeps trade execution logs)
+    showTradeDetails: false,
+    hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
         
     // Position sizing settings
     positionSizeMode: 'percentage',  // 'fixed', 'percentage', or 'minimum'
