@@ -8,7 +8,7 @@ const SNAPSHOT_CONFIG = {
     liveMode: true, // Switch between CSV and API
     currentMode: true, // Switch between current time and target time
     // websocketMode: false,
-    length: 2880,    
+    length: 240,    
     // Display options
     togglePivots: false,
     toggleCascades: true,
