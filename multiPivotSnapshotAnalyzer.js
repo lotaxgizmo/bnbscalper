@@ -35,6 +35,7 @@ import { multiPivotConfig } from './config/multiPivotConfig.js';
 import { getCandles as getBinanceCandles } from './apis/binance.js';
 import { getCandles as getBybitCandles } from './apis/bybit.js';
 import telegramNotifier from './utils/telegramNotifier.js';
+import { fmtDateTime, fmtTime24 } from './utils/formatters.js';
 
 const colors = {
     reset: '\x1b[0m',
@@ -92,12 +93,6 @@ function parseTargetTimeInZone(str) {
     return adjusted;
 }
 
-function fmtDateTime(ts) {
-    return new Date(ts).toLocaleString('en-US', { timeZone: timezone });
-}
-function fmtTime24(ts) {
-    return new Date(ts).toLocaleTimeString('en-GB', { hour12: false, timeZone: timezone });
-}
 // -------------------------------------
 
 // Helper function to format time differences in days, hours, minutes
@@ -729,8 +724,8 @@ class MultiPivotSnapshotAnalyzer {
             console.log(`${colors.brightYellow}│${colors.reset}`);
             
             if (windowType === 'executed') {
-                const executionTime = new Date(window.executionTime).toLocaleString();
-                const executionTime24 = new Date(window.executionTime).toLocaleTimeString('en-GB', { hour12: false });
+                const executionTime = fmtDateTime(window.executionTime);
+                const executionTime24 = fmtTime24(window.executionTime);
                 const timeDiff = formatTimeDifference(Math.abs(this.snapshotTime - window.executionTime));
                 const timing = window.executionTime <= this.snapshotTime ? 'ago' : 'from now';
                 
@@ -901,8 +896,8 @@ class MultiPivotSnapshotAnalyzer {
     async sendCascadeWindowNotification(windowStatus, windowDetails) {
         try {
             let message = '';
-            const timeFormatted = new Date(this.snapshotTime).toLocaleString();
-            const time24 = new Date(this.snapshotTime).toLocaleTimeString('en-GB', { hour12: false });
+            const timeFormatted = fmtDateTime(this.snapshotTime);
+            const time24 = fmtTime24(this.snapshotTime);
             
             if (windowStatus === 'waiting') {
                 const { window } = windowDetails;
@@ -919,6 +914,8 @@ class MultiPivotSnapshotAnalyzer {
                     `📊 *Status:* ${totalConfirmed}/${minRequired} confirmations\n` +
                     `💰 *Price:* $${window.primaryPivot.price.toFixed(2)}\n` +
                     `⏰ *Time Remaining:* ${timeRemaining}\n` +
+                    `⏱️ *Time Ago:* ${formatTimeDifference(this.snapshotTime - window.primaryPivot.time)} ago\n` +
+                    `📤 *Sent:* ${fmtDateTime(Date.now())} (${fmtTime24(Date.now())})\n` +
                     `🕐 *Snapshot:* ${timeFormatted} (${time24})\n`;
                     
                 if (window.confirmations.length > 0) {
@@ -990,8 +987,8 @@ class MultiPivotSnapshotAnalyzer {
                 return this.snapshotTime <= w.windowEndTime;
             });
             
-            const timeFormatted = new Date(this.snapshotTime).toLocaleString();
-            const time24 = new Date(this.snapshotTime).toLocaleTimeString('en-GB', { hour12: false });
+            const timeFormatted = fmtDateTime(this.snapshotTime);
+            const time24 = fmtTime24(this.snapshotTime);
             
             let message = `📊 *SNAPSHOT ANALYSIS SUMMARY*\n\n` +
                 `🕐 *Analysis Time:* ${timeFormatted} (${time24})\n` +

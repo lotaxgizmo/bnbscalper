@@ -39,6 +39,7 @@ import { multiPivotConfig } from './config/multiPivotConfig.js';
 import { getCandles as getBinanceCandles } from './apis/binance.js';
 import { getCandles as getBybitCandles } from './apis/bybit.js';
 import telegramNotifier from './utils/telegramNotifier.js';
+import { fmtDateTime, fmtTime24 } from './utils/formatters.js';
 
 const colors = {
     reset: '\x1b[0m',
@@ -135,14 +136,6 @@ function parseTargetTimeInZone(str) {
     const shownUTC2 = Date.UTC(shown2.year, shown2.month - 1, shown2.day, shown2.hour, shown2.minute, shown2.second);
     adjusted = adjusted + (desiredUTC - shownUTC2);
     return adjusted;
-}
-
-function fmtDateTime(ts) {
-    return new Date(ts).toLocaleString('en-US', { timeZone: timezone });
-}
-
-function fmtTime24(ts) {
-    return new Date(ts).toLocaleTimeString('en-GB', { hour12: false, timeZone: timezone });
 }
 // ==============================
 
@@ -987,6 +980,10 @@ class MultiPivotSnapshotAnalyzer {
                 const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢' : '🔴';
                 const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
                 const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
+                const ageSincePrimary = formatTimeDifference(this.snapshotTime - window.primaryPivot.time);
+                const sentAtTs = Date.now();
+                const sentAt = fmtDateTime(sentAtTs);
+                const sentAt24 = fmtTime24(sentAtTs);
 
                 message = `🟡⏳ *CASCADE WINDOW WAITING*\n\n` +
                     `${signalEmoji} *Signal:* ${direction}\n` +
@@ -994,6 +991,8 @@ class MultiPivotSnapshotAnalyzer {
                     `📊 *Status:* ${confirmationsCount}/${minRequired} confirmations\n` +
                     `💰 *Price:* $${window.primaryPivot.price.toFixed(2)}\n` +
                     `⏰ *Time Remaining:* ${timeRemaining}\n` +
+                    `⏱️ *Time Ago:* ${ageSincePrimary} ago\n` +
+                    `📤 *Sent:* ${sentAt} (${sentAt24})\n` +
                     `🕐 *Snapshot:* ${timeFormatted} (${time24})\n`;
 
                 if (window.confirmations.length > 0) {
@@ -1024,8 +1023,8 @@ class MultiPivotSnapshotAnalyzer {
                 const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢✅' : '🔴✅';
                 const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
                 const executionPrice = this.getExecutionPrice(window);
-                const executionTime = new Date(window.executionTime).toLocaleString();
-                const executionTime24 = new Date(window.executionTime).toLocaleTimeString('en-GB', { hour12: false });
+                const executionTime = fmtDateTime(window.executionTime);
+                const executionTime24 = fmtTime24(window.executionTime);
                 const timeAgo = formatTimeDifference(this.snapshotTime - window.executionTime);
 
                 message = `🔴✅ *CASCADE EXECUTED*\n\n` +
@@ -1063,8 +1062,8 @@ class MultiPivotSnapshotAnalyzer {
                 return this.snapshotTime <= w.windowEndTime;
             });
 
-            const timeFormatted = new Date(this.snapshotTime).toLocaleString();
-            const time24 = new Date(this.snapshotTime).toLocaleTimeString('en-GB', { hour12: false });
+            const timeFormatted = fmtDateTime(this.snapshotTime);
+            const time24 = fmtTime24(this.snapshotTime);
 
             let message = `📊 *SNAPSHOT ANALYSIS SUMMARY*\n\n` +
                 `🕐 *Analysis Time:* ${timeFormatted} (${time24})\n` +
