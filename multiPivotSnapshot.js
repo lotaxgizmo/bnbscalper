@@ -96,6 +96,18 @@ function fmtTime24(ts) {
 }
 // ==============================
 
+// Helper: convert timeframe string like '15m','1h','1d' to milliseconds
+function timeframeToMilliseconds(timeframe) {
+    const unit = timeframe.slice(-1);
+    const value = parseInt(timeframe.slice(0, -1));
+    switch (unit) {
+        case 'm': return value * 60 * 1000;
+        case 'h': return value * 60 * 60 * 1000;
+        case 'd': return value * 24 * 60 * 60 * 1000;
+        default: return NaN;
+    }
+}
+
 // Helper function to format time differences in days, hours, minutes
 function formatTimeDifference(milliseconds) {
     const totalMinutes = Math.floor(milliseconds / (1000 * 60));
@@ -240,10 +252,19 @@ class MultiPivotSnapshotAnalyzer {
             }
         }
         
+        // Filter out candles that are not yet closed relative to the snapshot time
+        const timeframeMs = timeframeToMilliseconds(interval);
+        const closedCandles = candles.filter(c => (c.time + timeframeMs) <= this.snapshotTime);
+
+        const discardedCount = candles.length - closedCandles.length;
+        if (discardedCount > 0) {
+            console.log(`${colors.yellow}Discarded ${discardedCount} open candle(s) for ${interval}.${colors.reset}`);
+        }
+
         // Sort chronologically
-        candles.sort((a, b) => a.time - b.time);
+        closedCandles.sort((a, b) => a.time - b.time);
         
-        return candles;
+        return closedCandles;
     }
     
     async loadTimeframeFromAPI(interval, startTime, endTime) {
@@ -274,15 +295,24 @@ class MultiPivotSnapshotAnalyzer {
                 return [];
             }
             
-            // Filter to exact time window
-            const filteredCandles = allCandles.filter(candle => 
-                candle.time >= startTime && candle.time <= endTime
+            // Filter to our time window up to snapshot time
+            let candles = allCandles.filter(candle => 
+                candle.time >= startTime && candle.time <= this.snapshotTime
             );
-            
+
+            // Filter out candles that are not yet closed relative to the snapshot time
+            const timeframeMs = timeframeToMilliseconds(interval);
+            const closedCandles = candles.filter(c => (c.time + timeframeMs) <= this.snapshotTime);
+
+            const discardedCount = candles.length - closedCandles.length;
+            if (discardedCount > 0) {
+                console.log(`${colors.yellow}Discarded ${discardedCount} open candle(s) for ${interval}.${colors.reset}`);
+            }
+
             // Sort chronologically
-            filteredCandles.sort((a, b) => a.time - b.time);
+            closedCandles.sort((a, b) => a.time - b.time);
             
-            return filteredCandles;
+            return closedCandles;
             
         } catch (error) {
             console.error(`${colors.red}[${interval}] Error loading from API:${colors.reset}`, error.message);
@@ -437,42 +467,29 @@ class MultiPivotSnapshotAnalyzer {
     }
 
     checkHierarchicalExecution(window) {
-        const confirmedTimeframes = [window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)];
-        const timeframeRoles = new Map();
-        multiPivotConfig.timeframes.forEach(tf => {
-            timeframeRoles.set(tf.interval, tf.role);
-        });
-        
-        let hasExecution = false;
-        let confirmationCount = 0;
-        
-        for (const tf of confirmedTimeframes) {
-            const role = timeframeRoles.get(tf);
-            if (role === 'execution') {
-                hasExecution = true;
-            } else if (role === 'confirmation') {
-                confirmationCount++;
-            }
-        }
-        
+        const confirmedTimeframes = [
+            window.primaryPivot.timeframe,
+            ...window.confirmations.map(c => c.timeframe)
+        ];
+
         const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
-        
-        if (hasExecution && confirmationCount === 0) {
-            return false; // Door is closed without confirmation
-        }
-        
-        if (confirmedTimeframes.length >= minRequired) {
-            if (hasExecution && confirmationCount >= 1) {
-                return true;
-            }
-            
-            const totalConfirmationTFs = multiPivotConfig.timeframes.filter(tf => tf.role === 'confirmation').length;
-            if (!hasExecution && confirmationCount >= totalConfirmationTFs) {
-                return true;
-            }
-        }
-        
-        return false;
+        if (confirmedTimeframes.length < minRequired) return false;
+
+        const primaryTF = multiPivotConfig.timeframes.find(tf => tf.role === 'primary')?.interval;
+        const requirePrimary = !!multiPivotConfig.cascadeSettings.requirePrimaryTimeframe;
+        const hasPrimary = primaryTF ? confirmedTimeframes.includes(primaryTF) : false;
+
+        const executionTF = multiPivotConfig.timeframes.find(tf => tf.role === 'execution')?.interval;
+        const executionRoleExists = !!executionTF;
+
+        // If config has an execution role, that timeframe must be confirmed
+        if (executionRoleExists && !confirmedTimeframes.includes(executionTF)) return false;
+
+        // If primary is required, enforce it
+        if (requirePrimary && !hasPrimary) return false;
+
+        // All constraints satisfied
+        return true;
     }
 
     executeWindow(window, currentTime) {

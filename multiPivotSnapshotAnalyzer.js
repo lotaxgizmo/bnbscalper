@@ -460,42 +460,29 @@ class MultiPivotSnapshotAnalyzer {
     }
 
     checkHierarchicalExecution(window) {
-        const confirmedTimeframes = [window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)];
-        const timeframeRoles = new Map();
-        multiPivotConfig.timeframes.forEach(tf => {
-            timeframeRoles.set(tf.interval, tf.role);
-        });
-        
-        let hasExecution = false;
-        let confirmationCount = 0;
-        
-        for (const tf of confirmedTimeframes) {
-            const role = timeframeRoles.get(tf);
-            if (role === 'execution') {
-                hasExecution = true;
-            } else if (role === 'confirmation') {
-                confirmationCount++;
-            }
-        }
-        
+        const confirmedTimeframes = [
+            window.primaryPivot.timeframe,
+            ...window.confirmations.map(c => c.timeframe)
+        ];
+
         const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
-        
-        if (hasExecution && confirmationCount === 0) {
-            return false; // Door is closed without confirmation
-        }
-        
-        if (confirmedTimeframes.length >= minRequired) {
-            if (hasExecution && confirmationCount >= 1) {
-                return true;
-            }
-            
-            const totalConfirmationTFs = multiPivotConfig.timeframes.filter(tf => tf.role === 'confirmation').length;
-            if (!hasExecution && confirmationCount >= totalConfirmationTFs) {
-                return true;
-            }
-        }
-        
-        return false;
+        if (confirmedTimeframes.length < minRequired) return false;
+
+        const primaryTF = multiPivotConfig.timeframes.find(tf => tf.role === 'primary')?.interval;
+        const requirePrimary = !!multiPivotConfig.cascadeSettings.requirePrimaryTimeframe;
+        const hasPrimary = primaryTF ? confirmedTimeframes.includes(primaryTF) : false;
+
+        const executionTF = multiPivotConfig.timeframes.find(tf => tf.role === 'execution')?.interval;
+        const executionRoleExists = !!executionTF;
+
+        // If config has an execution role, that timeframe must be confirmed
+        if (executionRoleExists && !confirmedTimeframes.includes(executionTF)) return false;
+
+        // If primary is required, enforce it
+        if (requirePrimary && !hasPrimary) return false;
+
+        // All constraints satisfied
+        return true;
     }
 
     executeWindow(window, currentTime) {
