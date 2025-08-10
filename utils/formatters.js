@@ -61,3 +61,38 @@ export const formatNumber = (num, decimals = 2) => {
     maximumFractionDigits: decimals
   });
 };
+
+// Timezone-aware date/time formatting helpers
+// Uses the IANA timezone configured in `config/config.js`
+import { timezone } from '../config/config.js';
+
+// Prebuild Intl formatters for performance
+const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  dateStyle: 'full',
+  timeStyle: 'medium',
+  timeZone: timezone
+});
+
+const time24Formatter = new Intl.DateTimeFormat('en-GB', {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+  timeZone: timezone
+});
+
+export const fmtDateTime = (ts) => {
+  try {
+    return dateTimeFormatter.format(new Date(ts));
+  } catch {
+    return new Date(ts).toString();
+  }
+};
+
+export const fmtTime24 = (ts) => {
+  try {
+    return time24Formatter.format(new Date(ts));
+  } catch {
+    return new Date(ts).toTimeString().slice(0, 8);
+  }
+};

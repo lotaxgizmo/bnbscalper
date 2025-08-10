@@ -6,6 +6,7 @@ import { getCandles } from '../apis/bybit.js';
 import fs from 'fs';
 import path from 'path';
 import { limit, pivotDetectionMode, time, minSwingPct, minLegBars, pivotLookback } from '../config/config.js';
+import { fmtDateTime } from './formatters.js';
 
 const colors = {
     reset: '\x1b[0m',
@@ -401,7 +402,7 @@ export class MultiTimeframePivotDetector {
         
         if (shouldShowProcess) {
             console.log(`${colors.yellow}=== CASCADE CONFIRMATION STARTED ===${colors.reset}`);
-            console.log(`${colors.yellow}Primary Signal: ${primaryPivot.signal.toUpperCase()} from ${primaryPivot.timeframe} at ${new Date(primaryPivot.time).toLocaleString()}${colors.reset}`);
+            console.log(`${colors.yellow}Primary Signal: ${primaryPivot.signal.toUpperCase()} from ${primaryPivot.timeframe} at ${fmtDateTime(primaryPivot.time)}${colors.reset}`);
         }
         
         // Start cascade from second timeframe (first is primary trigger)
@@ -474,7 +475,7 @@ export class MultiTimeframePivotDetector {
         
         if (shouldShowProcess) {
             console.log(`${colors.yellow}\n === FORWARD CASCADE CONFIRMATION STARTED ===${colors.reset}`);
-            console.log(`${colors.yellow}Primary Signal: ${primaryPivot.signal.toUpperCase()} from ${primaryPivot.timeframe} at ${new Date(primaryPivot.time).toLocaleString()}${colors.reset}`);
+            console.log(`${colors.yellow}Primary Signal: ${primaryPivot.signal.toUpperCase()} from ${primaryPivot.timeframe} at ${fmtDateTime(primaryPivot.time)}${colors.reset}`);
         }
         
         // Find the primary pivot time in 1-minute candles
@@ -516,7 +517,7 @@ export class MultiTimeframePivotDetector {
                 cascadeResult.executionPrice = actualExecutionIndex >= 0 ? oneMinuteCandles[actualExecutionIndex].close : oneMinuteCandles[currentCandleIndex].close;
                 
                 if (shouldShowProcess) {
-                    console.log(`${colors.green}✓ FORWARD CASCADE CONFIRMED - Latest confirmation at ${new Date(latestConfirmationTime).toLocaleString()}${colors.reset}`);
+                    console.log(`${colors.green}✓ FORWARD CASCADE CONFIRMED - Latest confirmation at ${fmtDateTime(latestConfirmationTime)}${colors.reset}`);
                     console.log(`${colors.green}Execution Price: ${cascadeResult.executionPrice} (${cascadeResult.minutesAfterPrimary} min after primary)${colors.reset}`);
                 }
                 
@@ -668,7 +669,7 @@ export class MultiTimeframePivotDetector {
                 latestPivot: latestPivot ? {
                     type: latestPivot.type,
                     signal: latestPivot.signal,
-                    time: new Date(latestPivot.time).toLocaleString(),
+                    time: fmtDateTime(latestPivot.time),
                     price: latestPivot.price
                 } : null
             });

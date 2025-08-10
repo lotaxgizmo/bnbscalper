@@ -3,6 +3,7 @@
 
 import { telegramConfig, validateTelegramConfig } from '../config/telegramConfig.js';
 import fetch from 'node-fetch';
+import { fmtDateTime, fmtTime24 } from './formatters.js';
 
 class TelegramNotifier {
     constructor() {
@@ -98,10 +99,10 @@ class TelegramNotifier {
     
     // Format date for messages
     formatDate(timestamp) {
-        const date = new Date(timestamp);
-        const time12 = date.toLocaleTimeString();
-        const time24 = date.toLocaleTimeString('en-GB', { hour12: false });
-        return `${date.toLocaleDateString('en-US', { weekday: 'short' })} ${date.toLocaleDateString()} ${time12} (${time24})`;
+        // Use timezone-aware helpers (config.timezone)
+        const full = fmtDateTime(timestamp);
+        const t24 = fmtTime24(timestamp);
+        return `${full} (${t24})`;
     }
     
     // Format price for messages (no commas for prices)
