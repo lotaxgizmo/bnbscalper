@@ -871,8 +871,8 @@ class MultiPivotSnapshotAnalyzer {
             if (window.confirmations.length > 0) {
                 console.log(`${colors.brightYellow}│${colors.reset}   Confirmations:`);
                 window.confirmations.forEach(conf => {
-                    const confTime = new Date(conf.confirmTime).toLocaleString();
-                    const confTime24 = new Date(conf.confirmTime).toLocaleTimeString('en-GB', { hour12: false });
+                    const confTime = fmtDateTime(conf.confirmTime);
+                    const confTime24 = fmtTime24(conf.confirmTime);
                     const timeAgoFormatted = formatTimeDifference(this.snapshotTime - conf.confirmTime);
                     console.log(`${colors.brightYellow}│${colors.reset}     • ${colors.green}${conf.timeframe}: ${confTime} (${confTime24}) @ $${conf.pivot.price.toFixed(1)} (${timeAgoFormatted} ago)${colors.reset}`);
                 });
@@ -907,13 +907,27 @@ class MultiPivotSnapshotAnalyzer {
             recentCascades.forEach((cascade, index) => {
                 const { primaryPivot, cascadeResult } = cascade;
                 const executionDate = new Date(cascadeResult.executionTime);
-                const dateStr = executionDate.toLocaleDateString('en-US', {
+                // Use configured timezone for all displays
+                const dateStr = new Intl.DateTimeFormat('en-US', {
+                    timeZone: timezone,
                     weekday: 'short',
                     month: 'short',
                     day: 'numeric'
-                });
-                const time = executionDate.toLocaleTimeString();
-                const time24 = executionDate.toLocaleTimeString('en-GB', { hour12: false });
+                }).format(executionDate);
+                const time = new Intl.DateTimeFormat('en-US', {
+                    timeZone: timezone,
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                }).format(executionDate);
+                const time24 = new Intl.DateTimeFormat('en-GB', {
+                    timeZone: timezone,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                }).format(executionDate);
                 const signal = primaryPivot.signal.toUpperCase();
                 const strength = (cascadeResult.strength * 100).toFixed(0);
                 const price = cascadeResult.executionPrice.toFixed(1);
