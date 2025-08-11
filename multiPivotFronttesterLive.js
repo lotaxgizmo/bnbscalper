@@ -1078,9 +1078,23 @@ class LiveMultiPivotFronttester {
             const sourceIndicator = useLocalData ? 'CSV' : 'API';
             console.log(`${colors.yellow}[${tf.interval.padEnd(4)}] Loaded ${candles.length.toString().padStart(4)} candles from ${sourceIndicator}${colors.reset}`);
         }
-        
+
+        // Ensure 1m candles are available for time progression/trade tracking even if not configured for cascade
+        let oneMinute = this.timeframeCandles.get('1m') || [];
+        if (oneMinute.length === 0) {
+            try {
+                console.log(`${colors.cyan}[1m] Loading 1-minute candles for trade tracking${colors.reset}`);
+                await detector.loadTimeframeData({ interval: '1m' }, useLocalData, fronttesterconfig.dataLimit || configLimit);
+                oneMinute = detector.timeframeData.get('1m') || [];
+                this.timeframeCandles.set('1m', oneMinute);
+                console.log(`${colors.green}[1m] Loaded ${oneMinute.length} 1-minute candles for trade tracking${colors.reset}`);
+            } catch (e) {
+                console.warn(`${colors.yellow}[WARN] Failed to load 1m candles for trade tracking. Simulation will proceed using available data.${colors.reset}`);
+            }
+        }
+
         // Get 1-minute candles for time progression
-        this.oneMinuteCandles = this.timeframeCandles.get('1m') || [];
+        this.oneMinuteCandles = oneMinute;
         console.log(`${colors.green}Time progression: ${this.oneMinuteCandles.length} minutes${colors.reset}`);
     }
 
@@ -1401,24 +1415,8 @@ class LiveMultiPivotFronttester {
             const alreadyConfirmed = window.confirmations.some(c => c.timeframe === timeframe.interval);
             if (alreadyConfirmed) continue;
             
-            // HIERARCHICAL VALIDATION: Execution timeframe (1m) can only confirm if confirmation timeframes are present
-            // This is controlled by the requireHierarchicalValidation toggle in multiPivotConfig
-            const requireHierarchical = multiPivotConfig.cascadeSettings.requireHierarchicalValidation !== false;
-            if (requireHierarchical) {
-                const timeframeRole = multiPivotConfig.timeframes.find(tf => tf.interval === timeframe.interval)?.role;
-                if (timeframeRole === 'execution') {
-                    // Check if we have any confirmation timeframes already
-                    const hasConfirmation = window.confirmations.some(c => {
-                        const role = multiPivotConfig.timeframes.find(tf => tf.interval === c.timeframe)?.role;
-                        return role === 'confirmation';
-                    });
-                    
-                    if (!hasConfirmation) {
-                        // Block execution timeframe from confirming without confirmation timeframes
-                        continue; // Skip this confirmation
-                    }
-                }
-            }
+            // Updated hierarchical validation: do not block execution timeframe confirmations here.
+            // Role requirements are enforced later in checkHierarchicalExecution().
             
             // Add confirmation
             window.confirmations.push({
@@ -1472,60 +1470,28 @@ class LiveMultiPivotFronttester {
     }
     
     checkHierarchicalExecution(window) {
-        // Get all confirmed timeframes (primary + confirmations)
-        const confirmedTimeframes = [window.primaryPivot.timeframe, ...window.confirmations.map(c => c.timeframe)];
-        
-        // Get timeframe roles from config
-        const timeframeRoles = new Map();
-        multiPivotConfig.timeframes.forEach(tf => {
-            timeframeRoles.set(tf.interval, tf.role);
-        });
-        
-        // Count confirmations and execution timeframes
-        let hasExecution = false;
-        let confirmationCount = 0;
-        const confirmationTFs = [];
-        const executionTFs = [];
-        
-        for (const tf of confirmedTimeframes) {
-            const role = timeframeRoles.get(tf);
-            if (role === 'execution') {
-                hasExecution = true;
-                executionTFs.push(tf);
-            } else if (role === 'confirmation') {
-                confirmationCount++;
-                confirmationTFs.push(tf);
-            }
-            // Primary is always counted (role === 'primary')
-        }
-        
+        // Gather confirmed timeframes (primary + confirmations)
+        const confirmedTimeframes = [
+            window.primaryPivot.timeframe,
+            ...window.confirmations.map(c => c.timeframe)
+        ];
+
         const minRequired = multiPivotConfig.cascadeSettings.minTimeframesRequired || 3;
-        
-        // CRITICAL RULE: Execution timeframe (1m) can ONLY execute if there's at least one confirmation timeframe
-        if (hasExecution && confirmationCount === 0) {
-            // 1m cannot execute without confirmation timeframes (1h or 15m)
-            return false; // Door is closed without confirmation
-        }
-        
-        // EXECUTION RULES:
-        // 1. If we have execution timeframe + at least one confirmation -> EXECUTE
-        // 2. If no execution but we have all confirmation timeframes -> EXECUTE
-        // 3. Must have at least minRequired total timeframes
-        
-        if (confirmedTimeframes.length >= minRequired) {
-            // Rule 1: Has execution timeframe AND at least one confirmation
-            if (hasExecution && confirmationCount >= 1) {
-                return true; // Execute with execution + confirmation(s)
-            }
-            
-            // Rule 2: No execution, but has all confirmation timeframes
-            const totalConfirmationTFs = multiPivotConfig.timeframes.filter(tf => tf.role === 'confirmation').length;
-            if (!hasExecution && confirmationCount >= totalConfirmationTFs) {
-                return true; // Execute on lowest available timeframe (all confirmations present)
-            }
-        }
-        
-        return false; // Not ready for execution
+        if (confirmedTimeframes.length < minRequired) return false;
+
+        // Primary enforcement (optional)
+        const primaryTF = multiPivotConfig.timeframes.find(tf => tf.role === 'primary')?.interval;
+        const requirePrimary = !!multiPivotConfig.cascadeSettings.requirePrimaryTimeframe;
+        const hasPrimary = primaryTF ? confirmedTimeframes.includes(primaryTF) : false;
+
+        // Execution enforcement (only if execution role exists in config)
+        const executionTF = multiPivotConfig.timeframes.find(tf => tf.role === 'execution')?.interval;
+        const executionRoleExists = !!executionTF;
+        if (executionRoleExists && !confirmedTimeframes.includes(executionTF)) return false;
+
+        if (requirePrimary && !hasPrimary) return false;
+
+        return true;
     }
     
     executeWindow(window, currentTime) {

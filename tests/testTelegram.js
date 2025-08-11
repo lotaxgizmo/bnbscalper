@@ -2,7 +2,7 @@
 // Test file for Telegram notifications
 // Note: Messages will be sent to ALL chat IDs configured in telegramConfig.js
 
-import telegramNotifier from './utils/telegramNotifier.js';
+import telegramNotifier from '../utils/telegramNotifier.js';
 
 async function testTelegramNotifications() {
     console.log('Testing Telegram notifications...');

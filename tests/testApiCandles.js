@@ -1,6 +1,6 @@
-import { getCandles } from './apis/bybit.js';
-import { symbol, pivotDetectionMode } from './config/config.js';
-import { multiPivotConfig } from './config/multiPivotConfig.js';
+import { getCandles } from '../apis/bybit.js';
+import { symbol, pivotDetectionMode } from '../config/config.js';
+import { multiPivotConfig } from '../config/multiPivotConfig.js';
 import fs from 'fs';
 import path from 'path';
 

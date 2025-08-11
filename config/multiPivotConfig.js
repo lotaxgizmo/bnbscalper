@@ -33,14 +33,14 @@ export const multiPivotConfig = {
             weight: 1
         },
      
-        // {
-        //     interval: '1m',
-        //     role: 'execution',      // Final execution timeframe
-        //     minSwingPct: 1,       // Same settings for easy testing
-        //     minLegBars: 1,          // Same settings for easy testing
-        //     lookback: 1,
-        //     weight: 1
-        // }
+        {
+            interval: '1m',
+            role: 'execution',      // Final execution timeframe
+            minSwingPct: 1,       // Same settings for easy testing
+            minLegBars: 1,          // Same settings for easy testing
+            lookback: 1,
+            weight: 1
+        }
     ],
     
     // Cascade confirmation settings

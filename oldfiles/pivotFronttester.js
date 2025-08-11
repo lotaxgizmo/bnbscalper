@@ -9,12 +9,12 @@ import {
     pivotLookback,
     minLegBars,
     pivotDetectionMode
-} from './config/config.js';
+} from '../config/config.js';
 
-import { tradeConfig } from './config/tradeconfig.js';
-import { fronttesterconfig } from './config/fronttesterconfig.js';
+import { tradeConfig } from '../config/tradeconfig.js';
+import { fronttesterconfig } from '../config/fronttesterconfig.js';
 // Removed bybit.js dependency - using embedded API calls
-import { connectWebSocket } from './apis/bybit_ws.js';
+import { connectWebSocket } from '../apis/bybit_ws.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

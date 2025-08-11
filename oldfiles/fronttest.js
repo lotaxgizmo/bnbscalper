@@ -6,13 +6,13 @@ import {
     time as interval,
     hideCandle,
     limit // maximum candles to retain, keeps parity with backtester
-} from './config/config.js';
-import { tradeConfig } from './config/tradeconfig.js';
+} from '../config/config.js';
+import { tradeConfig } from '../config/tradeconfig.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { connectWebSocket } from './apis/bybit_ws.js';
-import { getCandles } from './apis/bybit.js';
+import { connectWebSocket } from '../apis/bybit_ws.js';
+import { getCandles } from '../apis/bybit.js';
 
 // Convert the interval string (e.g. "1m", "5m") to its numeric minute value once
 // This will be reused throughout the script for all interval-related maths

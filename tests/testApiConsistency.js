@@ -1,5 +1,5 @@
 // Test API data consistency
-import { getCandles as getBybitCandles } from './apis/bybit.js';
+import { getCandles as getBybitCandles } from '../apis/bybit.js';
 
 const symbol = 'BTCUSDT';
 const currentTime = Date.now();
