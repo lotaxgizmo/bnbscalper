@@ -847,13 +847,27 @@ class MultiPivotSnapshotAnalyzer {
             recentCascades.forEach((cascade, index) => {
                 const { primaryPivot, cascadeResult } = cascade;
                 const executionDate = new Date(cascadeResult.executionTime);
-                const dateStr = executionDate.toLocaleDateString('en-US', { 
-                    weekday: 'short', 
-                    month: 'short', 
-                    day: 'numeric' 
-                });
-                const time = executionDate.toLocaleTimeString();
-                const time24 = executionDate.toLocaleTimeString('en-GB', { hour12: false });
+                // Use configured timezone for all displays (Africa time or as set in config)
+                const dateStr = new Intl.DateTimeFormat('en-US', {
+                    timeZone: timezone,
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                }).format(executionDate);
+                const time = new Intl.DateTimeFormat('en-US', {
+                    timeZone: timezone,
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                }).format(executionDate);
+                const time24 = new Intl.DateTimeFormat('en-GB', {
+                    timeZone: timezone,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                }).format(executionDate);
                 const signal = primaryPivot.signal.toUpperCase();
                 const strength = (cascadeResult.strength * 100).toFixed(0);
                 const price = cascadeResult.executionPrice.toFixed(1);
