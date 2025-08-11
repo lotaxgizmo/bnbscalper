@@ -7,13 +7,14 @@ const minute = hour * 60;
 
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell' or 'both' or 'alternate')
-    direction: 'both',
+    // direction: 'both',
+    direction: 'alternate',
   
     
 
-    takeProfit: 1,
-    stopLoss: 0.5,
-    leverage: 50,        
+    takeProfit: 0.9,
+    stopLoss: 0.3,
+    leverage: 1,        
     
     // Flip mode: close opposite and switch to new confirmed signal
     switchOnOppositeSignal: true,        // When true: if an opposite signal confirms, close open opposite trade(s) and enter new one
@@ -32,8 +33,8 @@ export const tradeConfig = {
     
     
     showCandle: false,
-    showPivot: false,
     showLimits: false,
+    showPivot: false,
     showTradeDetails: false,
     hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
 

@@ -3,7 +3,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import WebSocket, { WebSocketServer } from 'ws';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { tradeConfig } from '../config/tradeconfig.js';
+import { tradeConfig } from './tradeconfig.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -165,56 +165,73 @@ function subscribeSymbol(symbol) {
 
 // --- Trade evaluation ---
 function evaluateTradesForSymbol(symbol, currentPrice) {
+  // Broadcast latest price once per symbol tick
+  try { broadcast(JSON.stringify({ type: 'price_update', symbol, price: currentPrice })); } catch {}
   for (const trade of openTrades.values()) {
-    if (trade.symbol === symbol && trade.status === 'OPEN') {
-      const dir = trade.side === 'LONG' ? 1 : -1;
+    if (trade.symbol !== symbol || trade.status !== 'OPEN') continue;
+    const dir = trade.side === 'LONG' ? 1 : -1;
+    const pnl = (currentPrice - trade.entryPrice) * trade.qty * dir;
+    const pnlPct = ((currentPrice / trade.entryPrice) - 1) * 100 * dir;
+    broadcast(JSON.stringify({ type: 'trade_update', id: trade.id, pnl, pnlPct }));
 
-      // Broadcast PnL update
-      const pnl = (currentPrice - trade.entryPrice) * trade.qty * dir;
-      const pnlPct = ((currentPrice / trade.entryPrice) - 1) * 100 * dir;
-      broadcast(JSON.stringify({ type: 'trade_update', id: trade.id, pnl, pnlPct }));
-
-      // Check TP/SL
-      if (dir === 1) { // LONG
-        if (currentPrice >= trade.tp) closeTrade(trade.id, 'TP', trade.tp);
-        else if (currentPrice <= trade.sl) closeTrade(trade.id, 'SL', trade.sl);
-      } else { // SHORT
-        if (currentPrice <= trade.tp) closeTrade(trade.id, 'TP', trade.tp);
-        else if (currentPrice >= trade.sl) closeTrade(trade.id, 'SL', trade.sl);
-      }
+    // Check TP/SL if present
+    const hasTp = Number.isFinite(trade.tp);
+    const hasSl = Number.isFinite(trade.sl);
+    if (dir === 1) { // LONG
+      if (hasTp && currentPrice >= trade.tp) closeTrade(trade.id, 'TP', trade.tp);
+      else if (hasSl && currentPrice <= trade.sl) closeTrade(trade.id, 'SL', trade.sl);
+    } else { // SHORT
+      if (hasTp && currentPrice <= trade.tp) closeTrade(trade.id, 'TP', trade.tp);
+      else if (hasSl && currentPrice >= trade.sl) closeTrade(trade.id, 'SL', trade.sl);
     }
   }
 }
 
 function closeTrade(id, reason, exitPrice) {
   const trade = openTrades.get(id);
-  if (!trade) return;
+  if (!trade) return null;
+
+  // Update trade properties for closure
   trade.status = 'CLOSED';
-  const slip = slippagePct();
-  const exitAdj = trade.side === 'LONG' ? exitPrice * (1 - slip) : exitPrice * (1 + slip);
-  trade.exitPrice = Number(exitAdj);
-  trade.exitTime = getFormattedTimestamp();
-  // Compute PnL in currency and percent, with fees
-  const dir = trade.side === 'LONG' ? 1 : -1;
-  const notionalExit = trade.qty * trade.exitPrice;
-  const grossPnl = (trade.exitPrice - trade.entryPrice) * trade.qty * dir;
+  trade.closeReason = reason;
+  trade.exitPrice = exitPrice;
+  trade.closeTime = getFormattedTimestamp();
+
+  const notionalExit = trade.notional;
+  const grossPnl = trade.side === 'LONG'
+    ? (exitPrice - trade.entryPrice) * trade.qty
+    : (trade.entryPrice - exitPrice) * trade.qty;
+
   const fee = TAKER_FEE_PCT / 100;
   const fees = (trade.notional * fee) + (notionalExit * fee);
   const netPnl = grossPnl - fees;
-  trade.grossPnl = grossPnl;
+
+  // Finalize PnL details on the trade object
+  trade.pnl = netPnl;
+  trade.pnlPct = (netPnl / trade.usedMargin) * 100;
   trade.fees = fees;
-  trade.netPnl = netPnl;
-  trade.pnlPct = (netPnl / (trade.notional / (trade.leverage || 1))) * 100; // % of margin used
-  closedTrades.push(trade);
-  openTrades.delete(id);
-  // Capital updates
+
+  // Update capital
   capital.usedMargin -= trade.usedMargin;
-  capital.cash += netPnl; // realize to cash
+  capital.cash += netPnl; // Realize PnL to cash
   capital.realizedPnl += netPnl;
-  capital.equity = capital.cash + capital.usedMargin; // usedMargin here is reserved cash; equity recalculated
-  broadcast(JSON.stringify({ type: 'trade_close', id }));
+  capital.equity = capital.cash + capital.usedMargin;
+
+  // Move trade from open to closed collections
+  openTrades.delete(id);
+  closedTrades.push(trade);
+
+  // Log events
+  appendJsonl(tradesLog, { event: 'close', ...trade });
+  appendJsonl(capitalLog, { ts: Date.now(), event: 'close', ...capital });
+
+  // Broadcast updates to clients
+  broadcast(JSON.stringify({ type: 'trade_close', trade }));
+  broadcastCapitalUpdate();
+
   console.log(`[Trade #${id}] Closed. Reason: ${reason}. PnL: $${netPnl.toFixed(2)}`);
-  return { ...trade, netPnl, grossPnl, fees };
+
+  return trade;
 }
 
 // --- Helpers ---
@@ -223,11 +240,20 @@ function normalizeSymbol(sym) {
 }
 
 function computeTargets(side, entry, tpPct, slPct) {
+  const validTp = typeof tpPct === 'number' && tpPct > 0;
+  const validSl = typeof slPct === 'number' && slPct > 0;
+  if (!validTp && !validSl) return { tp: null, sl: null };
   const f = (v) => Number((v).toFixed(2));
   if (side === 'LONG') {
-    return { tp: f(entry * (1 + tpPct / 100)), sl: f(entry * (1 - slPct / 100)) };
+    return {
+      tp: validTp ? f(entry * (1 + tpPct / 100)) : null,
+      sl: validSl ? f(entry * (1 - slPct / 100)) : null,
+    };
   } else {
-    return { tp: f(entry * (1 - tpPct / 100)), sl: f(entry * (1 + slPct / 100)) };
+    return {
+      tp: validTp ? f(entry * (1 - tpPct / 100)) : null,
+      sl: validSl ? f(entry * (1 + slPct / 100)) : null,
+    };
   }
 }
 
@@ -291,9 +317,7 @@ app.post('/webhook', async (req, res) => {
     if (!['LONG', 'SHORT'].includes(side)) {
       return res.status(400).json({ error: 'Invalid side. Use LONG or SHORT.' });
     }
-    if (typeof tpPct !== 'number' || typeof slPct !== 'number' || tpPct <= 0 || slPct <= 0) {
-      return res.status(400).json({ error: 'tpPct and slPct must be positive numbers.' });
-    }
+    // tpPct and slPct are optional; if missing or <= 0, trade will run without TP/SL
 
     // Ensure price subscription
     subscribeSymbol(symbol);
@@ -384,19 +408,28 @@ setInterval(() => {
 }, 150);
 
 function computeNotional(equity, leverage, requestedNotional) {
+  // Cap based on available free margin and leverage
+  const freeMargin = capital.cash - capital.usedMargin;
+  const maxNotional = Math.max(0, freeMargin) * leverage;
+
+  // If caller provided a requestedNotional, respect it (subject to maxNotional cap)
+  if (typeof requestedNotional === 'number' && requestedNotional > 0) {
+    return Math.min(requestedNotional, maxNotional);
+  }
+
+  // Otherwise, derive from config sizing options
   const candidates = [];
-  if (typeof requestedNotional === 'number' && requestedNotional > 0) candidates.push(requestedNotional);
   if (typeof tradeConfig.amountPerTrade === 'number' && tradeConfig.amountPerTrade > 0) candidates.push(Number(tradeConfig.amountPerTrade));
   if (typeof tradeConfig.riskPerTrade === 'number' && tradeConfig.riskPerTrade > 0) candidates.push(Number(tradeConfig.riskPerTrade));
   if (typeof tradeConfig.positionSizePercent === 'number' && tradeConfig.positionSizePercent > 0) {
     candidates.push(equity * (Number(tradeConfig.positionSizePercent) / 100));
   }
-  let notional = Math.max(Number(tradeConfig.minimumTradeAmount ?? 0), ...(candidates.length ? candidates : [0]));
-  // Cap by free margin * leverage
-  const freeMargin = capital.cash - capital.usedMargin;
-  const maxNotional = Math.max(0, freeMargin) * leverage;
-  notional = Math.min(notional, maxNotional);
-  return Math.max(0, notional);
+  let notional = candidates.length ? Math.max(...candidates) : 0;
+  // Apply minimumTradeAmount only when we are using config-derived sizing
+  if (typeof tradeConfig.minimumTradeAmount === 'number' && tradeConfig.minimumTradeAmount > 0) {
+    notional = Math.max(notional, Number(tradeConfig.minimumTradeAmount));
+  }
+  return Math.min(notional, maxNotional);
 }
 
 function tryOpenTradeNow({ symbol, side, leverage, tpPct, slPct, entryRef, meta, requestedNotional }) {
@@ -426,6 +459,7 @@ function tryOpenTradeNow({ symbol, side, leverage, tpPct, slPct, entryRef, meta,
     slPct,
     status: 'OPEN',
     openTime: getFormattedTimestamp(),
+    openTs: Date.now(),
     meta: meta ?? null,
     orderType: 'market',
     notional,
@@ -433,7 +467,10 @@ function tryOpenTradeNow({ symbol, side, leverage, tpPct, slPct, entryRef, meta,
     usedMargin,
   };
   openTrades.set(id, trade);
-  console.log(`[#${id}] OPEN ${side} ${symbol} @ ${trade.entryPrice.toFixed(2)} | TP ${tp.toFixed(2)} | SL ${sl.toFixed(2)} | x${trade.leverage} | notional ${notional.toFixed(2)}`);
+  const tpStr = (tp === null || tp === undefined) ? '—' : tp.toFixed(2);
+  const slStr = (sl === null || sl === undefined) ? '—' : sl.toFixed(2);
+  console.log(`[#${id}] OPEN ${side} ${symbol} @ ${trade.entryPrice.toFixed(2)} | TP ${tpStr} | SL ${slStr} | x${trade.leverage} | notional ${notional.toFixed(2)}`);
+  broadcastCapitalUpdate();
   return { trade };
 }
 
@@ -455,10 +492,14 @@ function tryFinalizePendingPrice(pending, entryRef) {
   pending.sl = sl;
   pending.status = 'OPEN';
   pending.openTime = getFormattedTimestamp();
+  pending.openTs = Date.now();
   pending.notional = notional;
   pending.qty = qty;
   pending.usedMargin = usedMargin;
-  console.log(`[#${pending.id}] OPEN ${pending.side} ${pending.symbol} @ ${pending.entryPrice.toFixed(2)} | TP ${tp.toFixed(2)} | SL ${sl.toFixed(2)} | x${pending.leverage} | notional ${notional.toFixed(2)}`);
+  const tpStr2 = (tp === null || tp === undefined) ? '—' : tp.toFixed(2);
+  const slStr2 = (sl === null || sl === undefined) ? '—' : sl.toFixed(2);
+  console.log(`[#${pending.id}] OPEN ${pending.side} ${pending.symbol} @ ${pending.entryPrice.toFixed(2)} | TP ${tpStr2} | SL ${slStr2} | x${pending.leverage} | notional ${notional.toFixed(2)}`);
+  broadcastCapitalUpdate();
   return true;
 }
 
@@ -479,6 +520,7 @@ wss.on('connection', ws => {
 
   const currentTrades = Array.from(openTrades.values());
   ws.send(JSON.stringify({ type: 'trade_cache', trades: currentTrades }));
+  ws.send(JSON.stringify({ type: 'capital_update', capital }));
 
   ws.on('close', () => {
     console.log('[Local WS] Price stream client disconnected.');
@@ -491,5 +533,9 @@ function broadcast(data) {
       client.send(data);
     }
   });
+}
+
+function broadcastCapitalUpdate() {
+  broadcast(JSON.stringify({ type: 'capital_update', capital }));
 }
 

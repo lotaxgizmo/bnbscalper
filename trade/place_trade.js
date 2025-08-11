@@ -8,7 +8,7 @@ const myTrade = {
   symbol: 'BTCUSDT',
   side: 'SHORT',
   amountToRisk: 100, // The amount of YOUR capital to use for this trade (your margin)
-  leverage: 50,      // The leverage to apply
+  leverage: 45,      // The leverage to apply
   tpPct: 1.0,        // Take Profit at +1.0%
   slPct: 0.5,        // Stop Loss at -0.5%
 };
