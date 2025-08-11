@@ -13,7 +13,7 @@ export const tradeConfig = {
 
     takeProfit: 1,
     stopLoss: 0.5,
-    leverage: 1,        
+    leverage: 50,        
     
     // Flip mode: close opposite and switch to new confirmed signal
     switchOnOppositeSignal: true,        // When true: if an opposite signal confirms, close open opposite trade(s) and enter new one

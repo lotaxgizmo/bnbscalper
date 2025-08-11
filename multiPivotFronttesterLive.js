@@ -1513,7 +1513,7 @@ class LiveMultiPivotFronttester {
         // Find the earliest time when we have minimum required confirmations
         let executionTime = window.primaryPivot.time;
         let executionPrice = window.primaryPivot.price;
-        const confirmedTimeframes = new Set(['4h']); // Primary timeframe
+        const confirmedTimeframes = new Set([window.primaryPivot.timeframe]); // Primary timeframe
         
         for (const confirmation of allConfirmations) {
             confirmedTimeframes.add(confirmation.timeframe);
