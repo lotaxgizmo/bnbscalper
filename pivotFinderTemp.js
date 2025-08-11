@@ -1,5 +1,32 @@
 // pivotFinderTemp.js
 // Lightweight pivot-only finder using multiPivotConfig timeframes
+// ===== Runtime config for this temp tool =====
+const PIVOT_TOOL_CONFIG = {
+    // Time control
+    targetTime: 'now', // 'now' or "YYYY-MM-DD HH:MM:SS"
+    useCurrentTime: true,
+    liveMode: true, // when true, fetch via API even if useLocalData is true
+    // Prefer lookback (duration string). Backward compatible: if missing, fall back to lookbackMinutes.
+    // Examples: '12h', '90m', '3600s', '1h30m', '2h15m30s'
+    lookback: '12h',
+    lookbackMinutes: 220, // legacy fallback
+  
+    // Rolling (auto-refresh) mode
+    rolling: true,                 // if true, continually poll for new closed-candle pivots
+    refreshSeconds: 5,            // polling interval
+    perPivotTelegram: true,        // send per-pivot TG message on detection
+  
+    // Display
+    showData: false,
+    showRecentPivots: 10,
+    showRefreshCount: true,        // show refresh counter in terminal
+  
+    // Telegram
+    sendTelegram: true,                // set true to send summary to telegram
+    telegramPerTimeframeLatestOnly: false, // set to false to show multiple pivots per timeframe
+    telegramPivotsPerTimeframe: 5    // number of pivots to show per timeframe in Telegram messages
+  };
+
 
 import path from 'path';
 import fs from 'fs';
@@ -29,6 +56,19 @@ const colors = {
   dim: '\x1b[2m'
 };
 
+// Clear console (cross-platform best-effort)
+function clearConsole() {
+  try {
+    if (process.stdout && process.stdout.isTTY) {
+      // ANSI clear screen and move cursor to 0,0 (more compatible sequence)
+      process.stdout.write('\x1b[2J\x1b[H');
+      return;
+    }
+  } catch {}
+  // Fallback
+  try { console.clear(); } catch {}
+}
+
 // Helper to format time differences in days, hours, minutes
 function formatTimeDifference(milliseconds) {
   const totalMinutes = Math.floor(milliseconds / (1000 * 60));
@@ -51,30 +91,7 @@ function formatTimeAgoHMS(milliseconds) {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
-// ===== Runtime config for this temp tool =====
-const PIVOT_TOOL_CONFIG = {
-  // Time control
-  targetTime: 'now', // 'now' or "YYYY-MM-DD HH:MM:SS"
-  useCurrentTime: true,
-  liveMode: true, // when true, fetch via API even if useLocalData is true
-  // Prefer lookback (duration string). Backward compatible: if missing, fall back to lookbackMinutes.
-  // Examples: '12h', '90m', '3600s', '1h30m', '2h15m30s'
-  lookback: '12h',
-  lookbackMinutes: 220, // legacy fallback
 
-  // Rolling (auto-refresh) mode
-  rolling: true,                 // if true, continually poll for new closed-candle pivots
-  refreshSeconds: 10,            // polling interval
-  perPivotTelegram: true,        // send per-pivot TG message on detection
-
-  // Display
-  showData: false,
-  showRecentPivots: 10,
-
-  // Telegram
-  sendTelegram: true, // set true to send summary to telegram
-  telegramPerTimeframeLatestOnly: true // if true, only latest pivot per timeframe
-};
 // =============================================
 
 // Timezone helpers
@@ -160,6 +177,8 @@ class PivotOnlyFinder {
     this.lastNotifiedPivotTime = new Map();
     // Prevent overlapping refresh ticks
     this._tickRunning = false;
+    // Refresh counter
+    this.refreshCount = 0;
   }
 
   async loadAllTimeframeData() {
@@ -310,6 +329,8 @@ class PivotOnlyFinder {
   }
 
   processPivots() {
+    // Reset per-timeframe pivot state for a clean recomputation
+    this.lastPivots.clear();
     for (const tf of multiPivotConfig.timeframes) {
       const candles = this.timeframeCandles.get(tf.interval) || [];
       const pivots = [];
@@ -376,7 +397,7 @@ class PivotOnlyFinder {
 
   async sendPivotTelegram(tf, p) {
     const dir = p.signal === 'long' ? 'LONG' : 'SHORT';
-    const age = formatTimeAgoHMS(this.snapshotTime - p.time);
+    const age = formatTimeDifference(this.snapshotTime - p.time);
     const lines = [
       `📌 NEW PIVOT — ${symbol}`,
       `⏱ ${fmtDateTime(p.time)} (${fmtTime24(p.time)}) • ${age} ago`,
@@ -391,8 +412,17 @@ class PivotOnlyFinder {
     if (this._tickRunning) return;
     this._tickRunning = true;
     try {
+      // Increment refresh counter and clear screen first so this cycle acts like a restart
+      this.refreshCount++;
+      clearConsole();
+      if (PIVOT_TOOL_CONFIG.showRefreshCount) {
+        console.log(`${colors.cyan}[REFRESH #${this.refreshCount}]${colors.reset} ${fmtDateTime(Date.now())} (${fmtTime24(Date.now())})`);
+      }
+
       this.snapshotTime = Date.now();
       await this.loadAllTimeframeData();
+      // Ensure pivots are computed for the current snapshot before any notifications/printing
+      this.processPivots();
 
       // On first run of rolling mode, initialize lastNotified to latest closed pivot per TF to avoid bulk spam
       if (this.lastNotifiedPivotTime.size === 0) {
@@ -407,6 +437,15 @@ class PivotOnlyFinder {
       }
 
       await this.detectAndNotifyNewPivots();
+
+      // If for any reason no pivots are present, emit a brief diagnostic
+      const totalPivots = Array.from(this.timeframePivots.values()).reduce((a, v) => a + (v?.length || 0), 0);
+      if (totalPivots === 0) {
+        console.log(`${colors.yellow}[Info] No pivots detected this cycle.${colors.reset}`);
+      }
+
+      // Reprint the full snapshot every refresh
+      this.printResults();
     } finally {
       this._tickRunning = false;
     }
@@ -438,31 +477,31 @@ class PivotOnlyFinder {
   async maybeSendTelegramSummary() {
     if (!PIVOT_TOOL_CONFIG.sendTelegram) return;
 
-    // Build compact summary per timeframe (latest pivot only or last N)
+    // Build compact summary per timeframe (show at least 10 pivots per timeframe)
     let lines = [`📌 PIVOT SNAPSHOT (${symbol})`, `⏰ ${fmtDateTime(this.snapshotTime)} (${fmtTime24(this.snapshotTime)})`];
 
+    // Use the configurable number of pivots per timeframe
+    const showCount = PIVOT_TOOL_CONFIG.telegramPivotsPerTimeframe;
+    
     for (const tf of multiPivotConfig.timeframes) {
       const pivots = this.timeframePivots.get(tf.interval) || [];
       if (pivots.length === 0) {
         lines.push(`[${tf.interval}] —`);
         continue;
       }
-      if (PIVOT_TOOL_CONFIG.telegramPerTimeframeLatestOnly) {
-        const p = pivots[pivots.length - 1];
+      
+      // Always show multiple pivots regardless of telegramPerTimeframeLatestOnly setting
+      const recent = pivots.slice(-showCount);
+      
+      // Add a header for this timeframe
+      lines.push(`[${tf.interval}] ${recent.length} pivots:\n`);
+      
+      // Add each pivot on its own line for better readability
+      for (const p of recent) {
         const dir = p.signal === 'long' ? 'LONG' : 'SHORT';
         const price = p.price.toFixed(2);
-        const age = formatTimeAgoHMS(this.snapshotTime - p.time);
-        lines.push(`[${tf.interval}] ${dir} @ $${price} • ${age} ago`);
-      } else {
-        const recent = pivots.slice(-Math.max(3, PIVOT_TOOL_CONFIG.showRecentPivots));
-        const rows = recent
-          .map(p => {
-            const tag = p.signal === 'long' ? 'L' : 'S';
-            const age = formatTimeAgoHMS(this.snapshotTime - p.time);
-            return `${tag} $${p.price.toFixed(0)} • ${age} ago`;
-          })
-          .join(', ');
-        lines.push(`[${tf.interval}] ${rows}`);
+        const age = formatTimeDifference(this.snapshotTime - p.time);
+        lines.push(`• ${dir} @ $${price} • ${age} ago`);
       }
     }
 
