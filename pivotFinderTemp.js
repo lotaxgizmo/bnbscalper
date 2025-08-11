@@ -60,24 +60,29 @@ const colors = {
 function clearConsole() {
   try {
     if (process.stdout && process.stdout.isTTY) {
-      // ANSI clear screen and move cursor to 0,0 (more compatible sequence)
-      process.stdout.write('\x1b[2J\x1b[H');
+      // ANSI: clear screen, clear scrollback, move cursor to home
+      // 2J = clear screen, 3J = clear scrollback, H = cursor home
+      process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
       return;
     }
   } catch {}
   // Fallback
   try { console.clear(); } catch {}
+  // Last-resort fallback: print many newlines
+  try { process.stdout.write('\n'.repeat(120)); } catch {}
 }
 
 // Helper to format time differences in days, hours, minutes
 function formatTimeDifference(milliseconds) {
-  const totalMinutes = Math.floor(milliseconds / (1000 * 60));
-  const days = Math.floor(totalMinutes / (24 * 60));
-  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
-  const minutes = totalMinutes % 60;
-  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const days = Math.floor(totalSeconds / (24 * 60 * 60));
+  const hours = Math.floor((totalSeconds % (24 * 60 * 60)) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 // Helper to format time differences as HH:MM:SS (total duration)

@@ -19,24 +19,25 @@ export const multiPivotConfig = {
         {
             interval: '1h',
             role: 'primary',      // Confirmation timeframe
-            minSwingPct: 0.1,       // Same settings for easy testing
+            minSwingPct: 0.2,       // Same settings for easy testing
             minLegBars: 1,          // Same settings for easy testing
             lookback: 1,
             weight: 2
         },
-        {
-            interval: '15m',
-            role: 'execution',   // Additional confirmation
-            minSwingPct: 0.1,       // Same settings for easy testing
-            minLegBars: 1,          // Same settings for easy testing
-            lookback: 1,
-            weight: 1
-        },
+        // {
+        //     interval: '15m',
+        //     role: 'execution',   // Additional confirmation
+        //     minSwingPct: 0,       // Same settings for easy testing
+        //     // minSwingPct: 0.1,       // Same settings for easy testing
+        //     minLegBars: 1,          // Same settings for easy testing
+        //     lookback: 1,
+        //     weight: 1
+        // },
      
         // {
         //     interval: '1m',
         //     role: 'execution',      // Final execution timeframe
-        //     minSwingPct: 1,       // Same settings for easy testing
+        //     minSwingPct: 0,       // Same settings for easy testing
         //     minLegBars: 1,          // Same settings for easy testing
         //     lookback: 1,
         //     weight: 1
