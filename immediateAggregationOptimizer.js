@@ -37,12 +37,13 @@ const OPTIMIZATION_CONFIG = {
     tradingModes: [ 'pivot'], // Test both modes
     
     // Data settings
-    maxCandles: 43200, // 30 days of 1m candles
+    maxCandles: 20160, // 30 days of 1m candles
+    // maxCandles: 43200, // 30 days of 1m candles
     
     // Timeframe combinations to test (you can modify these)
     timeframeCombinations: [
         // Single timeframes
-        [{ interval: '1h', role: 'primary', weight: 1 }]
+        [{ interval: '1m', role: 'primary', weight: 1 }]
     ]
 };
 

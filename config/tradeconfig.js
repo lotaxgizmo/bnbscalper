@@ -7,41 +7,45 @@ const minute = hour * 60;
 
 export const tradeConfig = {
     // Trade direction ('buy' or 'sell' or 'both' or 'alternate')
-    // direction: 'both',
-    direction: 'alternate',
-  
-    
+    direction: 'both',
+    // direction: 'alternate',
+
+    entryDelayMinutes: 0,
+    // entryDelayMinutes: 60,
+
+
 
     takeProfit: 0.9,
     stopLoss: 0.3,
-    leverage: 1,        
+    leverage: 100,        
     
-    // Flip mode: close opposite and switch to new confirmed signal
-    switchOnOppositeSignal: true,        // When true: if an opposite signal confirms, close open opposite trade(s) and enter new one
+    // Flip mode: close opposite and switch to new confirmed signal 
+    // switchOnOppositeSignal: true,       
+    switchOnOppositeSignal: false,       
+    numberOfOppositeSignal: 3,
     switchPolicy: 'flip',                 // Reserved for future strategies; currently only 'flip' is supported
 
-        // Trailing stop settings
-    enableTrailingStop: false,     // Enable trailing stop loss
-    trailingStopPercent: 0.5,      // Distance to trail behind best price (in %)
-    trailingStopActivationPercent: 1.0,  // Profit % required to activate trailing stop
-    trailingStopDistance: 0.5,   // Distance to trail behind best price (in %) - legacy
-    enableTrailingTakeProfit: false, // Enable trailing take profit
-    trailingTakeProfitTrigger: 1, // Trigger trailing TP when profit reaches this % (must be > takeProfit)
-    trailingTakeProfitDistance: 0.3, // Distance to trail behind best price for TP (in %)
+    noTradeDays: [],
+    // noTradeDays: ['M', 'T', 'W', 'Th', 'F', 'Sa', 'Su'],
+
+    // Trailing stop loss settings
+    enableTrailingStopLoss: false,        // Enable trailing stop loss
+    trailingStopLossTrigger: 0.5,        // Activate trailing when this % profit reached
+    trailingStopLossDistance: 0.5,       // Trail this % behind best price
     
- 
-    
+    // Trailing take profit settings
+    enableTrailingTakeProfit: false,      // Enable trailing take profit
+    trailingTakeProfitTrigger: 0.8,      // Activate trailing when this % profit reached
+    trailingTakeProfitDistance: 0.1,     // Trail this % behind best price
     
     showCandle: false,
     showLimits: false,
+    // showPivot: true,
+    // showTradeDetails: true,
     showPivot: false,
     showTradeDetails: false,
     hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
-
-    // Position sizing settings
-    // positionSizeMode: 'percent',  // 'fixed', 'percentage', or 'minimum'
-    // positionSize: 1,               // Fixed position size in USDT (for 'fixed' mode)
-    // positionSizePercent: 100,        // Percentage of capital to use (for 'percentage' mode)
+ 
 
     // Multi-trade settings
     singleTradeMode: true,      // Only allow one trade at a time (prevents concurrent trades)
@@ -93,4 +97,5 @@ export const tradeConfig = {
     performanceMode: false,  // Set to true to disable all console output except completion status
     // Trade settings
     enterAll: false,
+ 
 };

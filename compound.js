@@ -10,11 +10,11 @@ const compound = (capital, ratePercent, times) => {
 
     return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
-  
+
   // Set your values here
   const capital = 100;       // Starting capital in $
-  const rate = 50;            // % increase per compounding
-  const times = 5;         // Number of compounding steps
+  const rate = 2;            // % increase per compounding
+  const times = 52;         // Number of compounding steps
   
   const finalAmount = compound(capital, rate, times);
   console.log(`\n📈 Final amount after ${times} times: $${finalAmount}`);
