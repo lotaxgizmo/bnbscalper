@@ -6,15 +6,15 @@
 const SNAPSHOT_CONFIG = {
     // Operating modes
     currentMode: false,              // true = latest candle, false = use targetTime
-    targetTime: "2025-08-14 01:10:00", // Target timestamp when currentMode is false
+    targetTime: "2025-08-14 04:51:00", // Target timestamp when currentMode is false
 
     // Data settings
     length: 10000,                   // Number of 1m candles to load for context
     useLiveAPI: false,              // Force API data (overrides useLocalData)
     
     // Display options
-    togglePivots: true,             // Show recent pivot activity
-    toggleCascades: true,           // Show cascade analysis
+    togglePivots: false,             // Show recent pivot activity
+    toggleCascades: false,           // Show cascade analysis
     showData: false,                // Show raw data details
     showRecentPivots: 5,            // Number of recent pivots to show per timeframe
     showRecentCascades: 10,         // Number of recent cascades to show
@@ -762,12 +762,20 @@ function simulateCascadeWindows(allTimeframePivots, analysisTime, windowManager)
 
 function displayCascadeWindows(windowManager, currentTime) {
     const timezone = 'America/New_York';
-    const activeWindows = windowManager.getActiveWindows(currentTime);
-    const executedWindows = windowManager.getRecentlyExecutedWindows(currentTime);
+    const activeWindowsRaw = windowManager.getActiveWindows(currentTime);
+    const executedWindowsRaw = windowManager.getRecentlyExecutedWindows(currentTime);
+    // Combine active + executed (still within window) so they show under one section
+    const windowMap = new Map();
+    for (const w of [...activeWindowsRaw, ...executedWindowsRaw]) {
+        windowMap.set(w.id, w);
+    }
+    const activeWindows = Array.from(windowMap.values());
+    // We'll suppress the separate Recently Executed section to avoid duplication
+    const executedWindows = [];
     
     console.log(`${colors.cyan}\n=== CASCADE WINDOW STATUS ===${colors.reset}`);
     
-    // Display active windows only
+    // Display active (and executed-in-window) windows
     if (activeWindows.length > 0) {
         console.log(`${colors.brightGreen}┌─ Active Windows (${activeWindows.length}) ${'─'.repeat(40)}${colors.reset}`);
         
@@ -795,11 +803,44 @@ function displayCascadeWindows(windowManager, currentTime) {
             // Check if ready for execution
             const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 2;
             const isReady = totalConfirmations >= minRequired;
+            
+            // Determine the candidate execution time (earliest valid per rules)
+            let candidateExecutionTime = null;
+            if (isReady) {
+                const confirmationsSorted = [...window.confirmations].sort((a, b) => a.confirmTime - b.confirmTime);
+                const confirmedSet = new Set([window.primaryPivot.timeframe]);
+                for (const conf of confirmationsSorted) {
+                    confirmedSet.add(conf.timeframe);
+                    if (confirmedSet.size >= minRequired) {
+                        candidateExecutionTime = Math.max(window.primaryPivot.time, conf.confirmTime);
+                        break;
+                    }
+                }
+            }
             let statusColor, statusText;
             
             if (window.status === 'executed') {
-                statusColor = colors.brightBlue;
-                statusText = `EXECUTED @ $${window.executionPrice?.toFixed(2) || 'N/A'}`;
+                // Show EXECUTE during the exact execution minute, then CASCADE INVALID afterwards
+                const execTime = window.executionTime;
+                if (execTime && currentTime >= execTime && currentTime < execTime + 60 * 1000) {
+                    statusColor = colors.brightGreen;
+                    statusText = 'EXECUTE';
+                } else if (execTime && currentTime >= execTime + 60 * 1000) {
+                    statusColor = colors.red;
+                    statusText = 'CASCADE INVALID';
+                } else {
+                    // Edge case: executed flagged but missing execTime
+                    statusColor = colors.brightBlue;
+                    statusText = `EXECUTED @ $${window.executionPrice?.toFixed(2) || 'N/A'}`;
+                }
+            } else if (candidateExecutionTime && currentTime >= candidateExecutionTime && currentTime < candidateExecutionTime + 60 * 1000) {
+                // During the minute of execution
+                statusColor = colors.brightGreen;
+                statusText = 'EXECUTE';
+            } else if (candidateExecutionTime && currentTime >= candidateExecutionTime + 60 * 1000) {
+                // After the execution minute passed without execution
+                statusColor = colors.red;
+                statusText = 'CASCADE INVALID';
             } else if (isReady) {
                 statusColor = colors.brightGreen;
                 statusText = 'READY TO EXECUTE';
@@ -820,7 +861,7 @@ function displayCascadeWindows(windowManager, currentTime) {
         console.log(`${colors.dim}No active cascade windows${colors.reset}`);
     }
     
-    // Display recently executed windows
+    // Display recently executed windows (suppressed because they are shown above)
     if (executedWindows.length > 0) {
         console.log(`${colors.brightBlue}\n┌─ Recently Executed Windows (${executedWindows.length}) ${'─'.repeat(25)}${colors.reset}`);
         
