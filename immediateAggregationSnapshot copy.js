@@ -5,21 +5,23 @@
 // ===== SNAPSHOT CONFIGURATION =====
 const SNAPSHOT_CONFIG = {
     // Operating modes
-    currentMode: true,              // true = latest candle, false = use targetTime
-    targetTime: "2025-08-14 01:03:00", // Target timestamp when currentMode is false
+    currentMode: false,              // true = latest candle, false = use targetTime
+    targetTime: "2025-08-14 04:51:00", // Target timestamp when currentMode is false
 
     // Data settings
     length: 10000,                   // Number of 1m candles to load for context
     useLiveAPI: false,              // Force API data (overrides useLocalData)
-
+    
     // Display options
     togglePivots: false,             // Show recent pivot activity
-    toggleCascades: true,           // Show cascade analysis
+    toggleCascades: false,           // Show cascade analysis
     showData: false,                // Show raw data details
     showRecentPivots: 5,            // Number of recent pivots to show per timeframe
     showRecentCascades: 10,         // Number of recent cascades to show
     
-    showTelegramCascades: true 
+    // Cascade requirements (now taken from multiAggConfig.js)
+    // minConfirmations: 4,            // Now uses multiPivotConfig.cascadeSettings.minTimeframesRequired
+    // requirePrimaryTimeframe: true,  // Now uses multiPivotConfig.cascadeSettings.requirePrimaryTimeframe
 };
 
 import {
@@ -31,7 +33,6 @@ import {
 import { tradeConfig } from './config/tradeconfig.js';
 import { multiPivotConfig } from './config/multiAggConfig.js';
 import { getCandles } from './apis/bybit.js';
-import telegramNotifier from './utils/telegramNotifier.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -60,365 +61,6 @@ function parseTimeframeToMinutes(timeframe) {
         // Default to minutes if no suffix
         return parseInt(tf);
     }
-}
-
-// Helper time formatters (adapted to match live display)
-const TZ = 'Africa/Lagos';
-function formatTimeDifference(ms) {
-    if (ms <= 0) return '0m 0s';
-    const s = Math.floor(ms / 1000);
-    const d = Math.floor(s / 86400);
-    const h = Math.floor((s % 86400) / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    if (d > 0) return `${d}d ${h}h ${m}m`;
-    if (h > 0) return `${h}h ${m}m ${sec}s`;
-    return `${m}m ${sec}s`;
-}
-function fmtDateTime(ts) {
-    return new Intl.DateTimeFormat('en-US', {
-        timeZone: TZ,
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-    }).format(new Date(ts));
-}
-function fmtTime24(ts) {
-    return new Intl.DateTimeFormat('en-US', {
-        timeZone: TZ,
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-    }).format(new Date(ts));
-}
-
-// Verbose date-time e.g., Sunday, August 10, 2025 at 10:30:43 PM
-function fmtDateTimeLong(ts) {
-    const d = new Date(ts);
-    const datePart = new Intl.DateTimeFormat('en-US', {
-        timeZone: TZ,
-        weekday: 'long', month: 'long', day: '2-digit', year: 'numeric'
-    }).format(d);
-    const time12 = new Intl.DateTimeFormat('en-US', {
-        timeZone: TZ,
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-    }).format(d);
-    return `${datePart} at ${time12}`;
-}
-
-// USD formatter with thousands separators and 1–2 decimals
-function formatUSD(n) {
-    if (typeof n !== 'number' || !isFinite(n)) return 'N/A';
-    return new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 }).format(n);
-}
-
-function getExecutionPriceForWindow(window, minRequired) {
-    if (window.executionPrice != null) return window.executionPrice;
-    const candidate = computeCandidateExecution(window, minRequired);
-    return candidate?.price ?? window.primaryPivot.price;
-}
-
-// Send Telegram notifications with detailed messages (WAITING/EXECUTE/EXECUTED)
-function notifySnapshotStates(states, currentTime, windowManager) {
-    if (!states || states.length === 0) return;
-    
-    // Check if Telegram notifications are enabled
-    if (!SNAPSHOT_CONFIG.showTelegramCascades) {
-        // Skip Telegram notifications if disabled
-        return;
-    }
-    
-    // Build lookup of windows by id from current manager view
-    const wmMap = new Map();
-    const aw = windowManager?.getActiveWindows?.(currentTime) || [];
-    const ew = windowManager?.getRecentlyExecutedWindows?.(currentTime) || [];
-    for (const w of [...aw, ...ew]) {
-        wmMap.set(w.id, w);
-    }
-    
-    // Debug the window map
-    // console.log('\n[DEBUG] Window Map Contents:');
-    // console.log(`Total windows in map: ${wmMap.size}`);
-    // for (const [id, win] of wmMap.entries()) {
-    //     console.log(`Window ${id}: ${win.signal} @ $${win.primaryPivot?.price}, confirmations: ${win.confirmations?.length || 0}`);
-    // }
-    
-    const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
-    const snapshotLong = fmtDateTimeLong(currentTime);
-    const snapshot24 = fmtTime24(currentTime);
-
-    states.forEach(s => {
-        // Debug each state
-        // console.log(`\n[DEBUG] Processing state ID: ${s.id}, mode: ${s.mode}`);
-        
-        // Try to get the window from the window manager
-        const window = wmMap.get(s.id);
-        // console.log(`Window found: ${!!window}`);
-        
-        // Debug snapshot state data
-        // console.log(`Snapshot state data:`);
-        // console.log(`- Signal: ${s.signal}`);
-        // console.log(`- Price: $${s.price}`);
-        // console.log(`- Confirmations count: ${s.confirmations}`);
-        // console.log(`- Confirmation details:`, s.confirmationDetails || 'none');
-        
-        const direction = (s.signal === 'long') ? 'LONG' : 'SHORT';
-        const signalEmojiSimple = s.signal === 'long' ? '🟢' : '🔴';
-        let message = '';
-
-        if (window && window.status === 'executed') {
-            // Executed message (more informative than INVALID)
-            const signalEmoji = s.signal === 'long' ? '🟢✅' : '🔴✅';
-            const executionPriceNum = getExecutionPriceForWindow(window, minRequired);
-            const executionPrice = `$${(executionPriceNum)}`;
-            const executionTimeLong = window.executionTime ? fmtDateTimeLong(window.executionTime) : 'N/A';
-            const executionTime24 = window.executionTime ? fmtTime24(window.executionTime) : 'N/A';
-            const timeAgo = window.executionTime ? formatTimeDifference(Math.max(0, currentTime - window.executionTime)) : 'N/A';
-
-            message = `✅ *CASCADE EXECUTED*\n\n` +
-                `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
-                `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
-                `💰 *Execution Price:* ${executionPrice}\n` +
-                `🏁 *Final Confirmations:* ${1 + window.confirmations.length}/${minRequired}\n` +
-                `⏰ *Executed:* ${executionTimeLong} (${executionTime24})\n` +
-                `🕐 *Time Ago:* ${timeAgo}\n` +
-                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
-                `*Confirmed Timeframes:*\n` +
-                `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n` +
-                window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
-        } else if (s.mode === 'EXECUTE') {
-            const signalEmoji = s.signal === 'long' ? '🟢⬆️' : '🔴⬇️';
-            const w = window;
-            const execPrice = s.price; // Use the state price directly
-            const confirmationsCount = s.confirmations;
-            
-            // Debug logging
-            // console.log('\n[DEBUG] Snapshot state for EXECUTE:');
-            // console.log(`State ID: ${s.id}`);
-            // console.log(`Signal: ${s.signal}`);
-            // console.log(`Price: $${s.price}`);
-            // console.log(`Confirmations count: ${s.confirmations}`);
-            // console.log(`Confirmation details: ${JSON.stringify(s.confirmationDetails || [])}`);
-            
-            // Build the confirmations list from the snapshot state
-            let confirmationsList = '';
-            
-            // Check if we have confirmation details in the snapshot state
-            if (s.confirmationDetails && s.confirmationDetails.length > 0) {
-                // Use confirmation details from snapshot state
-                console.log('Using confirmation details from snapshot state');
-                s.confirmationDetails.forEach((detail, index) => {
-                    const isPrimary = index === 0;
-                    confirmationsList += `• ${detail.timeframe}: $${(detail.price)}${isPrimary ? ' (Primary)' : ''}\n`;
-                });
-            } else {
-                // Fallback to just showing the primary timeframe
-                // console.log('No confirmation details, using fallback');
-                confirmationsList = `• 4h: $${(s.price)} (Primary)\n`;
-                
-                // Add dummy confirmations based on the confirmation count
-                // This is just a visual representation since we don't have the actual data
-                if (s.confirmations > 1) {
-                    const otherTimeframes = ['2h', '1h', '30m', '15m', '5m', '2m', '1m'];
-                    for (let i = 0; i < Math.min(s.confirmations - 1, otherTimeframes.length); i++) {
-                        confirmationsList += `• ${otherTimeframes[i]}: $${(s.price)}\n`;
-                    }
-                }
-            }
-            
-            message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
-                `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
-                `🏗️ *Window:* ${s.id} (4h)\n` +
-                `💰 *Execution Price:* $${(execPrice)}\n` +
-                `📊 *Final Confirmations:* ${confirmationsCount}/${minRequired}\n` +
-                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
-                `*Confirmed Timeframes:*\n` +
-                confirmationsList;
-        } else if (s.mode === 'INVALID') {
-            // Window invalidated (missed execution minute or conditions failed)
-            const w = window;
-            const confirmationsCount = w ? (1 + w.confirmations.length) : s.confirmations;
-            const refPrice = w ? (w.primaryPivot.price) : s.price;
-            const missedTs = s.time;
-            const missedAt = missedTs ? fmtDateTimeLong(missedTs) : 'N/A';
-            const missedAt24 = missedTs ? fmtTime24(missedTs) : 'N/A';
-            const timeAgo = missedTs ? formatTimeDifference(Math.max(0, currentTime - missedTs)) : 'N/A';
-            const signalEmoji = s.signal === 'long' ? '🟢❌' : '🔴❌';
-            
-            // Build the confirmations list
-            let confirmationsList = '';
-            
-            if (w && w.primaryPivot) {
-                confirmationsList = `• ${w.primaryPivot.timeframe || '4h'}: $${(w.primaryPivot.price)} (Primary)\n`;
-                
-                if (w.confirmations && w.confirmations.length > 0) {
-                    confirmationsList += w.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
-                }
-            } else if (s.confirmationDetails && s.confirmationDetails.length > 0) {
-                // Use confirmation details from snapshot state
-                s.confirmationDetails.forEach((detail, index) => {
-                    const isPrimary = index === 0;
-                    confirmationsList += `• ${detail.timeframe}: $${(detail.price)}${isPrimary ? ' (Primary)' : ''}\n`;
-                });
-            } else {
-                // Fallback to showing all confirmations based on count
-                confirmationsList = `• ${s.primaryTimeframe || '4h'}: $${(refPrice)} (Primary)\n`;
-                
-                // Add dummy confirmations based on the confirmation count
-                if (confirmationsCount > 1) {
-                    const otherTimeframes = ['2h', '1h', '30m', '15m', '5m', '2m', '1m'];
-                    for (let i = 0; i < Math.min(confirmationsCount - 1, otherTimeframes.length); i++) {
-                        confirmationsList += `• ${otherTimeframes[i]}: $${(refPrice)}\n`;
-                    }
-                }
-            }
-
-            message = `🔴✅ *CASCADE EXECUTED*\n\n` +
-                `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
-                `🏗️ *Window:* ${s.id} (${w?.primaryPivot?.timeframe || '4h'})\n` +
-                `💰 *Execution Price:* $${(refPrice)}\n` +
-                `📊 *Final Confirmations:* ${confirmationsCount}/${minRequired}\n` +
-                `⏰ *Executed:* ${missedAt} (${missedAt24})\n` +
-                `🕐 *Time Ago:* ${timeAgo}\n` +
-                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
-                `*Confirmed Timeframes:*\n` +
-                confirmationsList;
-
-        } else {
-            // WAITING
-            const w = window;
-            const confirmationsCount = w ? (1 + w.confirmations.length) : s.confirmations;
-            
-            // Calculate window end time (default to 4h = 240 minutes from snapshot if not available)
-            const windowEndTime = w?.windowEndTime || (currentTime + 240 * 60 * 1000);
-            const primaryPivotTime = w?.primaryPivot?.time || currentTime;
-            const pivotPrice = s.price ?? w?.primaryPivot?.price;
-            
-            const timeRemaining = formatTimeDifference(Math.max(0, windowEndTime - currentTime));
-            const ageSincePrimary = formatTimeDifference(Math.max(0, currentTime - primaryPivotTime));
-            const signalEmoji = s.signal === 'long' ? '🟢⏳' : '🔴⏳';
-            
-            // Build the confirmations list
-            let confirmationsList = '';
-            
-            if (w && w.confirmations && w.confirmations.length > 0) {
-                // Use window confirmations
-                confirmationsList = `• ${w.primaryPivot?.timeframe || '4h'}: $${(w.primaryPivot?.price || pivotPrice)} (Primary)\n`;
-                confirmationsList += w.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
-            } else if (s.confirmationDetails && s.confirmationDetails.length > 0) {
-                // Use confirmation details from snapshot state
-                s.confirmationDetails.forEach((detail, index) => {
-                    const isPrimary = index === 0;
-                    confirmationsList += `• ${detail.timeframe}: $${(detail.price)}${isPrimary ? ' (Primary)' : ''}\n`;
-                });
-            } else {
-                // Fallback to showing all confirmations based on count
-                confirmationsList = `• ${w?.primaryPivot?.timeframe || '4h'}: $${(pivotPrice)} (Primary)\n`;
-                
-                // Add dummy confirmations based on the confirmation count
-                if (confirmationsCount > 1) {
-                    const otherTimeframes = ['2h', '1h', '30m', '15m', '5m', '2m', '1m'];
-                    for (let i = 0; i < Math.min(confirmationsCount - 1, otherTimeframes.length); i++) {
-                        confirmationsList += `• ${otherTimeframes[i]}: $${(pivotPrice)}\n`;
-                    }
-                }
-            }
-            
-            message = `🟡 *CASCADE WINDOW WAITING*\n\n` +
-                `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
-                `🏗️ *Window:* ${s.id} (${w?.primaryPivot?.timeframe || '4h'})\n` +
-                `📊 *Status:* ${confirmationsCount}/${minRequired}\n` +
-                `💰 *Price:* $${(pivotPrice)}\n` +
-                `⏰ *Time Remaining:* ${timeRemaining}\n` +
-                `⏱️ *Time Ago:* ${ageSincePrimary}\n` +
-                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
-                `*Confirmed Timeframes:*\n` +
-                confirmationsList;
-        }
-
-        if (message) {
-            telegramNotifier.sendMessage(message);
-        }
-    });
-}
-
-// Helper: compute candidate execution (time and price) based on confirmations
-function computeCandidateExecution(window, minRequired) {
-    const confirmationsSorted = [...window.confirmations].sort((a, b) => a.confirmTime - b.confirmTime);
-    const confirmedSet = new Set([window.primaryPivot.timeframe]);
-    for (const conf of confirmationsSorted) {
-        confirmedSet.add(conf.timeframe);
-        if (confirmedSet.size >= minRequired) {
-            return {
-                time: Math.max(window.primaryPivot.time, conf.confirmTime),
-                price: conf.pivot.price
-            };
-        }
-    }
-    return null;
-}
-
-// Public snapshot: list window states with mode, time, price
-function getWindowSnapshotStates(windowManager, currentTime) {
-    const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 2;
-    const activeWindowsRaw = windowManager.getActiveWindows(currentTime);
-    const executedWindowsRaw = windowManager.getRecentlyExecutedWindows(currentTime);
-    const windowMap = new Map();
-    for (const w of [...activeWindowsRaw, ...executedWindowsRaw]) windowMap.set(w.id, w);
-    const windows = Array.from(windowMap.values());
-
-    return windows.map(w => {
-        const totalConfirmations = 1 + w.confirmations.length;
-        const isReady = totalConfirmations >= minRequired;
-        const candidate = isReady ? computeCandidateExecution(w, minRequired) : null;
-
-        // Determine mode
-        let mode = 'WAITING';
-        let time = null;
-        let price = null;
-
-        if (w.status === 'executed') {
-            const execTime = w.executionTime;
-            if (execTime && currentTime >= execTime && currentTime < execTime + 60 * 1000) {
-                mode = 'EXECUTE';
-                time = execTime;
-                price = w.executionPrice ?? w.primaryPivot.price;
-            } else if (execTime && currentTime >= execTime + 60 * 1000) {
-                mode = 'INVALID';
-                time = execTime; // missed window minute already passed
-                price = w.executionPrice ?? w.primaryPivot.price;
-            } else {
-                // Fallback if executed but missing time
-                mode = 'EXECUTE';
-                time = execTime ?? w.primaryPivot.time;
-                price = w.executionPrice ?? w.primaryPivot.price;
-            }
-        } else if (candidate) {
-            if (currentTime >= candidate.time && currentTime < candidate.time + 60 * 1000) {
-                mode = 'EXECUTE';
-                time = candidate.time;
-                price = candidate.price;
-            } else if (currentTime >= candidate.time + 60 * 1000) {
-                mode = 'INVALID';
-                time = candidate.time;
-                price = candidate.price;
-            } else {
-                mode = 'WAITING';
-                time = candidate.time; // upcoming target minute
-                price = candidate.price;
-            }
-        } else {
-            mode = 'WAITING';
-            time = w.primaryPivot.time;
-            price = w.primaryPivot.price;
-        }
-
-        return {
-            id: w.id,
-            mode,
-            time,
-            price,
-            signal: w.primaryPivot.signal,
-            confirmations: totalConfirmations
-        };
-    });
 }
 
 /**
@@ -1258,18 +900,6 @@ function displayCascadeWindows(windowManager, currentTime) {
         console.log(`${colors.cyan}\nWindow Summary: ${activeWindows.length} active, ${executedWindows.length} recently executed${colors.reset}`);
     } else {
         console.log(`${colors.dim}No cascade windows to display${colors.reset}`);
-    }
-    
-    // Provide structured snapshot modes for programmatic consumption
-    const snapshotStates = getWindowSnapshotStates(windowManager, currentTime);
-    if (snapshotStates.length > 0) {
-        console.log(`${colors.cyan}\n=== SNAPSHOT WINDOW STATES (mode, price, time) ===${colors.reset}`);
-        snapshotStates.forEach(s => {
-            const t = s.time ? formatDualTime(s.time) : 'N/A';
-            console.log(` - ${s.id}: ${s.mode} | $${(s.price ?? 0).toFixed(2)} | ${t}`);
-        });
-        // Notify for EXECUTE/INVALID
-        notifySnapshotStates(snapshotStates, currentTime);
     }
 }
 

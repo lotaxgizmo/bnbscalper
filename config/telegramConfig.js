@@ -4,7 +4,8 @@
 export const telegramConfig = {
     // Telegram Bot API credentials
     token: '8336501364:AAFSK0ULulR-NHopqh_WnP3jhI6tg2Ait3E',
-    chatIds: ['1228994409', '7209568450', '797562272' ], // Array of chat IDs - add more IDs here: ['1228994409', '987654321', '123456789']
+    chatIds: ['1228994409', '797562272' ], // Array of chat IDs - add more IDs here: ['1228994409', '987654321', '123456789']
+    // chatIds: ['1228994409', '7209568450', '797562272' ], // Array of chat IDs - add more IDs here: ['1228994409', '987654321', '123456789']
     
     // Notification settings
     notifications: {

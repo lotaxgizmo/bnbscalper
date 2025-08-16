@@ -848,6 +848,7 @@ class MultiPivotSnapshotAnalyzer {
                 const { primaryPivot, cascadeResult } = cascade;
                 const executionDate = new Date(cascadeResult.executionTime);
                 // Use configured timezone for all displays (Africa time or as set in config)
+                
                 const dateStr = new Intl.DateTimeFormat('en-US', {
                     timeZone: timezone,
                     weekday: 'short',
