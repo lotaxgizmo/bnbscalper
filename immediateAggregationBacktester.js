@@ -6,21 +6,18 @@ const BACKTEST_CONFIG = {
     // Trading mode
     tradingMode: 'cascade',     // 'pivot' = trade individual pivots, 'cascade' = require multi-timeframe confirmation
     // tradingMode: 'pivot',     // 'pivot' = trade individual pivots, 'cascade' = require multi-timeframe confirmation
-    
+
     // Data settings
     useLiveAPI: false,           // Force API data
     // maxCandles: 86400,        // 1 week of 1m candles for testing
     maxCandles: 43200,        // 1 week of 1m candles for testing
     // maxCandles: 20160,          // 1 week of 1m candles for testing
-    
+
     // Output settings
     showEveryNthTrade: 1,       // Show every Nth trade
     showFirstNTrades: 20,       // Always show first N trades
     progressEvery: 5000,        // Progress update frequency
-    
-    // Cascade requirements (now taken from multiAggConfig.js)
-    // minConfirmations: 4,        // Now uses multiPivotConfig.cascadeSettings.minTimeframesRequired
-    // requirePrimaryTimeframe: true, // Now uses multiPivotConfig.cascadeSettings.requirePrimaryTimeframe
+
 };
 
 import {

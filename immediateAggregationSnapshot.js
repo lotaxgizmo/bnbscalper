@@ -5,8 +5,9 @@
 // ===== SNAPSHOT CONFIGURATION =====
 const SNAPSHOT_CONFIG = {
     // Operating modes
-    currentMode: true,              // true = latest candle, false = use targetTime
-    targetTime: "2025-08-14 01:03:00", // Target timestamp when currentMode is false
+    currentMode: false,              // true = latest candle, false = use targetTime
+    targetTime: "2025-07-14 13:20:00", // Target timestamp when currentMode is false
+    // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings
     length: 10000,                   // Number of 1m candles to load for context
@@ -646,9 +647,18 @@ async function load1mCandles() {
             };
         }).sort((a, b) => a.time - b.time);
         
-        const limitedCandles = candles.slice(-SNAPSHOT_CONFIG.length);
-        console.log(`${colors.green}Loaded ${limitedCandles.length} 1m candles from CSV${colors.reset}`);
-        return limitedCandles;
+        // Filter candles up to analysis time for historical snapshots
+        let filteredCandles;
+        if (SNAPSHOT_CONFIG.currentMode) {
+            filteredCandles = candles.slice(-SNAPSHOT_CONFIG.length);
+        } else {
+            const analysisTime = new Date(SNAPSHOT_CONFIG.targetTime).getTime();
+            const candlesUpToTime = candles.filter(c => c.time <= analysisTime);
+            filteredCandles = candlesUpToTime.slice(-SNAPSHOT_CONFIG.length);
+        }
+        
+        console.log(`${colors.green}Loaded ${filteredCandles.length} 1m candles from CSV${colors.reset}`);
+        return filteredCandles;
     } else {
         // Use multithreaded loading for API data
         const startTime = Date.now();
@@ -1362,7 +1372,7 @@ async function runImmediateAggregationSnapshot() {
             config: tfConfig
         };
         
-        // Detect all pivots for this timeframe up to analysis time
+        // Detect pivots for this timeframe up to analysis time
         const pivots = [];
         let lastAcceptedPivotIndex = null;
         for (let i = tfConfig.lookback; i < aggregatedCandles.length; i++) {

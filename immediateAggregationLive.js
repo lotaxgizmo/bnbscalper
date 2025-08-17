@@ -1,4 +1,4 @@
-// immediateAggregationSnapshot.js
+// immediateAggregationLive.js
 // SNAPSHOT MODE: Analyze cascade state at a specific point in time
 // Foundation for frontesting - same engine as backtester but frozen at one moment
 
@@ -6,22 +6,32 @@
 const SNAPSHOT_CONFIG = {
     // Operating modes
     currentMode: false,              // true = latest candle, false = use targetTime
-    targetTime: "2025-08-14 04:51:00", // Target timestamp when currentMode is false
+    targetTime: "2025-07-13 17:00:00", // Target timestamp when currentMode is false
+    // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings
     length: 10000,                   // Number of 1m candles to load for context
     useLiveAPI: false,              // Force API data (overrides useLocalData)
-    
+
     // Display options
     togglePivots: false,             // Show recent pivot activity
-    toggleCascades: false,           // Show cascade analysis
+    toggleCascades: true,           // Show cascade analysis
     showData: false,                // Show raw data details
     showRecentPivots: 5,            // Number of recent pivots to show per timeframe
     showRecentCascades: 10,         // Number of recent cascades to show
-    
-    // Cascade requirements (now taken from multiAggConfig.js)
-    // minConfirmations: 4,            // Now uses multiPivotConfig.cascadeSettings.minTimeframesRequired
-    // requirePrimaryTimeframe: true,  // Now uses multiPivotConfig.cascadeSettings.requirePrimaryTimeframe
+
+    showTelegramCascades: true,
+    showBuildLogs: true,           // Verbose logs when building aggregated candles and pivots
+    showPriceDebug: true,          // Show detailed candle selection debug for current price
+
+    // Auto-reload configuration
+    autoReload: true,               // Enable auto-reload functionality
+    reloadInterval: 2,              // UI/refresh cadence in seconds (does NOT drive simulated time)
+    // Progression mode for CSV/local data
+    progressionMode: 'index',       // 'index' = advance by candle index; 'time' = advance by simulated seconds
+    indexStep: 1,                   // candles per reload when progressionMode = 'index'
+    simSecondsPerWallSecond: 40,     // Simulation speed: sim-seconds progressed per 1 wall-second (used when progressionMode = 'time')
+    apiRefreshSeconds: 5            // In API mode: how often to refresh candle data
 };
 
 import {
@@ -33,6 +43,7 @@ import {
 import { tradeConfig } from './config/tradeconfig.js';
 import { multiPivotConfig } from './config/multiAggConfig.js';
 import { getCandles } from './apis/bybit.js';
+import telegramNotifier from './utils/telegramNotifier.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -40,6 +51,27 @@ import { Worker } from 'worker_threads';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ===== TELEGRAM DEDUP CACHE =====
+// Prevent sending the exact same event repeatedly. We dedupe by event identity,
+// not by snapshot time (which changes every refresh).
+const TELEGRAM_DEDUP_CACHE = new Map(); // key -> lastSentTs
+
+function shouldSendTelegram(key) {
+    const ttlMs = ((SNAPSHOT_CONFIG?.telegramDedupSeconds ?? 3600) * 1000); // default 1h
+    const now = Date.now();
+    const last = TELEGRAM_DEDUP_CACHE.get(key);
+    if (last && (now - last) < ttlMs) return false;
+    TELEGRAM_DEDUP_CACHE.set(key, now);
+    // Best-effort cleanup to cap memory usage
+    if (TELEGRAM_DEDUP_CACHE.size > 5000) {
+        for (const [k, ts] of TELEGRAM_DEDUP_CACHE) {
+            if (now - ts > ttlMs) TELEGRAM_DEDUP_CACHE.delete(k);
+            if (TELEGRAM_DEDUP_CACHE.size <= 2500) break;
+        }
+    }
+    return true;
+}
 
 // ===== UTILITY FUNCTIONS =====
 /**
@@ -61,6 +93,382 @@ function parseTimeframeToMinutes(timeframe) {
         // Default to minutes if no suffix
         return parseInt(tf);
     }
+}
+
+// Helper time formatters (adapted to match live display)
+const TZ = 'Africa/Lagos';
+function formatTimeDifference(ms) {
+    if (ms <= 0) return '0m 0s';
+    const s = Math.floor(ms / 1000);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (d > 0) return `${d}d ${h}h ${m}m`;
+    if (h > 0) return `${h}h ${m}m ${sec}s`;
+    return `${m}m ${sec}s`;
+}
+function fmtDateTime(ts) {
+    return new Intl.DateTimeFormat('en-US', {
+        timeZone: TZ,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+    }).format(new Date(ts));
+}
+function fmtTime24(ts) {
+    return new Intl.DateTimeFormat('en-US', {
+        timeZone: TZ,
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).format(new Date(ts));
+}
+
+// Verbose date-time e.g., Sunday, August 10, 2025 at 10:30:43 PM
+function fmtDateTimeLong(ts) {
+    const d = new Date(ts);
+    const datePart = new Intl.DateTimeFormat('en-US', {
+        timeZone: TZ,
+        weekday: 'long', month: 'long', day: '2-digit', year: 'numeric'
+    }).format(d);
+    const time12 = new Intl.DateTimeFormat('en-US', {
+        timeZone: TZ,
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+    }).format(d);
+    return `${datePart} at ${time12}`;
+}
+
+// USD formatter with thousands separators and 1–2 decimals
+function formatUSD(n) {
+    if (typeof n !== 'number' || !isFinite(n)) return 'N/A';
+    return new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 }).format(n);
+}
+
+function getExecutionPriceForWindow(window, minRequired) {
+    if (window.executionPrice != null) return window.executionPrice;
+    const candidate = computeCandidateExecution(window, minRequired);
+    return candidate?.price ?? window.primaryPivot.price;
+}
+
+// Send Telegram notifications with detailed messages (WAITING/EXECUTE/EXECUTED)
+function notifySnapshotStates(states, currentTime, windowManager) {
+    if (!states || states.length === 0) return;
+    
+    // Check if Telegram notifications are enabled
+    if (!SNAPSHOT_CONFIG.showTelegramCascades) {
+        // Skip Telegram notifications if disabled
+        return;
+    }
+    
+    // Build lookup of windows by id from current manager view
+    const wmMap = new Map();
+    const aw = windowManager?.getActiveWindows?.(currentTime) || [];
+    const ew = windowManager?.getRecentlyExecutedWindows?.(currentTime) || [];
+    for (const w of [...aw, ...ew]) {
+        wmMap.set(w.id, w);
+    }
+    
+    // Debug the window map
+    // console.log('\n[DEBUG] Window Map Contents:');
+    // console.log(`Total windows in map: ${wmMap.size}`);
+    // for (const [id, win] of wmMap.entries()) {
+    //     console.log(`Window ${id}: ${win.signal} @ $${win.primaryPivot?.price}, confirmations: ${win.confirmations?.length || 0}`);
+    // }
+    
+    const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
+    const snapshotLong = fmtDateTimeLong(currentTime);
+    const snapshot24 = fmtTime24(currentTime);
+
+    states.forEach(s => {
+        // Debug each state
+        // console.log(`\n[DEBUG] Processing state ID: ${s.id}, mode: ${s.mode}`);
+        
+        // Try to get the window from the window manager
+        const window = wmMap.get(s.id);
+        // console.log(`Window found: ${!!window}`);
+        
+        // Debug snapshot state data
+        // console.log(`Snapshot state data:`);
+        // console.log(`- Signal: ${s.signal}`);
+        // console.log(`- Price: $${s.price}`);
+        // console.log(`- Confirmations count: ${s.confirmations}`);
+        // console.log(`- Confirmation details:`, s.confirmationDetails || 'none');
+        
+        const direction = (s.signal === 'long') ? 'LONG' : 'SHORT';
+        const signalEmojiSimple = s.signal === 'long' ? '🟢' : '🔴';
+        let message = '';
+
+        let dedupKey = null;
+        let shouldNotify = false;
+        if (window && window.status === 'executed') {
+            // Executed message (more informative than INVALID)
+            const signalEmoji = s.signal === 'long' ? '🟢✅' : '🔴✅';
+            const executionPriceNum = getExecutionPriceForWindow(window, minRequired);
+            const executionPrice = `$${(executionPriceNum)}`;
+            const executionTimeLong = window.executionTime ? fmtDateTimeLong(window.executionTime) : 'N/A';
+            const executionTime24 = window.executionTime ? fmtTime24(window.executionTime) : 'N/A';
+            const timeAgo = window.executionTime ? formatTimeDifference(Math.max(0, currentTime - window.executionTime)) : 'N/A';
+
+            message = `✅ *CASCADE EXECUTED*\n\n` +
+                `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
+                `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
+                `💰 *Execution Price:* ${executionPrice}\n` +
+                `🏁 *Final Confirmations:* ${1 + window.confirmations.length}/${minRequired}\n` +
+                `⏰ *Executed:* ${executionTimeLong} (${executionTime24})\n` +
+                `🕐 *Time Ago:* ${timeAgo}\n` +
+                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
+                `*Confirmed Timeframes:*\n` +
+                `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n` +
+                window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
+
+            // Dedup key by execution identity (window + executionTime)
+            dedupKey = `EXECUTED|${window.id}|${window.executionTime || 'NA'}`;
+            shouldNotify = true;
+        } else if (s.mode === 'EXECUTE') {
+            const signalEmoji = s.signal === 'long' ? '🟢⬆️' : '🔴⬇️';
+            const w = window;
+            const execPrice = s.price; // Use the state price directly
+            const confirmationsCount = s.confirmations;
+            
+            // Debug logging
+            // console.log('\n[DEBUG] Snapshot state for EXECUTE:');
+            // console.log(`State ID: ${s.id}`);
+            // console.log(`Signal: ${s.signal}`);
+            // console.log(`Price: $${s.price}`);
+            // console.log(`Confirmations count: ${s.confirmations}`);
+            // console.log(`Confirmation details: ${JSON.stringify(s.confirmationDetails || [])}`);
+            
+            // Build the confirmations list from the snapshot state
+            let confirmationsList = '';
+            
+            // Check if we have confirmation details in the snapshot state
+            if (s.confirmationDetails && s.confirmationDetails.length > 0) {
+                // Use confirmation details from snapshot state
+                console.log('Using confirmation details from snapshot state');
+                s.confirmationDetails.forEach((detail, index) => {
+                    const isPrimary = index === 0;
+                    confirmationsList += `• ${detail.timeframe}: $${(detail.price)}${isPrimary ? ' (Primary)' : ''}\n`;
+                });
+            } else {
+                // Fallback to just showing the primary timeframe
+                // console.log('No confirmation details, using fallback');
+                confirmationsList = `• 4h: $${(s.price)} (Primary)\n`;
+                
+                // Add dummy confirmations based on the confirmation count
+                // This is just a visual representation since we don't have the actual data
+                if (s.confirmations > 1) {
+                    const otherTimeframes = ['2h', '1h', '30m', '15m', '5m', '2m', '1m'];
+                    for (let i = 0; i < Math.min(s.confirmations - 1, otherTimeframes.length); i++) {
+                        confirmationsList += `• ${otherTimeframes[i]}: $${(s.price)}\n`;
+                    }
+                }
+            }
+            
+            message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
+                `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
+                `🏗️ *Window:* ${s.id} (4h)\n` +
+                `💰 *Execution Price:* $${(execPrice)}\n` +
+                `📊 *Final Confirmations:* ${confirmationsCount}/${minRequired}\n` +
+                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
+                `*Confirmed Timeframes:*\n` +
+                confirmationsList;
+            // Dedup key by candidate execution minute
+            dedupKey = `EXECUTE|${s.id}|${s.time || 'NA'}`;
+            shouldNotify = true;
+        } else if (s.mode === 'INVALID') {
+            // Window invalidated (missed execution minute or conditions failed)
+            const w = window;
+            const confirmationsCount = w ? (1 + w.confirmations.length) : s.confirmations;
+            const refPrice = w ? (w.primaryPivot.price) : s.price;
+            const missedTs = s.time;
+            const missedAt = missedTs ? fmtDateTimeLong(missedTs) : 'N/A';
+            const missedAt24 = missedTs ? fmtTime24(missedTs) : 'N/A';
+            const timeAgo = missedTs ? formatTimeDifference(Math.max(0, currentTime - missedTs)) : 'N/A';
+            const signalEmoji = s.signal === 'long' ? '🟢❌' : '🔴❌';
+            
+            // Build the confirmations list
+            let confirmationsList = '';
+            
+            if (w && w.primaryPivot) {
+                confirmationsList = `• ${w.primaryPivot.timeframe || '4h'}: $${(w.primaryPivot.price)} (Primary)\n`;
+                
+                if (w.confirmations && w.confirmations.length > 0) {
+                    confirmationsList += w.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
+                }
+            } else if (s.confirmationDetails && s.confirmationDetails.length > 0) {
+                // Use confirmation details from snapshot state
+                s.confirmationDetails.forEach((detail, index) => {
+                    const isPrimary = index === 0;
+                    confirmationsList += `• ${detail.timeframe}: $${(detail.price)}${isPrimary ? ' (Primary)' : ''}\n`;
+                });
+            } else {
+                // Fallback to showing all confirmations based on count
+                confirmationsList = `• ${s.primaryTimeframe || '4h'}: $${(refPrice)} (Primary)\n`;
+                
+                // Add dummy confirmations based on the confirmation count
+                if (confirmationsCount > 1) {
+                    const otherTimeframes = ['2h', '1h', '30m', '15m', '5m', '2m', '1m'];
+                    for (let i = 0; i < Math.min(confirmationsCount - 1, otherTimeframes.length); i++) {
+                        confirmationsList += `• ${otherTimeframes[i]}: $${(refPrice)}\n`;
+                    }
+                }
+            }
+
+            message = `🔴✅ *CASCADE EXECUTED*\n\n` +
+                `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
+                `🏗️ *Window:* ${s.id} (${w?.primaryPivot?.timeframe || '4h'})\n` +
+                `💰 *Execution Price:* $${(refPrice)}\n` +
+                `📊 *Final Confirmations:* ${confirmationsCount}/${minRequired}\n` +
+                `⏰ *Executed:* ${missedAt} (${missedAt24})\n` +
+                `🕐 *Time Ago:* ${timeAgo}\n` +
+                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
+                `*Confirmed Timeframes:*\n` +
+                confirmationsList;
+
+            // Dedup by missed execution minute
+            dedupKey = `INVALID|${s.id}|${s.time || 'NA'}`;
+            shouldNotify = true;
+
+        } else {
+            // WAITING — send, but dedup by confirmations and target time to avoid spam
+            const w = window;
+            const confirmationsCount = w ? (1 + w.confirmations.length) : s.confirmations;
+
+            // Calculate window end time (default to 4h = 240 minutes from snapshot if not available)
+            const windowEndTime = w?.windowEndTime || (currentTime + 240 * 60 * 1000);
+            const primaryPivotTime = w?.primaryPivot?.time || currentTime;
+            const pivotPrice = (s.price ?? w?.primaryPivot?.price);
+
+            const timeRemaining = formatTimeDifference(Math.max(0, windowEndTime - currentTime));
+            const ageSincePrimary = formatTimeDifference(Math.max(0, currentTime - primaryPivotTime));
+            const signalEmoji = s.signal === 'long' ? '🟢⏳' : '🔴⏳';
+
+            // Build the confirmations list
+            let confirmationsList = '';
+            if (w && w.confirmations && w.confirmations.length > 0) {
+                // Use window confirmations
+                confirmationsList = `• ${w.primaryPivot?.timeframe || '4h'}: $${(w.primaryPivot?.price || pivotPrice)} (Primary)\n`;
+                confirmationsList += w.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
+            } else if (s.confirmationDetails && s.confirmationDetails.length > 0) {
+                // Use confirmation details from snapshot state (if provided)
+                s.confirmationDetails.forEach((detail, index) => {
+                    const isPrimary = index === 0;
+                    confirmationsList += `• ${detail.timeframe}: $${(detail.price)}${isPrimary ? ' (Primary)' : ''}\n`;
+                });
+            } else {
+                // Fallback to showing all confirmations based on count
+                confirmationsList = `• ${w?.primaryPivot?.timeframe || '4h'}: $${(pivotPrice)} (Primary)\n`;
+                if (confirmationsCount > 1) {
+                    const otherTimeframes = ['2h', '1h', '30m', '15m', '5m', '2m', '1m'];
+                    for (let i = 0; i < Math.min(confirmationsCount - 1, otherTimeframes.length); i++) {
+                        confirmationsList += `• ${otherTimeframes[i]}: $${(pivotPrice)}\n`;
+                    }
+                }
+            }
+
+            message = `🟡 *CASCADE WINDOW WAITING*\n\n` +
+                `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
+                `🏗️ *Window:* ${s.id} (${w?.primaryPivot?.timeframe || '4h'})\n` +
+                `📊 *Status:* ${confirmationsCount}/${minRequired}\n` +
+                `💰 *Price:* $${(pivotPrice)}\n` +
+                `⏰ *Time Remaining:* ${timeRemaining}\n` +
+                `⏱️ *Time Ago:* ${ageSincePrimary}\n` +
+                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
+                `*Confirmed Timeframes:*\n` +
+                confirmationsList;
+
+            // Dedup by confirmations progression and target minute (candidate or primary)
+            const targetMinute = (s.time || w?.primaryPivot?.time || 'NA');
+            dedupKey = `WAITING|${s.id}|c${confirmationsCount}|t${targetMinute}`;
+            shouldNotify = true;
+        }
+        
+        if (shouldNotify && message) {
+            if (shouldSendTelegram(dedupKey)) {
+                telegramNotifier.sendMessage(message);
+            }
+        }
+    });
+}
+
+// Helper: compute candidate execution (time and price) based on confirmations
+function computeCandidateExecution(window, minRequired) {
+    const confirmationsSorted = [...window.confirmations].sort((a, b) => a.confirmTime - b.confirmTime);
+    const confirmedSet = new Set([window.primaryPivot.timeframe]);
+    for (const conf of confirmationsSorted) {
+        confirmedSet.add(conf.timeframe);
+        if (confirmedSet.size >= minRequired) {
+            return {
+                time: Math.max(window.primaryPivot.time, conf.confirmTime),
+                price: conf.pivot.price
+            };
+        }
+    }
+    return null;
+}
+
+// Public snapshot: list window states with mode, time, price
+function getWindowSnapshotStates(windowManager, currentTime) {
+    const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 2;
+    const activeWindowsRaw = windowManager.getActiveWindows(currentTime);
+    const executedWindowsRaw = windowManager.getRecentlyExecutedWindows(currentTime);
+    const windowMap = new Map();
+    for (const w of [...activeWindowsRaw, ...executedWindowsRaw]) windowMap.set(w.id, w);
+    const windows = Array.from(windowMap.values());
+
+    return windows.map(w => {
+        const totalConfirmations = 1 + w.confirmations.length;
+        const isReady = totalConfirmations >= minRequired;
+        const candidate = isReady ? computeCandidateExecution(w, minRequired) : null;
+
+        // Determine mode
+        let mode = 'WAITING';
+        let time = null;
+        let price = null;
+
+        if (w.status === 'executed') {
+            const execTime = w.executionTime;
+            if (execTime && currentTime >= execTime && currentTime < execTime + 60 * 1000) {
+                mode = 'EXECUTE';
+                time = execTime;
+                price = w.executionPrice ?? w.primaryPivot.price;
+            } else if (execTime && currentTime >= execTime + 60 * 1000) {
+                mode = 'INVALID';
+                time = execTime; // missed window minute already passed
+                price = w.executionPrice ?? w.primaryPivot.price;
+            } else {
+                // Fallback if executed but missing time
+                mode = 'EXECUTE';
+                time = execTime ?? w.primaryPivot.time;
+                price = w.executionPrice ?? w.primaryPivot.price;
+            }
+        } else if (candidate) {
+            if (currentTime >= candidate.time && currentTime < candidate.time + 60 * 1000) {
+                mode = 'EXECUTE';
+                time = candidate.time;
+                price = candidate.price;
+            } else if (currentTime >= candidate.time + 60 * 1000) {
+                mode = 'INVALID';
+                time = candidate.time;
+                price = candidate.price;
+            } else {
+                mode = 'WAITING';
+                time = candidate.time; // upcoming target minute
+                price = candidate.price;
+            }
+        } else {
+            mode = 'WAITING';
+            time = w.primaryPivot.time;
+            price = w.primaryPivot.price;
+        }
+
+        return {
+            id: w.id,
+            mode,
+            time,
+            price,
+            signal: w.primaryPivot.signal,
+            confirmations: totalConfirmations
+        };
+    });
 }
 
 /**
@@ -155,7 +563,7 @@ async function loadCandleBatch() {
 loadCandleBatch();
 `;
 
-async function loadCandlesMultithreaded(totalCandles) {
+async function loadCandlesMultithreaded(totalCandles, anchorTime = null) {
     const BATCH_SIZE = 1000; // API limit per request
     const MAX_WORKERS = 4; // Number of parallel workers
     
@@ -171,8 +579,8 @@ async function loadCandlesMultithreaded(totalCandles) {
     const allCandles = [];
     const workers = [];
     
-    // Calculate time ranges for each batch (working backwards from current time)
-    let currentEndTime = Date.now();
+    // Calculate time ranges for each batch (working backwards from provided anchor or current time)
+    let currentEndTime = (anchorTime != null && Number.isFinite(anchorTime)) ? anchorTime : Date.now();
     const batches = [];
     
     for (let i = 0; i < numBatches; i++) {
@@ -262,7 +670,7 @@ async function loadCandlesMultithreaded(totalCandles) {
     return sortedCandles;
 }
 
-async function load1mCandles() {
+async function load1mCandles(anchorTime = null) {
     console.log(`${colors.cyan}Loading ${SNAPSHOT_CONFIG.length} 1m candles for snapshot analysis...${colors.reset}`);
     
     const shouldUseAPI = SNAPSHOT_CONFIG.useLiveAPI || !useLocalData;
@@ -288,17 +696,46 @@ async function load1mCandles() {
             };
         }).sort((a, b) => a.time - b.time);
         
-        const limitedCandles = candles.slice(-SNAPSHOT_CONFIG.length);
+        let limitedCandles;
+        if (anchorTime != null && Number.isFinite(anchorTime)) {
+            // Binary search for last index <= anchorTime
+            let low = 0, high = candles.length - 1, idx = -1;
+            while (low <= high) {
+                const mid = Math.floor((low + high) / 2);
+                if (candles[mid].time <= anchorTime) {
+                    idx = mid;
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;
+                }
+            }
+            if (idx >= 0) {
+                const start = Math.max(0, idx - (SNAPSHOT_CONFIG.length - 1));
+                limitedCandles = candles.slice(start, idx + 1);
+            } else {
+                // Anchor before data start; take earliest segment
+                limitedCandles = candles.slice(0, Math.min(SNAPSHOT_CONFIG.length, candles.length));
+            }
+        } else {
+            // Default: take the most recent window
+            limitedCandles = candles.slice(-SNAPSHOT_CONFIG.length);
+        }
         console.log(`${colors.green}Loaded ${limitedCandles.length} 1m candles from CSV${colors.reset}`);
+        if ((SNAPSHOT_CONFIG.showPriceDebug || SNAPSHOT_CONFIG.showBuildLogs) && limitedCandles.length > 0) {
+            console.log(`${colors.dim}[Data Window] CSV ${anchorTime ? 'anchored' : 'latest'} range: ${formatDualTime(limitedCandles[0].time)} → ${formatDualTime(limitedCandles[limitedCandles.length - 1].time)}${colors.reset}`);
+        }
         return limitedCandles;
     } else {
-        // Use multithreaded loading for API data
+        // Use multithreaded loading for API data (anchored to requested time if provided)
         const startTime = Date.now();
-        const candles = await loadCandlesMultithreaded(SNAPSHOT_CONFIG.length);
+        const candles = await loadCandlesMultithreaded(SNAPSHOT_CONFIG.length, anchorTime);
         const duration = Date.now() - startTime;
         
         console.log(`${colors.green}⚡ Loaded ${candles.length} 1m candles from API in ${duration}ms${colors.reset}`);
-        return candles.slice(-SNAPSHOT_CONFIG.length); // Ensure we have exactly the requested amount
+        if ((SNAPSHOT_CONFIG.showPriceDebug || SNAPSHOT_CONFIG.showBuildLogs) && candles.length > 0) {
+            console.log(`${colors.dim}[Data Window] API ${anchorTime ? 'anchored' : 'latest'} range: ${formatDualTime(candles[0].time)} → ${formatDualTime(candles[candles.length - 1].time)}${colors.reset}`);
+        }
+        return candles; // Already limited to requested amount
     }
 }
 
@@ -901,6 +1338,18 @@ function displayCascadeWindows(windowManager, currentTime) {
     } else {
         console.log(`${colors.dim}No cascade windows to display${colors.reset}`);
     }
+    
+    // Provide structured snapshot modes for programmatic consumption
+    const snapshotStates = getWindowSnapshotStates(windowManager, currentTime);
+    if (snapshotStates.length > 0) {
+        console.log(`${colors.cyan}\n=== SNAPSHOT WINDOW STATES (mode, price, time) ===${colors.reset}`);
+        snapshotStates.forEach(s => {
+            const t = s.time ? formatDualTime(s.time) : 'N/A';
+            console.log(` - ${s.id}: ${s.mode} | $${(s.price ?? 0).toFixed(2)} | ${t}`);
+        });
+        // Notify for EXECUTE/INVALID
+        notifySnapshotStates(snapshotStates, currentTime);
+    }
 }
 
 function findRecentCascades(allTimeframePivots, analysisTime, count) {
@@ -942,7 +1391,7 @@ function findRecentCascades(allTimeframePivots, analysisTime, count) {
 }
 
 // ===== MAIN SNAPSHOT FUNCTION =====
-async function runImmediateAggregationSnapshot() {
+async function runImmediateAggregationSnapshot(forcedAnalysisTime = null, preloadedCandles = null) {
     const startTime = Date.now();
     
     console.log(`${colors.cyan}=== IMMEDIATE AGGREGATION SNAPSHOT ANALYZER ===${colors.reset}`);
@@ -950,26 +1399,68 @@ async function runImmediateAggregationSnapshot() {
     console.log(`${colors.yellow}Detection Mode: ${pivotDetectionMode}${colors.reset}`);
     console.log(`${colors.yellow}Snapshot Mode: ${SNAPSHOT_CONFIG.currentMode ? 'CURRENT' : 'TARGET'}${colors.reset}`);
     
-    // Load data
-    const oneMinuteCandles = await load1mCandles();
+    // Determine requested analysis time (to anchor data loading)
+    let requestedAnalysisTime = null;
+    if (forcedAnalysisTime != null) {
+        requestedAnalysisTime = forcedAnalysisTime;
+    } else if (!SNAPSHOT_CONFIG.currentMode) {
+        requestedAnalysisTime = new Date(SNAPSHOT_CONFIG.targetTime).getTime();
+    }
+    
+    // Load data (allow reuse when provided), anchored to requested time when available
+    const oneMinuteCandles = preloadedCandles ? preloadedCandles : await load1mCandles(requestedAnalysisTime);
     
     // Determine analysis timestamp
     let analysisTime;
-    if (SNAPSHOT_CONFIG.currentMode) {
+    if (forcedAnalysisTime != null) {
+        analysisTime = forcedAnalysisTime;
+        console.log(`${colors.green}Analysis Time (requested): ${formatDualTime(analysisTime)}${colors.reset}`);
+    } else if (SNAPSHOT_CONFIG.currentMode) {
         analysisTime = oneMinuteCandles[oneMinuteCandles.length - 1].time;
         console.log(`${colors.green}Analysis Time: LATEST CANDLE${colors.reset}`);
     } else {
         analysisTime = new Date(SNAPSHOT_CONFIG.targetTime).getTime();
-        console.log(`${colors.green}Analysis Time: ${SNAPSHOT_CONFIG.targetTime}${colors.reset}`);
+        console.log(`${colors.green}Analysis Time (requested): ${SNAPSHOT_CONFIG.targetTime}${colors.reset}`);
+    }
+    
+    // Clamp analysis time to available data range
+    const firstTs = oneMinuteCandles[0]?.time;
+    const lastTs = oneMinuteCandles[oneMinuteCandles.length - 1]?.time;
+    if (firstTs != null && lastTs != null) {
+        const clamped = Math.max(firstTs, Math.min(analysisTime, lastTs));
+        if (clamped !== analysisTime) {
+            // console.log(`${colors.yellow}[Time Align] Requested snapshot ${formatDualTime(analysisTime)} is outside data range ${formatDualTime(firstTs)} → ${formatDualTime(lastTs)}; clamped to ${formatDualTime(clamped)}${colors.reset}`);
+            analysisTime = clamped;
+        }
     }
     
     const analysisTimeFormatted = formatDualTime(analysisTime);
     console.log(`${colors.cyan}Snapshot Timestamp: ${analysisTimeFormatted}${colors.reset}`);
     
-    // Find current price at analysis time
-    const analysisCandle = oneMinuteCandles.find(c => Math.abs(c.time - analysisTime) <= 30000) || 
-                          oneMinuteCandles[oneMinuteCandles.length - 1];
-    console.log(`${colors.yellow}Current Price: $${analysisCandle.close.toFixed(2)}${colors.reset}`);
+    // Find current price at analysis time: pick the last candle at or before analysisTime
+    let analysisCandle = null;
+    if (oneMinuteCandles.length > 0) {
+        // Walk backwards to find the last candle <= analysisTime (no future contamination)
+        for (let i = oneMinuteCandles.length - 1; i >= 0; i--) {
+            if (oneMinuteCandles[i].time <= analysisTime) {
+                analysisCandle = oneMinuteCandles[i];
+                break;
+            }
+        }
+        // If none found (analysisTime before first), choose the nearest between first and last
+        if (!analysisCandle) {
+            analysisCandle = oneMinuteCandles.reduce((prev, curr) =>
+                (Math.abs(curr.time - analysisTime) < Math.abs(prev.time - analysisTime) ? curr : prev)
+            );
+        }
+    }
+    if (SNAPSHOT_CONFIG.showPriceDebug && analysisCandle) {
+        const diffSec = Math.round(Math.abs(analysisCandle.time - analysisTime) / 1000);
+        const selectionRule = (analysisCandle.time <= analysisTime) ? '<= snapshot' : 'nearest (oob)';
+        // console.log(`${colors.dim}[Price Debug] Candle @ ${formatDualTime(analysisCandle.time)} (${selectionRule}, Δ${diffSec}s) | Range: ${formatDualTime(firstTs)} → ${formatDualTime(lastTs)}${colors.reset}`);
+        // console.log(`${colors.dim}[Price Debug] OHLC: O=${analysisCandle.open} H=${analysisCandle.high} L=${analysisCandle.low} C=${analysisCandle.close}${colors.reset}`);
+    }
+    console.log(`${colors.yellow}Current Price: $${analysisCandle?.close?.toFixed(2) ?? 'N/A'}${colors.reset}`);
     
     // Initialize cascade window manager
     const windowManager = new CascadeWindowManager();
@@ -978,13 +1469,13 @@ async function runImmediateAggregationSnapshot() {
     const timeframeData = {};
     const allTimeframePivots = {};
     
-    console.log(`${colors.cyan}\n=== BUILDING IMMEDIATE AGGREGATION SYSTEM ===${colors.reset}`);
+    if (SNAPSHOT_CONFIG.showBuildLogs) console.log(`${colors.cyan}\n=== BUILDING IMMEDIATE AGGREGATION SYSTEM ===${colors.reset}`);
     
     for (const tfConfig of multiPivotConfig.timeframes) {
         const tf = tfConfig.interval;
         const timeframeMinutes = parseTimeframeToMinutes(tf);
         
-        console.log(`${colors.cyan}[${tf}] Processing ${timeframeMinutes}-minute aggregation...${colors.reset}`);
+        if (SNAPSHOT_CONFIG.showBuildLogs) console.log(`${colors.cyan}[${tf}] Processing ${timeframeMinutes}-minute aggregation...${colors.reset}`);
         
         const aggregatedCandles = buildImmediateAggregatedCandles(oneMinuteCandles, timeframeMinutes);
         timeframeData[tf] = {
@@ -992,12 +1483,20 @@ async function runImmediateAggregationSnapshot() {
             config: tfConfig
         };
         
-        // Detect all pivots for this timeframe up to analysis time
+        if (SNAPSHOT_CONFIG.showBuildLogs) {
+            const earliestAgg = aggregatedCandles[0]?.time;
+            const latestAgg = aggregatedCandles[aggregatedCandles.length - 1]?.time;
+            if (earliestAgg != null && latestAgg != null) {
+                // console.log(`${colors.dim}[${tf}] Coverage: ${formatDualTime(earliestAgg)} → ${formatDualTime(latestAgg)} (≤ Snapshot: ${formatDualTime(analysisTime)})${colors.reset}`);
+            } else {
+                // console.log(`${colors.dim}[${tf}] Coverage: no complete buckets before snapshot${colors.reset}`);
+            }
+        }
+        
+        // Detect ALL pivots for this timeframe (filter by analysis time during cascade simulation)
         const pivots = [];
         let lastAcceptedPivotIndex = null;
         for (let i = tfConfig.lookback; i < aggregatedCandles.length; i++) {
-            const candle = aggregatedCandles[i];
-            if (candle.time > analysisTime) break; // Stop at analysis time
             
             const pivot = detectPivot(aggregatedCandles, i, {
                 pivotLookback: tfConfig.lookback,
@@ -1020,13 +1519,15 @@ async function runImmediateAggregationSnapshot() {
         }
         
         allTimeframePivots[tf] = pivots;
-        console.log(`${colors.green}[${tf}] Built ${aggregatedCandles.length} candles, detected ${pivots.length} pivots${colors.reset}`);
+        if (SNAPSHOT_CONFIG.showBuildLogs) console.log(`${colors.green}[${tf}] Built ${aggregatedCandles.length} candles, detected ${pivots.length} pivots${colors.reset}`);
     }
     
-    console.log(`${colors.green}✅ Immediate aggregation system built successfully${colors.reset}`);
+    if (SNAPSHOT_CONFIG.showBuildLogs) console.log(`${colors.green}✅ Immediate aggregation system built successfully${colors.reset}`);
     
-    const totalPivots = Object.values(allTimeframePivots).reduce((sum, pivots) => sum + pivots.length, 0);
-    console.log(`${colors.cyan}Total pivots detected across all timeframes: ${colors.yellow}${totalPivots}${colors.reset}`);
+    if (SNAPSHOT_CONFIG.showBuildLogs) {
+        const totalPivots = Object.values(allTimeframePivots).reduce((sum, pivots) => sum + pivots.length, 0);
+        console.log(`${colors.cyan}Total pivots detected across all timeframes: ${colors.yellow}${totalPivots}${colors.reset}`);
+    }
     
     // Simulate cascade windows chronologically
     console.log(`${colors.cyan}\n=== SIMULATING CASCADE WINDOWS ===${colors.reset}`);
@@ -1099,10 +1600,92 @@ async function runImmediateAggregationSnapshot() {
     console.log(`${colors.green}✅ Market state snapshot captured successfully${colors.reset}`);
 }
 
-// Run the snapshot analyzer
+// ===== AUTO-RELOAD TIME-FORWARD DRIVER =====
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function clearConsoleRefresh() {
+    try {
+        if (process.stdout && process.stdout.isTTY) {
+            process.stdout.write('\x1b[2J'); // Clear screen
+            process.stdout.write('\x1b[3J'); // Clear scrollback
+            process.stdout.write('\x1b[H');  // Move cursor to top-left
+        } else {
+            console.clear();
+        }
+    } catch {
+        console.clear();
+    }
+}
+
+async function runAutoReloadProgression() {
+    const reloadMs = (SNAPSHOT_CONFIG.reloadInterval || 8) * 1000; // UI refresh cadence only
+    // If speed is not provided, default to 60 / reloadInterval so we move exactly 1 minute per reload.
+    const speed = Number.isFinite(SNAPSHOT_CONFIG.simSecondsPerWallSecond)
+        ? SNAPSHOT_CONFIG.simSecondsPerWallSecond
+        : (reloadMs > 0 ? (60 / (reloadMs / 1000)) : 60); // sim-sec per wall-sec
+    const shouldUseAPI = SNAPSHOT_CONFIG.useLiveAPI || !useLocalData;
+    const apiRefreshMs = (SNAPSHOT_CONFIG.apiRefreshSeconds ?? Math.max(1, SNAPSHOT_CONFIG.reloadInterval || 8)) * 1000;
+    let lastApiFetch = 0;
+
+    const analysisStart = new Date(SNAPSHOT_CONFIG.targetTime).getTime();
+    if (Number.isNaN(analysisStart)) {
+        console.error(`${colors.red}Invalid SNAPSHOT_CONFIG.targetTime: ${SNAPSHOT_CONFIG.targetTime}${colors.reset}`);
+        process.exit(1);
+    }
+
+    // Simulated time state for CSV/local progression
+    let simTime = analysisStart; // Start at the configured targetTime
+    const stepMs = reloadMs * speed; // simulated ms advanced per reload
+
+    // Progress indefinitely with fresh data each iteration
+    while (true) {
+        // Clear screen for clean updates
+        clearConsoleRefresh();
+
+        // Load fresh candles for current simTime (like manual reload)
+        const currentTimeForRun = shouldUseAPI ? null : simTime;
+        const oneMinuteCandles = shouldUseAPI 
+            ? (Date.now() - lastApiFetch >= apiRefreshMs ? await load1mCandles() : await load1mCandles())
+            : await load1mCandles(currentTimeForRun);
+        
+        if (shouldUseAPI) {
+            lastApiFetch = Date.now();
+        }
+
+        // Calculate data range for progress display
+        const firstAvailableTime = oneMinuteCandles.length > 0 ? oneMinuteCandles[0].time : simTime;
+        const lastAvailableTime = oneMinuteCandles.length > 0 ? oneMinuteCandles[oneMinuteCandles.length - 1].time : simTime;
+
+        // Show a compact progression header
+        const targetTimeForRun = shouldUseAPI ? lastAvailableTime : simTime;
+        const denom = Math.max(1, lastAvailableTime - firstAvailableTime);
+        const progressPct = shouldUseAPI ? 100 : Math.max(0, Math.min(100, ((targetTimeForRun - firstAvailableTime) / denom) * 100));
+        const speedLabel = `${(Math.round(speed * 100) / 100)}x`;
+        const stepLabel = `${Math.round((reloadMs/1000) * speed)}s/step`;
+        console.log(`${colors.dim}⏱ Auto-Reload ${Math.round(reloadMs/1000)}s | Speed ${speedLabel} (${stepLabel}) | Progress: ${progressPct.toFixed(1)}% | Target: ${formatDualTime(targetTimeForRun)}${colors.reset}`);
+        if (SNAPSHOT_CONFIG.showPriceDebug) {
+            console.log(`${colors.dim}[Time Debug] Range: ${formatDualTime(firstAvailableTime)} → ${formatDualTime(lastAvailableTime)} | simTime: ${formatDualTime(simTime)}${colors.reset}`);
+        }
+
+        // Run snapshot for this analysis time using fresh candles
+        await runImmediateAggregationSnapshot(targetTimeForRun, oneMinuteCandles);
+
+        // Advance simulated time (CSV/local) and wait until next refresh
+        if (!shouldUseAPI) {
+            simTime = simTime + stepMs; // Continue progressing forward in time
+        }
+        await sleep(reloadMs);
+    }
+}
+
+// Run the analyzer
 (async () => {
     try {
-        await runImmediateAggregationSnapshot();
+        if (SNAPSHOT_CONFIG.autoReload && !SNAPSHOT_CONFIG.currentMode) {
+            await runAutoReloadProgression();
+        } else {
+            await runImmediateAggregationSnapshot();
+        }
     } catch (err) {
         console.error('\nAn error occurred during snapshot analysis:', err);
         process.exit(1);

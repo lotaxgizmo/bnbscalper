@@ -43,7 +43,7 @@ export const tradeConfig = {
     // showPivot: true,
     // showTradeDetails: true,
     showPivot: false,
-    showTradeDetails: false,
+    showTradeDetails: true,
     hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
  
 
