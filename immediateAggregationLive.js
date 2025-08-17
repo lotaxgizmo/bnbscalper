@@ -510,17 +510,20 @@ function getWindowSnapshotStates(windowManager, currentTime) {
 function formatDualTime(timestamp) {
     const date = new Date(timestamp);
     const dateStr = date.toLocaleDateString('en-US', {
+        timeZone: timezone,
         month: '2-digit',
         day: '2-digit', 
         year: 'numeric'
     });
     const time12 = date.toLocaleTimeString('en-US', { 
+        timeZone: timezone,
         hour: '2-digit', 
         minute: '2-digit',
         second: '2-digit',
         hour12: true 
     });
     const time24 = date.toLocaleTimeString('en-US', { 
+        timeZone: timezone,
         hour: '2-digit', 
         minute: '2-digit',
         second: '2-digit',
