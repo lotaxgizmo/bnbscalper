@@ -5,13 +5,14 @@
 // ===== SNAPSHOT CONFIGURATION =====
 const SNAPSHOT_CONFIG = {
     // Operating modes
-    currentMode: false,              // true = latest candle, false = use targetTime
-    targetTime: "2025-07-13 17:00:00", // Target timestamp when currentMode is false
+    currentMode: true,              // true = latest candle, false = use targetTime
+    targetTime: "2025-06-13 17:00:00", // Target timestamp when currentMode is false
     // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings
     length: 10000,                   // Number of 1m candles to load for context
-    useLiveAPI: false,              // Force API data (overrides useLocalData)
+    // length: 5000,                   // Number of 1m candles to load for context
+    useLiveAPI: true,              // Force API data (overrides useLocalData)
 
     // Display options
     togglePivots: false,             // Show recent pivot activity
@@ -26,7 +27,7 @@ const SNAPSHOT_CONFIG = {
 
     // Auto-reload configuration
     autoReload: true,               // Enable auto-reload functionality
-    reloadInterval: 2,              // UI/refresh cadence in seconds (does NOT drive simulated time)
+    reloadInterval: 8,              // UI/refresh cadence in seconds (does NOT drive simulated time)
     // Progression mode for CSV/local data
     progressionMode: 'index',       // 'index' = advance by candle index; 'time' = advance by simulated seconds
     indexStep: 1,                   // candles per reload when progressionMode = 'index'
@@ -37,7 +38,8 @@ const SNAPSHOT_CONFIG = {
 import {
     symbol,
     useLocalData,
-    pivotDetectionMode
+    pivotDetectionMode,
+    timezone
 } from './config/config.js';
 
 import { tradeConfig } from './config/tradeconfig.js';
@@ -96,7 +98,50 @@ function parseTimeframeToMinutes(timeframe) {
 }
 
 // Helper time formatters (adapted to match live display)
-const TZ = 'Africa/Lagos';
+// ===== Timezone helpers =====
+function partsFromTS(ts) {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+    });
+    const parts = dtf.formatToParts(new Date(ts));
+    const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    return {
+        year: Number(map.year),
+        month: Number(map.month),
+        day: Number(map.day),
+        hour: Number(map.hour),
+        minute: Number(map.minute),
+        second: Number(map.second)
+    };
+}
+
+function parseTargetTimeInZone(str) {
+    if (typeof str === 'number' && Number.isFinite(str)) return Number(str);
+    const m = /^\s*(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\s*$/.exec(str || '');
+    if (!m) return NaN;
+    const [, y, mo, d, h, mi, s] = m.map(v => Number(v));
+    let guess = Date.UTC(y, mo - 1, d, h, mi, s);
+    const shown = partsFromTS(guess);
+    const shownUTC = Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour, shown.minute, shown.second);
+    const desiredUTC = Date.UTC(y, mo - 1, d, h, mi, s);
+    let adjusted = guess + (desiredUTC - shownUTC);
+    const shown2 = partsFromTS(adjusted);
+    const shownUTC2 = Date.UTC(shown2.year, shown2.month - 1, shown2.day, shown2.hour, shown2.minute, shown2.second);
+    adjusted = adjusted + (desiredUTC - shownUTC2);
+    return adjusted;
+}
+
+function fmtDateTime(ts) {
+    return new Date(ts).toLocaleString('en-US', { timeZone: timezone });
+}
+
+function fmtTime24(ts) {
+    return new Date(ts).toLocaleTimeString('en-GB', { hour12: false, timeZone: timezone });
+}
+
 function formatTimeDifference(ms) {
     if (ms <= 0) return '0m 0s';
     const s = Math.floor(ms / 1000);
@@ -108,29 +153,17 @@ function formatTimeDifference(ms) {
     if (h > 0) return `${h}h ${m}m ${sec}s`;
     return `${m}m ${sec}s`;
 }
-function fmtDateTime(ts) {
-    return new Intl.DateTimeFormat('en-US', {
-        timeZone: TZ,
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-    }).format(new Date(ts));
-}
-function fmtTime24(ts) {
-    return new Intl.DateTimeFormat('en-US', {
-        timeZone: TZ,
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-    }).format(new Date(ts));
-}
+// ==============================
 
 // Verbose date-time e.g., Sunday, August 10, 2025 at 10:30:43 PM
 function fmtDateTimeLong(ts) {
     const d = new Date(ts);
     const datePart = new Intl.DateTimeFormat('en-US', {
-        timeZone: TZ,
+        timeZone: timezone,
         weekday: 'long', month: 'long', day: '2-digit', year: 'numeric'
     }).format(d);
     const time12 = new Intl.DateTimeFormat('en-US', {
-        timeZone: TZ,
+        timeZone: timezone,
         hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
     }).format(d);
     return `${datePart} at ${time12}`;
@@ -565,7 +598,7 @@ loadCandleBatch();
 
 async function loadCandlesMultithreaded(totalCandles, anchorTime = null) {
     const BATCH_SIZE = 1000; // API limit per request
-    const MAX_WORKERS = 4; // Number of parallel workers
+    const MAX_WORKERS = 5; // Number of parallel workers
     
     const numBatches = Math.ceil(totalCandles / BATCH_SIZE);
     const actualWorkers = Math.min(MAX_WORKERS, numBatches);
@@ -1419,7 +1452,7 @@ async function runImmediateAggregationSnapshot(forcedAnalysisTime = null, preloa
         analysisTime = oneMinuteCandles[oneMinuteCandles.length - 1].time;
         console.log(`${colors.green}Analysis Time: LATEST CANDLE${colors.reset}`);
     } else {
-        analysisTime = new Date(SNAPSHOT_CONFIG.targetTime).getTime();
+        analysisTime = parseTargetTimeInZone(SNAPSHOT_CONFIG.targetTime);
         console.log(`${colors.green}Analysis Time (requested): ${SNAPSHOT_CONFIG.targetTime}${colors.reset}`);
     }
     
@@ -1627,7 +1660,7 @@ async function runAutoReloadProgression() {
     const apiRefreshMs = (SNAPSHOT_CONFIG.apiRefreshSeconds ?? Math.max(1, SNAPSHOT_CONFIG.reloadInterval || 8)) * 1000;
     let lastApiFetch = 0;
 
-    const analysisStart = new Date(SNAPSHOT_CONFIG.targetTime).getTime();
+    const analysisStart = parseTargetTimeInZone(SNAPSHOT_CONFIG.targetTime);
     if (Number.isNaN(analysisStart)) {
         console.error(`${colors.red}Invalid SNAPSHOT_CONFIG.targetTime: ${SNAPSHOT_CONFIG.targetTime}${colors.reset}`);
         process.exit(1);
@@ -1678,11 +1711,60 @@ async function runAutoReloadProgression() {
     }
 }
 
+// ===== CURRENT MODE AUTO-RELOAD =====
+async function runCurrentModeAutoReload() {
+    const reloadMs = (SNAPSHOT_CONFIG.reloadInterval || 8) * 1000;
+    const shouldUseAPI = SNAPSHOT_CONFIG.useLiveAPI || !useLocalData;
+    const apiRefreshMs = (SNAPSHOT_CONFIG.apiRefreshSeconds ?? Math.max(1, SNAPSHOT_CONFIG.reloadInterval || 8)) * 1000;
+    let lastApiFetch = 0;
+
+    console.log(`${colors.cyan}=== CURRENT MODE AUTO-RELOAD ===${colors.reset}`);
+    console.log(`${colors.yellow}Mode: ${shouldUseAPI ? 'Live API' : 'Latest CSV'} | Refresh: ${Math.round(reloadMs/1000)}s${colors.reset}`);
+
+    // Progress indefinitely with fresh data each iteration
+    while (true) {
+        // Clear screen for clean updates
+        clearConsoleRefresh();
+
+        // Load fresh candles for current analysis
+        const oneMinuteCandles = shouldUseAPI 
+            ? (Date.now() - lastApiFetch >= apiRefreshMs ? await load1mCandles() : await load1mCandles())
+            : await load1mCandles(); // CSV mode - always get latest
+        
+        if (shouldUseAPI) {
+            lastApiFetch = Date.now();
+        }
+
+        // Use latest candle time as analysis time (currentMode behavior)
+        const analysisTime = oneMinuteCandles.length > 0 ? oneMinuteCandles[oneMinuteCandles.length - 1].time : Date.now();
+
+        // Calculate data range for progress display
+        const firstAvailableTime = oneMinuteCandles.length > 0 ? oneMinuteCandles[0].time : analysisTime;
+        const lastAvailableTime = oneMinuteCandles.length > 0 ? oneMinuteCandles[oneMinuteCandles.length - 1].time : analysisTime;
+
+        // Show a compact progression header
+        console.log(`${colors.dim}⏱ Current Mode Auto-Reload ${Math.round(reloadMs/1000)}s | Latest: ${formatDualTime(analysisTime)}${colors.reset}`);
+        if (SNAPSHOT_CONFIG.showPriceDebug) {
+            console.log(`${colors.dim}[Time Debug] Range: ${formatDualTime(firstAvailableTime)} → ${formatDualTime(lastAvailableTime)} | Current: ${formatDualTime(analysisTime)}${colors.reset}`);
+        }
+
+        // Run snapshot for latest candle time using fresh candles
+        await runImmediateAggregationSnapshot(analysisTime, oneMinuteCandles);
+
+        // Wait and repeat
+        await sleep(reloadMs);
+    }
+}
+
 // Run the analyzer
 (async () => {
     try {
-        if (SNAPSHOT_CONFIG.autoReload && !SNAPSHOT_CONFIG.currentMode) {
-            await runAutoReloadProgression();
+        if (SNAPSHOT_CONFIG.autoReload) {
+            if (SNAPSHOT_CONFIG.currentMode) {
+                await runCurrentModeAutoReload();
+            } else {
+                await runAutoReloadProgression();
+            }
         } else {
             await runImmediateAggregationSnapshot();
         }
