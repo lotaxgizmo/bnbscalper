@@ -13,6 +13,7 @@ export const symbol = 'BTCUSDT';
 // Timezone settings
 // Set the IANA timezone to use for parsing input times and formatting outputs
 // Examples: 'UTC', 'America/New_York', 'Europe/London', 'Africa/Lagos', 'Asia/Dubai'
+// export const timezone = 'Asia/Dubai';
 export const timezone = 'Africa/Lagos';
 
 // candle limit below
