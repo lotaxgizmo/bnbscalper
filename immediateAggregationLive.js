@@ -5,14 +5,14 @@
 // ===== SNAPSHOT CONFIGURATION =====
 const SNAPSHOT_CONFIG = {
     // Operating modes
-    currentMode: true,              // true = latest candle, false = use targetTime
+    currentMode: false,              // true = latest candle, false = use targetTime
     targetTime: "2025-06-13 17:00:00", // Target timestamp when currentMode is false
     // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings
-    length: 10000,                   // Number of 1m candles to load for context
-    // length: 5000,                   // Number of 1m candles to load for context
-    useLiveAPI: true,              // Force API data (overrides useLocalData)
+    // length: 10000,                   // Number of 1m candles to load for context
+    length: 5000,                   // Number of 1m candles to load for context
+    useLiveAPI: false,              // Force API data (overrides useLocalData)
 
     // Display options
     togglePivots: false,             // Show recent pivot activity
@@ -22,17 +22,17 @@ const SNAPSHOT_CONFIG = {
     showRecentCascades: 10,         // Number of recent cascades to show
 
     showTelegramCascades: true,
-    showBuildLogs: true,           // Verbose logs when building aggregated candles and pivots
+    showBuildLogs: false,           // Verbose logs when building aggregated candles and pivots
     showPriceDebug: true,          // Show detailed candle selection debug for current price
 
     // Auto-reload configuration
     autoReload: true,               // Enable auto-reload functionality
-    reloadInterval: 8,              // UI/refresh cadence in seconds (does NOT drive simulated time)
+    reloadInterval: 2,              // UI/refresh cadence in seconds (does NOT drive simulated time)
+    apiRefreshSeconds: 5,            // In API mode: how often to refresh candle data
     // Progression mode for CSV/local data
     progressionMode: 'index',       // 'index' = advance by candle index; 'time' = advance by simulated seconds
     indexStep: 1,                   // candles per reload when progressionMode = 'index'
-    simSecondsPerWallSecond: 40,     // Simulation speed: sim-seconds progressed per 1 wall-second (used when progressionMode = 'time')
-    apiRefreshSeconds: 5            // In API mode: how often to refresh candle data
+    simSecondsPerWallSecond: 25,     // Simulation speed: sim-seconds progressed per 1 wall-second (used when progressionMode = 'time')
 };
 
 import {
@@ -758,7 +758,7 @@ async function load1mCandles(anchorTime = null) {
         }
         console.log(`${colors.green}Loaded ${limitedCandles.length} 1m candles from CSV${colors.reset}`);
         if ((SNAPSHOT_CONFIG.showPriceDebug || SNAPSHOT_CONFIG.showBuildLogs) && limitedCandles.length > 0) {
-            console.log(`${colors.dim}[Data Window] CSV ${anchorTime ? 'anchored' : 'latest'} range: ${formatDualTime(limitedCandles[0].time)} → ${formatDualTime(limitedCandles[limitedCandles.length - 1].time)}${colors.reset}`);
+            // console.log(`${colors.dim}[Data Window] CSV ${anchorTime ? 'anchored' : 'latest'} range: ${formatDualTime(limitedCandles[0].time)} → ${formatDualTime(limitedCandles[limitedCandles.length - 1].time)}${colors.reset}`);
         }
         return limitedCandles;
     } else {
@@ -1700,7 +1700,7 @@ async function runAutoReloadProgression() {
         const stepLabel = `${Math.round((reloadMs/1000) * speed)}s/step`;
         console.log(`${colors.dim}⏱ Auto-Reload ${Math.round(reloadMs/1000)}s | Speed ${speedLabel} (${stepLabel}) | Progress: ${progressPct.toFixed(1)}% | Target: ${formatDualTime(targetTimeForRun)}${colors.reset}`);
         if (SNAPSHOT_CONFIG.showPriceDebug) {
-            console.log(`${colors.dim}[Time Debug] Range: ${formatDualTime(firstAvailableTime)} → ${formatDualTime(lastAvailableTime)} | simTime: ${formatDualTime(simTime)}${colors.reset}`);
+            // console.log(`${colors.dim}[Time Debug] Range: ${formatDualTime(firstAvailableTime)} → ${formatDualTime(lastAvailableTime)} | simTime: ${formatDualTime(simTime)}${colors.reset}`);
         }
 
         // Run snapshot for this analysis time using fresh candles
