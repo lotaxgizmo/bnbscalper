@@ -1139,6 +1139,7 @@ class CascadeWindowManager {
             `*Confirmed Timeframes:*\n` +
             confirmationsList;
         
+            
         const dedupKey = `READY_TO_EXECUTE|${window.id}`;
         if (shouldNotifyWindowEvent(window.id, 'READY_TO_EXECUTE') && shouldSendTelegram(dedupKey)) {
             telegramNotifier.sendMessage(message);
