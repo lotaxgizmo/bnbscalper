@@ -297,12 +297,111 @@ function isNoTradeDay(timestamp) {
     return tradeConfig.noTradeDays.includes(currentDay);
 }
 
+function calculateFundingRate() {
+    if (!tradeConfig.enableFundingRate) return 0;
+    
+    if (tradeConfig.fundingRateMode === 'variable') {
+        // Generate random funding rate between min and max
+        const min = tradeConfig.variableFundingMin || -0.05;
+        const max = tradeConfig.variableFundingMax || 0.05;
+        return min + Math.random() * (max - min);
+    } else {
+        // Fixed funding rate
+        return tradeConfig.fundingRatePercent || 0.01;
+    }
+}
+
+function applyFundingRates(currentTime, openTrades, capital, appliedFundingRates) {
+    if (!tradeConfig.enableFundingRate || openTrades.length === 0) return capital;
+    
+    const fundingHours = tradeConfig.fundingRateHours || 8;
+    const fundingIntervalMs = fundingHours * 60 * 60 * 1000;
+    
+    // Check if it's time for funding (every X hours)
+    const currentHour = new Date(currentTime).getUTCHours();
+    if (currentHour % fundingHours !== 0) return capital;
+    
+    // Check if we already applied funding for this hour
+    const fundingKey = `${currentTime}_${currentHour}`;
+    if (appliedFundingRates.has(fundingKey)) return capital;
+    appliedFundingRates.add(fundingKey);
+    
+    const fundingRate = calculateFundingRate();
+    let totalFundingCost = 0;
+    
+    for (const trade of openTrades) {
+        // Funding cost = position size * funding rate
+        const fundingCost = trade.tradeSize * (fundingRate / 100);
+        
+        // Long positions pay positive funding, short positions receive it
+        // But we always deduct the absolute cost from capital
+        const actualCost = trade.type === 'long' ? fundingCost : -fundingCost;
+        
+        // Apply funding cost to capital (always deduct the absolute amount)
+        capital -= Math.abs(actualCost);
+        totalFundingCost += Math.abs(actualCost);
+        
+        // Track funding in trade
+        if (!trade.fundingCosts) trade.fundingCosts = [];
+        trade.fundingCosts.push({
+            time: currentTime,
+            rate: fundingRate,
+            cost: actualCost
+        });
+    }
+    
+    if (tradeConfig.showTradeDetails && totalFundingCost !== 0) {
+        console.log(`${colors.red}💰 FUNDING: ${fundingRate.toFixed(4)}% rate → -$${formatNumberWithCommas(totalFundingCost)} (${openTrades.length} positions)${colors.reset}`);
+    }
+    
+    return capital;
+}
+
+function calculateSlippage(tradeSize) {
+    if (!tradeConfig.enableSlippage) return 0;
+    
+    if (tradeConfig.slippageMode === 'variable') {
+        // Generate random slippage between min and max
+        const min = tradeConfig.variableSlippageMin ?? 0.01;
+        const max = tradeConfig.variableSlippageMax ?? 0.05;
+        return min + Math.random() * (max - min);
+    } else if (tradeConfig.slippageMode === 'market_impact') {
+        // Market impact based on trade size
+        const impactFactor = tradeConfig.marketImpactFactor ?? 0.001;
+        const baseSlippage = tradeConfig.slippagePercent ?? 0.05;
+        const sizeImpact = (tradeSize / 1000) * impactFactor;
+        return baseSlippage + sizeImpact;
+    } else {
+        // Fixed slippage
+        return tradeConfig.slippagePercent ?? 0.05;
+    }
+}
+
+function applySlippageToPrice(originalPrice, slippagePercent, isEntry, isLong) {
+    if (!tradeConfig.enableSlippage || slippagePercent === 0) return originalPrice;
+    
+    // Slippage always works against the trader
+    // Entry: Long buys higher, Short sells lower
+    // Exit: Long sells lower, Short buys higher
+    const slippageAmount = originalPrice * (slippagePercent / 100);
+    
+    if (isEntry) {
+        return isLong ? originalPrice + slippageAmount : originalPrice - slippageAmount;
+    } else {
+        return isLong ? originalPrice - slippageAmount : originalPrice + slippageAmount;
+    }
+}
+
 // ===== TRADE MANAGEMENT =====
 function createTrade(signal, pivot, tradeSize, currentTime, timeframe, entryPriceOverride = null) {
-    const entryPrice = (entryPriceOverride != null ? entryPriceOverride : pivot.price);
+    const originalEntryPrice = (entryPriceOverride != null ? entryPriceOverride : pivot.price);
     const isLong = signal === 'long';
     
-    // Calculate TP and SL based on config
+    // Apply entry slippage
+    const entrySlippage = calculateSlippage(tradeSize);
+    const entryPrice = applySlippageToPrice(originalEntryPrice, entrySlippage, true, isLong);
+    
+    // Calculate TP and SL based on slippage-adjusted entry price
     const tpDistance = entryPrice * (tradeConfig.takeProfit / 100);
     const slDistance = entryPrice * (tradeConfig.stopLoss / 100);
     
@@ -322,9 +421,15 @@ function createTrade(signal, pivot, tradeSize, currentTime, timeframe, entryPric
         status: 'open',
         exitPrice: null,
         exitTime: null,
+        exitReason: '',
         pnl: 0,
         pnlPct: 0,
         pivot: pivot,
+        // Slippage tracking
+        originalEntryPrice: originalEntryPrice,
+        entrySlippage: entrySlippage,
+        exitSlippage: null,
+        originalExitPrice: null,
         // Trailing fields
         bestPrice: entryPrice,
         trailingTakeProfitActive: false,
@@ -478,12 +583,18 @@ function updateTrade(trade, currentCandle) {
     
     if (shouldClose) {
         trade.status = 'closed';
-        trade.exitPrice = currentPrice;
+        
+        // Apply exit slippage (half of entry slippage for more realistic simulation)
+        const exitSlippage = calculateSlippage(trade.tradeSize) * 0.5;
+        trade.originalExitPrice = currentPrice;
+        trade.exitSlippage = exitSlippage;
+        trade.exitPrice = applySlippageToPrice(currentPrice, exitSlippage, false, isLong);
+        
         trade.exitTime = currentCandle.time;
         trade.exitReason = exitReason;
         
-        // Calculate P&L
-        const priceChange = isLong ? (currentPrice - trade.entryPrice) : (trade.entryPrice - currentPrice);
+        // Calculate P&L using slippage-adjusted exit price
+        const priceChange = isLong ? (trade.exitPrice - trade.entryPrice) : (trade.entryPrice - trade.exitPrice);
         trade.pnl = (priceChange / trade.entryPrice) * trade.tradeSize * trade.leverage;
         trade.pnlPct = (priceChange / trade.entryPrice) * 100 * trade.leverage;
         
@@ -654,11 +765,12 @@ async function runImmediateAggregationBacktest() {
     
     // Trading simulation
     let capital = tradeConfig.initialCapital;
-    const openTrades = [];
-    const allTrades = [];
-    let totalSignals = 0;
+    let openTrades = [];
+    let allTrades = [];
     let confirmedSignals = 0;
     let executedTrades = 0;
+    let totalSignals = 0;
+    let appliedFundingRates = new Set(); // Track applied funding to avoid duplicates
     
     // Track consecutive opposite signals for flip logic
     const oppositeSignalCounts = { long: 0, short: 0 };
@@ -696,6 +808,9 @@ async function runImmediateAggregationBacktest() {
         
         // Store closed trades for this candle to display them in chronological order
         const closedTradesThisCandle = [];
+        
+        // Apply funding rates (every X hours)
+        capital = applyFundingRates(currentTime, openTrades, capital, appliedFundingRates);
         
         // Update existing trades with each 1-minute candle in the range
         for (const minuteCandle of minuteCandlesInRange) {
@@ -777,48 +892,39 @@ async function runImmediateAggregationBacktest() {
                             continue;
                         }
 
-                        // Apply direction filtering like pivot mode
-                        let shouldOpenCascadeTrade = false;
-                        let cascadeTradeType = null;
+                        // Apply direction filtering logic
+                        let candidateTradeType = null;
+                        let shouldOpenTrade = false;
                         
                         if (win.primaryPivot.signal === 'long') {
                             if (tradeConfig.direction === 'buy' || tradeConfig.direction === 'both') {
-                                shouldOpenCascadeTrade = true;
-                                cascadeTradeType = 'long';
+                                shouldOpenTrade = true;
+                                candidateTradeType = 'long';
                             } else if (tradeConfig.direction === 'alternate') {
-                                shouldOpenCascadeTrade = true;
-                                cascadeTradeType = 'short'; // Alternate mode: invert
+                                shouldOpenTrade = true;
+                                candidateTradeType = 'short'; // Alternate mode: invert
                             }
                         } else if (win.primaryPivot.signal === 'short') {
                             if (tradeConfig.direction === 'sell' || tradeConfig.direction === 'both') {
-                                shouldOpenCascadeTrade = true;
-                                cascadeTradeType = 'short';
+                                shouldOpenTrade = true;
+                                candidateTradeType = 'short';
                             } else if (tradeConfig.direction === 'alternate') {
-                                shouldOpenCascadeTrade = true;
-                                cascadeTradeType = 'long'; // Alternate mode: invert
+                                shouldOpenTrade = true;
+                                candidateTradeType = 'long'; // Alternate mode: invert
                             }
                         }
-
-                        if (!shouldOpenCascadeTrade) {
+                        
+                        // Skip if direction filtering blocks this trade
+                        if (!shouldOpenTrade) {
                             if (tradeConfig.showTradeDetails) {
                                 console.log(`  ${colors.yellow}└─> [DIRECTION FILTER] ${win.primaryPivot.signal.toUpperCase()} cascade signal skipped - direction: ${tradeConfig.direction}${colors.reset}`);
                             }
-                            // Remove executed window
+                            // Remove executed window and continue
                             pendingWindows.splice(w, 1);
                             continue;
                         }
-
-                        // Check singleTradeMode
-                        if (tradeConfig.singleTradeMode && openTrades.length > 0) {
-                            if (tradeConfig.showTradeDetails) {
-                                console.log(`  ${colors.yellow}└─> [SINGLE TRADE MODE] ${cascadeTradeType.toUpperCase()} cascade signal skipped - trade already open${colors.reset}`);
-                            }
-                            // Remove executed window
-                            pendingWindows.splice(w, 1);
-                            continue;
-                        }
-
-                        const tradeType = cascadeTradeType;
+                        
+                        const tradeType = candidateTradeType;
                         const oppositeType = (tradeType === 'long') ? 'short' : 'long';
                         const flipThreshold = Math.max(1, tradeConfig.numberOfOppositeSignal || 1);
 
@@ -851,13 +957,20 @@ async function runImmediateAggregationBacktest() {
                                     for (let k = oppositeTrades.length - 1; k >= 0; k--) {
                                         const t = oppositeTrades[k];
                                         const isLong = t.type === 'long';
-                                        const priceChange = isLong ? (switchExitPrice - t.entryPrice) : (t.entryPrice - switchExitPrice);
+                                        
+                                        // Apply exit slippage to flip price
+                                        const exitSlippage = calculateSlippage(t.tradeSize) * 0.5;
+                                        t.originalExitPrice = switchExitPrice;
+                                        t.exitSlippage = exitSlippage;
+                                        const slippageAdjustedExitPrice = applySlippageToPrice(switchExitPrice, exitSlippage, false, isLong);
+                                        
+                                        const priceChange = isLong ? (slippageAdjustedExitPrice - t.entryPrice) : (t.entryPrice - slippageAdjustedExitPrice);
                                         let pnl = (priceChange / t.entryPrice) * t.tradeSize * t.leverage;
                                         const fees = t.tradeSize * (tradeConfig.totalMakerFee / 100) * 2;
                                         pnl -= fees;
 
                                         t.status = 'closed';
-                                        t.exitPrice = switchExitPrice;
+                                        t.exitPrice = slippageAdjustedExitPrice;
                                         t.exitTime = minuteCandle.time;
                                         t.exitReason = 'FLIP';
                                         t.pnl = pnl;
@@ -888,12 +1001,26 @@ async function runImmediateAggregationBacktest() {
                             }
                         }
 
-                        executedTrades++;
+                        // Count confirmed cascade signal regardless of trade execution
                         confirmedSignals++;
+
+                        // Respect maxConcurrentTrades limit
+                        const maxTrades = tradeConfig.singleTradeMode ? 1 : (tradeConfig.maxConcurrentTrades || 1);
+                        if (openTrades.length >= maxTrades) {
+                            if (tradeConfig.showTradeDetails) {
+                                console.log(`  ${colors.yellow}└─> [MAX CONCURRENT TRADES] ${tradeType.toUpperCase()} cascade signal skipped - ${openTrades.length}/${maxTrades} trades open${colors.reset}`);
+                            }
+                            // Remove executed window and continue
+                            pendingWindows.splice(w, 1);
+                            continue;
+                        }
+
+                        executedTrades++;
                         const trade = createTrade(tradeType, win.primaryPivot, (function(){
                             switch (tradeConfig.positionSizingMode) {
                                 case 'fixed': return tradeConfig.amountPerTrade;
                                 case 'percent': return capital * (tradeConfig.riskPerTrade / 100);
+                                case 'minimum': return Math.max(capital * (tradeConfig.riskPerTrade / 100), tradeConfig.minimumTradeAmount || 0);
                                 default: return tradeConfig.amountPerTrade;
                             }
                         })(), actualEntryTime, primaryInterval, entryPriceOverride);
@@ -1029,44 +1156,37 @@ async function runImmediateAggregationBacktest() {
                             continue;
                         }
 
-                        // Apply direction filtering like pivot mode
-                        let shouldOpenCascadeTrade = false;
-                        let cascadeTradeType = null;
+                        // Apply direction filtering logic
+                        let candidateTradeType = null;
+                        let shouldOpenTrade = false;
                         
                         if (currentPivot.signal === 'long') {
                             if (tradeConfig.direction === 'buy' || tradeConfig.direction === 'both') {
-                                shouldOpenCascadeTrade = true;
-                                cascadeTradeType = 'long';
+                                shouldOpenTrade = true;
+                                candidateTradeType = 'long';
                             } else if (tradeConfig.direction === 'alternate') {
-                                shouldOpenCascadeTrade = true;
-                                cascadeTradeType = 'short'; // Alternate mode: invert
+                                shouldOpenTrade = true;
+                                candidateTradeType = 'short'; // Alternate mode: invert
                             }
                         } else if (currentPivot.signal === 'short') {
                             if (tradeConfig.direction === 'sell' || tradeConfig.direction === 'both') {
-                                shouldOpenCascadeTrade = true;
-                                cascadeTradeType = 'short';
+                                shouldOpenTrade = true;
+                                candidateTradeType = 'short';
                             } else if (tradeConfig.direction === 'alternate') {
-                                shouldOpenCascadeTrade = true;
-                                cascadeTradeType = 'long'; // Alternate mode: invert
+                                shouldOpenTrade = true;
+                                candidateTradeType = 'long'; // Alternate mode: invert
                             }
                         }
-
-                        if (!shouldOpenCascadeTrade) {
+                        
+                        // Skip if direction filtering blocks this trade
+                        if (!shouldOpenTrade) {
                             if (tradeConfig.showTradeDetails) {
                                 console.log(`  ${colors.yellow}└─> [DIRECTION FILTER] ${currentPivot.signal.toUpperCase()} immediate cascade signal skipped - direction: ${tradeConfig.direction}${colors.reset}`);
                             }
                             continue;
                         }
-
-                        // Check singleTradeMode
-                        if (tradeConfig.singleTradeMode && openTrades.length > 0) {
-                            if (tradeConfig.showTradeDetails) {
-                                console.log(`  ${colors.yellow}└─> [SINGLE TRADE MODE] ${cascadeTradeType.toUpperCase()} immediate cascade signal skipped - trade already open${colors.reset}`);
-                            }
-                            continue;
-                        }
-
-                        const tradeType = cascadeTradeType;
+                        
+                        const tradeType = candidateTradeType;
                         const oppositeType = (tradeType === 'long') ? 'short' : 'long';
                         const flipThreshold = Math.max(1, tradeConfig.numberOfOppositeSignal || 1);
 
@@ -1109,13 +1229,20 @@ async function runImmediateAggregationBacktest() {
                                     for (let k = oppositeTrades.length - 1; k >= 0; k--) {
                                         const t = oppositeTrades[k];
                                         const isLong = t.type === 'long';
-                                        const priceChange = isLong ? (switchExitPrice - t.entryPrice) : (t.entryPrice - switchExitPrice);
+                                        
+                                        // Apply exit slippage to flip price
+                                        const exitSlippage = calculateSlippage(t.tradeSize) * 0.5;
+                                        t.originalExitPrice = switchExitPrice;
+                                        t.exitSlippage = exitSlippage;
+                                        const slippageAdjustedExitPrice = applySlippageToPrice(switchExitPrice, exitSlippage, false, isLong);
+                                        
+                                        const priceChange = isLong ? (slippageAdjustedExitPrice - t.entryPrice) : (t.entryPrice - slippageAdjustedExitPrice);
                                         let pnl = (priceChange / t.entryPrice) * t.tradeSize * t.leverage;
                                         const fees = t.tradeSize * (tradeConfig.totalMakerFee / 100) * 2;
                                         pnl -= fees;
 
                                         t.status = 'closed';
-                                        t.exitPrice = switchExitPrice;
+                                        t.exitPrice = slippageAdjustedExitPrice;
                                         t.exitTime = currentTime;
                                         t.exitReason = 'FLIP';
                                         t.pnl = pnl;
@@ -1144,12 +1271,24 @@ async function runImmediateAggregationBacktest() {
                             }
                         }
 
-                        executedTrades++;
+                        // Count confirmed cascade signal regardless of trade execution
                         confirmedSignals++;
+
+                        // Respect maxConcurrentTrades limit
+                        const maxTrades = tradeConfig.singleTradeMode ? 1 : (tradeConfig.maxConcurrentTrades || 1);
+                        if (openTrades.length >= maxTrades) {
+                            if (tradeConfig.showTradeDetails) {
+                                console.log(`  ${colors.yellow}└─> [MAX CONCURRENT TRADES] ${tradeType.toUpperCase()} immediate cascade signal skipped - ${openTrades.length}/${maxTrades} trades open${colors.reset}`);
+                            }
+                            continue;
+                        }
+
+                        executedTrades++;
                         const trade = createTrade(tradeType, { ...currentPivot, timeframe: primaryInterval }, (function(){
                             switch (tradeConfig.positionSizingMode) {
                                 case 'fixed': return tradeConfig.amountPerTrade;
                                 case 'percent': return capital * (tradeConfig.riskPerTrade / 100);
+                                case 'minimum': return Math.max(capital * (tradeConfig.riskPerTrade / 100), tradeConfig.minimumTradeAmount || 0);
                                 default: return tradeConfig.amountPerTrade;
                             }
                         })(), actualEntryTime, primaryInterval, entryPriceOverride);
@@ -1240,13 +1379,20 @@ async function runImmediateAggregationBacktest() {
                             for (let k = opposite.length - 1; k >= 0; k--) {
                                 const t = opposite[k];
                                 const isLong = t.type === 'long';
-                                const priceChange = isLong ? (switchExitPrice - t.entryPrice) : (t.entryPrice - switchExitPrice);
+                                
+                                // Apply exit slippage to flip price (half of entry slippage for more realistic simulation)
+                                const exitSlippage = calculateSlippage(t.tradeSize) * 0.5;
+                                t.originalExitPrice = switchExitPrice;
+                                t.exitSlippage = exitSlippage;
+                                const slippageAdjustedExitPrice = applySlippageToPrice(switchExitPrice, exitSlippage, false, isLong);
+                                
+                                const priceChange = isLong ? (slippageAdjustedExitPrice - t.entryPrice) : (t.entryPrice - slippageAdjustedExitPrice);
                                 let pnl = (priceChange / t.entryPrice) * t.tradeSize * t.leverage;
                                 const fees = t.tradeSize * (tradeConfig.totalMakerFee / 100) * 2; // entry + exit
                                 pnl -= fees;
 
                                 t.status = 'closed';
-                                t.exitPrice = switchExitPrice;
+                                t.exitPrice = slippageAdjustedExitPrice;
                                 t.exitTime = currentTime;
                                 t.exitReason = 'FLIP';
                                 t.pnl = pnl;
@@ -1278,8 +1424,9 @@ async function runImmediateAggregationBacktest() {
                 }
             }
 
-            // After switching, respect singleTradeMode and open new trade if allowed
-            if (shouldTrade && (!tradeConfig.singleTradeMode || openTrades.length === 0)) {
+            // After switching, respect maxConcurrentTrades limit and open new trade if allowed
+            const maxTrades = tradeConfig.singleTradeMode ? 1 : (tradeConfig.maxConcurrentTrades || 1);
+            if (shouldTrade && openTrades.length < maxTrades) {
                 const shouldOpenTrade = candidateShouldOpen;
                 const tradeType = candidateTradeType;
                 
@@ -1305,6 +1452,9 @@ async function runImmediateAggregationBacktest() {
                             break;
                         case 'percent':
                             tradeSize = capital * (tradeConfig.riskPerTrade / 100);
+                            break;
+                        case 'minimum':
+                            tradeSize = Math.max(capital * (tradeConfig.riskPerTrade / 100), tradeConfig.minimumTradeAmount || 0);
                             break;
                         default:
                             tradeSize = tradeConfig.amountPerTrade;
@@ -1472,6 +1622,13 @@ async function runImmediateAggregationBacktest() {
                 const priceColor = priceDiff >= 0 ? colors.green : colors.red;
                 console.log(`  Price Movement: ${priceColor}${priceDiff > 0 ? '+' : ''}${priceDiffPct}%${colors.reset} (${priceColor}$${formatNumberWithCommas(priceDiff)}${colors.reset})`);
                 
+                // Display funding costs if any
+                if (tradeConfig.enableFundingRate && trade.fundingCosts && trade.fundingCosts.length > 0) {
+                    const totalFundingCost = trade.fundingCosts.reduce((sum, f) => sum + f.cost, 0);
+                    const fundingColor = totalFundingCost > 0 ? colors.red : colors.green;
+                    console.log(`  Funding Costs: ${fundingColor}${totalFundingCost > 0 ? '-' : '+'}$${formatNumberWithCommas(Math.abs(totalFundingCost))}${colors.reset} (${trade.fundingCosts.length} payments)`);
+                }
+                
                 // Display slippage information if enabled
                 if (tradeConfig.enableSlippage && (trade.entrySlippage || trade.exitSlippage)) {
                     const entrySlippageText = trade.entrySlippage ? `Entry: ${colors.red}-${trade.entrySlippage.toFixed(4)}%${colors.reset}` : '';
@@ -1483,9 +1640,11 @@ async function runImmediateAggregationBacktest() {
                     
                     // Show original vs slippage-adjusted prices if available
                     if (trade.originalExitPrice && Math.abs(trade.originalExitPrice - trade.exitPrice) > 0.0001) {
-                        const slippageDiff = trade.originalExitPrice - trade.exitPrice;
-                        const slippageDiffColor = slippageDiff >= 0 ? colors.red : colors.green;
-                        console.log(`  Exit Price Impact: $${formatNumberWithCommas(trade.originalExitPrice)} → $${formatNumberWithCommas(trade.exitPrice)} (${slippageDiffColor}${slippageDiff > 0 ? '-' : '+'}$${formatNumberWithCommas(Math.abs(slippageDiff))}${colors.reset})`);
+                        const isLong = trade.type === 'long';
+                        const madeWorse = isLong ? (trade.exitPrice < trade.originalExitPrice) : (trade.exitPrice > trade.originalExitPrice);
+                        const diffAbs = Math.abs(trade.exitPrice - trade.originalExitPrice);
+                        const slippageDiffColor = madeWorse ? colors.red : colors.green;
+                        console.log(`  Exit Price Impact: $${formatNumberWithCommas(trade.originalExitPrice)} → $${formatNumberWithCommas(trade.exitPrice)} (${slippageDiffColor}${madeWorse ? '-' : '+'}$${formatNumberWithCommas(diffAbs)}${colors.reset})`);
                     }
                 }
                 

@@ -22,10 +22,10 @@ export const tradeConfig = {
     // Flip mode: close opposite and switch to new confirmed signal 
     // switchOnOppositeSignal: true,       
     switchOnOppositeSignal: false,       
-    numberOfOppositeSignal: 1,
+    numberOfOppositeSignal: 3,
     switchPolicy: 'flip',                 // Reserved for future strategies; currently only 'flip' is supported
 
-    noTradeDays: ['Sa','Su','M'],
+    noTradeDays: ['Sa','M'],
     // noTradeDays: ['M', 'T', 'W', 'Th', 'F', 'Sa', 'Su'],
 
     // Trailing stop loss settings
@@ -85,11 +85,11 @@ export const tradeConfig = {
     variableFundingMax: 0.05,    // Maximum funding rate for variable mode (%)
 
     // Slippage simulation
-    enableSlippage: false,        // Enable/disable slippage simulation
-    slippagePercent: 0.05,       // Base slippage percentage (0.02% = 2 basis points)
+    enableSlippage: true,        // Enable/disable slippage simulation
+    slippagePercent: 0.01,       // Base slippage percentage (0.02% = 2 basis points)
     slippageMode: 'fixed',       // 'fixed', 'variable', or 'market_impact'
     variableSlippageMin: 0.01,   // Minimum slippage for variable mode (%)
-    variableSlippageMax: 0.05,   // Maximum slippage for variable mode (%)
+    variableSlippageMax: 0.03,   // Maximum slippage for variable mode (%)
     marketImpactFactor: 0.001,   // Market impact factor for large trades (% per 1000 USDT)
      
     

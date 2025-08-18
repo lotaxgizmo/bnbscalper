@@ -29,8 +29,8 @@ export const multiPivotConfig = {
         //     weight: 1,
         //     opposite: true
         // },
- 
- 
+
+
         {
             interval: '2h',
             role: 'primary',   // Additional confirmation
@@ -40,7 +40,7 @@ export const multiPivotConfig = {
             weight: 1,
             opposite: false
         },
- 
+
         {
             interval: '1m',
             role: 'execution',      // Final execution timeframe
