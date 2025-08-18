@@ -6,7 +6,7 @@
 const SNAPSHOT_CONFIG = {
     // Operating modes
     currentMode: false,              // true = latest candle, false = use targetTime
-    targetTime: "2025-07-14 13:20:00", // Target timestamp when currentMode is false
+    targetTime: "2025-06-30 04:51:00", // Target timestamp when currentMode is false
     // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings

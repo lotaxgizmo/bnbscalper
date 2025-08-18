@@ -6,7 +6,7 @@
 const SNAPSHOT_CONFIG = {
     // Operating modes
     currentMode: false,              // true = latest candle, false = use targetTime
-    targetTime: "2025-06-13 17:00:00", // Target timestamp when currentMode is false
+    targetTime: "2025-06-30 01:00:00", // Target timestamp when currentMode is false
     // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings
@@ -55,9 +55,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ===== TELEGRAM DEDUP CACHE =====
-// Prevent sending the exact same event repeatedly. We dedupe by event identity,
-// not by snapshot time (which changes every refresh).
+// Window lifecycle-based deduplication to prevent spam
 const TELEGRAM_DEDUP_CACHE = new Map(); // key -> lastSentTs
+const WINDOW_LIFECYCLE_CACHE = new Map(); // windowId -> {opened: bool, executed: bool, executionTime: number}
 
 function shouldSendTelegram(key) {
     const ttlMs = ((SNAPSHOT_CONFIG?.telegramDedupSeconds ?? 3600) * 1000); // default 1h
@@ -72,6 +72,50 @@ function shouldSendTelegram(key) {
             if (TELEGRAM_DEDUP_CACHE.size <= 2500) break;
         }
     }
+    return true;
+}
+
+// Track window lifecycle to prevent duplicate notifications
+function shouldNotifyWindowEvent(windowId, eventType, executionTime = null) {
+    const lifecycle = WINDOW_LIFECYCLE_CACHE.get(windowId) || {
+        opened: false, 
+        readyToExecute: false,
+        executed: false, 
+        expired: false,
+        executionTime: null,
+        lastConfirmationCount: 0
+    };
+    
+    if (eventType === 'OPENED') {
+        if (lifecycle.opened) return false;
+        lifecycle.opened = true;
+        WINDOW_LIFECYCLE_CACHE.set(windowId, lifecycle);
+        return true;
+    }
+    
+    if (eventType === 'READY_TO_EXECUTE') {
+        if (lifecycle.readyToExecute) return false;
+        lifecycle.readyToExecute = true;
+        WINDOW_LIFECYCLE_CACHE.set(windowId, lifecycle);
+        return true;
+    }
+    
+    if (eventType === 'EXECUTED') {
+        // Only notify once per execution, and only if execution time matches
+        if (lifecycle.executed && lifecycle.executionTime === executionTime) return false;
+        lifecycle.executed = true;
+        lifecycle.executionTime = executionTime;
+        WINDOW_LIFECYCLE_CACHE.set(windowId, lifecycle);
+        return true;
+    }
+    
+    if (eventType === 'EXPIRED') {
+        if (lifecycle.expired) return false;
+        lifecycle.expired = true;
+        WINDOW_LIFECYCLE_CACHE.set(windowId, lifecycle);
+        return true;
+    }
+    
     return true;
 }
 
@@ -252,9 +296,9 @@ function notifySnapshotStates(states, currentTime, windowManager) {
                 `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n` +
                 window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
 
-            // Dedup key by execution identity (window + executionTime)
+            // Only notify once per execution
             dedupKey = `EXECUTED|${window.id}|${window.executionTime || 'NA'}`;
-            shouldNotify = true;
+            shouldNotify = shouldNotifyWindowEvent(window.id, 'EXECUTED', window.executionTime);
         } else if (s.mode === 'EXECUTE') {
             const signalEmoji = s.signal === 'long' ? '🟢⬆️' : '🔴⬇️';
             const w = window;
@@ -303,9 +347,9 @@ function notifySnapshotStates(states, currentTime, windowManager) {
                 `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
                 `*Confirmed Timeframes:*\n` +
                 confirmationsList;
-            // Dedup key by candidate execution minute
-            dedupKey = `EXECUTE|${s.id}|${s.time || 'NA'}`;
-            shouldNotify = true;
+            // Only notify once when window becomes ready to execute
+            dedupKey = `READY_TO_EXECUTE|${s.id}`;
+            shouldNotify = shouldNotifyWindowEvent(s.id, 'READY_TO_EXECUTE');
         } else if (s.mode === 'INVALID') {
             // Window invalidated (missed execution minute or conditions failed)
             const w = window;
@@ -356,9 +400,9 @@ function notifySnapshotStates(states, currentTime, windowManager) {
                 `*Confirmed Timeframes:*\n` +
                 confirmationsList;
 
-            // Dedup by missed execution minute
-            dedupKey = `INVALID|${s.id}|${s.time || 'NA'}`;
-            shouldNotify = true;
+            // Only notify once per execution (treating INVALID as executed)
+            dedupKey = `EXECUTED|${s.id}|${s.time || 'NA'}`;
+            shouldNotify = shouldNotifyWindowEvent(s.id, 'EXECUTED', s.time);
 
         } else {
             // WAITING — send, but dedup by confirmations and target time to avoid spam
@@ -408,10 +452,9 @@ function notifySnapshotStates(states, currentTime, windowManager) {
                 `*Confirmed Timeframes:*\n` +
                 confirmationsList;
 
-            // Dedup by confirmations progression and target minute (candidate or primary)
-            const targetMinute = (s.time || w?.primaryPivot?.time || 'NA');
-            dedupKey = `WAITING|${s.id}|c${confirmationsCount}|t${targetMinute}`;
-            shouldNotify = true;
+            // Only notify once when window opens (not for each confirmation change)
+            dedupKey = `WINDOW_OPENED|${s.id}`;
+            shouldNotify = shouldNotifyWindowEvent(s.id, 'OPENED');
         }
         
         if (shouldNotify && message) {
@@ -983,6 +1026,8 @@ class CascadeWindowManager {
             if (totalConfirmed >= minRequiredTFs && window.status !== 'executed') {
                 const canExecute = this.checkHierarchicalExecution(window);
                 if (canExecute) {
+                    // Send immediate EXECUTE notification
+                    this.sendExecuteNotification(window, currentTime);
                     this.executeWindow(window, currentTime);
                 }
             }
@@ -1060,13 +1105,145 @@ class CascadeWindowManager {
         window.executionTime = executionTime;
         window.executionPrice = executionPrice;
         
+        // Send immediate EXECUTED notification
+        this.sendExecutedNotification(window, currentTime);
+        
         return cascadeInfo;
+    }
+    
+    sendExecuteNotification(window, currentTime) {
+        if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
+        
+        // Only send notifications for real-time events (within 5 minutes of current time)
+        const timeDiff = Math.abs(Date.now() - currentTime);
+        const isRealTime = timeDiff <= (5 * 60 * 1000); // 5 minutes threshold
+        if (!isRealTime) return;
+        
+        const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
+        const totalConfirmations = 1 + window.confirmations.length;
+        const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+        const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢⬆️' : '🔴⬇️';
+        const snapshotLong = fmtDateTimeLong(currentTime);
+        const snapshot24 = fmtTime24(currentTime);
+        
+        // Build confirmations list
+        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${formatUSD(window.primaryPivot.price)} (Primary)\n`;
+        confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${formatUSD(conf.pivot.price)}`).join('\n');
+        
+        const message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
+            `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
+            `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
+            `💰 *Execution Price:* $${formatUSD(window.primaryPivot.price)}\n` +
+            `📊 *Final Confirmations:* ${totalConfirmations}/${minRequired}\n` +
+            `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
+            `*Confirmed Timeframes:*\n` +
+            confirmationsList;
+        
+        const dedupKey = `READY_TO_EXECUTE|${window.id}`;
+        if (shouldNotifyWindowEvent(window.id, 'READY_TO_EXECUTE') && shouldSendTelegram(dedupKey)) {
+            telegramNotifier.sendMessage(message);
+        }
+    }
+    
+    sendExecutedNotification(window, currentTime) {
+        if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
+        
+        // Only send notifications for real-time events (within 5 minutes of current time)
+        const timeDiff = Math.abs(Date.now() - currentTime);
+        const isRealTime = timeDiff <= (5 * 60 * 1000); // 5 minutes threshold
+        if (!isRealTime) return;
+        
+        const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
+        const totalConfirmations = 1 + window.confirmations.length;
+        const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+        const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢✅' : '🔴✅';
+        const executionPrice = window.executionPrice || window.primaryPivot.price;
+        const executionTimeLong = fmtDateTimeLong(window.executionTime);
+        const executionTime24 = fmtTime24(window.executionTime);
+        const snapshotLong = fmtDateTimeLong(currentTime);
+        const snapshot24 = fmtTime24(currentTime);
+        const timeAgo = formatTimeDifference(Math.max(0, currentTime - window.executionTime));
+        
+        // Build confirmations list
+        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${formatUSD(window.primaryPivot.price)} (Primary)\n`;
+        confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${formatUSD(conf.pivot.price)}`).join('\n');
+        
+        const message = `✅ *CASCADE EXECUTED*\n\n` +
+            `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
+            `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
+            `💰 *Execution Price:* $${formatUSD(executionPrice)}\n` +
+            `🏁 *Final Confirmations:* ${totalConfirmations}/${minRequired}\n` +
+            `⏰ *Executed:* ${executionTimeLong} (${executionTime24})\n` +
+            `🕐 *Time Ago:* ${timeAgo}\n` +
+            `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
+            `*Confirmed Timeframes:*\n` +
+            confirmationsList;
+        
+        const dedupKey = `EXECUTED|${window.id}|${window.executionTime}`;
+        if (shouldNotifyWindowEvent(window.id, 'EXECUTED', window.executionTime) && shouldSendTelegram(dedupKey)) {
+            telegramNotifier.sendMessage(message);
+        }
+    }
+    
+    sendExpiredNotification(window, currentTime) {
+        if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
+        
+        // Only send expired notifications for windows that previously sent WAITING notifications
+        const lifecycle = WINDOW_LIFECYCLE_CACHE.get(window.id);
+        if (!lifecycle || !lifecycle.opened) {
+            // This window never sent a WAITING notification, skip expired notification
+            return;
+        }
+        
+        // Skip time filters entirely in auto-reload mode to allow all testing notifications
+        if (!SNAPSHOT_CONFIG.autoReload) {
+            // Only send notifications for real-time events (within 5 minutes of current time)
+            const timeDiff = Math.abs(Date.now() - currentTime);
+            const isRealTime = timeDiff <= (5 * 60 * 1000); // 5 minutes threshold
+            if (!isRealTime) return;
+        }
+        // In auto-reload mode: allow all expired notifications (no time filter)
+        
+        const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
+        const totalConfirmations = 1 + window.confirmations.length;
+        const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+        const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢⏰' : '🔴⏰';
+        const snapshotLong = fmtDateTimeLong(currentTime);
+        const snapshot24 = fmtTime24(currentTime);
+        const windowOpenedLong = fmtDateTimeLong(window.primaryPivot.time);
+        const windowOpenedTime24 = fmtTime24(window.primaryPivot.time);
+        const windowDuration = formatTimeDifference(currentTime - window.primaryPivot.time);
+        
+        // Build confirmations list
+        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${formatUSD(window.primaryPivot.price)} (Primary)\n`;
+        if (window.confirmations.length > 0) {
+            confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${formatUSD(conf.pivot.price)}`).join('\n');
+        }
+        
+        const message = `⏰ *CASCADE WINDOW EXPIRED*\n\n` +
+            `${signalEmoji} *MISSED OPPORTUNITY: ${direction}*\n` +
+            `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
+            `💰 *Price:* $${formatUSD(window.primaryPivot.price)}\n` +
+            `📊 *Final Status:* ${totalConfirmations}/${minRequired} confirmations\n` +
+            `⏰ *Opened:* ${windowOpenedLong} (${windowOpenedTime24})\n` +
+            `🕐 *Duration:* ${windowDuration}\n` +
+            `🕐 *Expired:* ${snapshotLong} (${snapshot24})\n\n` +
+            `*Confirmed Timeframes:*\n` +
+            confirmationsList +
+            `\n❌ *Window closed without execution - insufficient confirmations*`;
+        
+        const dedupKey = `EXPIRED|${window.id}|${currentTime}`;
+        if (shouldNotifyWindowEvent(window.id, 'EXPIRED') && shouldSendTelegram(dedupKey)) {
+            telegramNotifier.sendMessage(message);
+        }
     }
 
     checkExpiredWindows(currentTime) {
         for (const [windowId, window] of this.activeWindows) {
             if (window.status === 'active' && currentTime > window.windowEndTime) {
                 window.status = 'expired';
+                // Send expiration notification for windows that didn't execute
+                this.sendExpiredNotification(window, currentTime);
             }
         }
     }
@@ -1208,6 +1385,8 @@ function simulateCascadeWindows(allTimeframePivots, analysisTime, windowManager)
                         if (totalConfirmed >= minRequiredTFs && window.status !== 'executed') {
                             const canExecute = windowManager.checkHierarchicalExecution(window);
                             if (canExecute) {
+                                // Send immediate EXECUTE notification
+                                windowManager.sendExecuteNotification(window, pivot.time);
                                 windowManager.executeWindow(window, pivot.time);
                             }
                         }
