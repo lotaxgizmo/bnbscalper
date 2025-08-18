@@ -9,6 +9,7 @@ const BACKTEST_CONFIG = {
 
     // Data settings
     useLiveAPI: false,           // Force API data
+    // maxCandles: 129600,        // 1 week of 1m candles for testing
     // maxCandles: 86400,        // 1 week of 1m candles for testing
     maxCandles: 43200,        // 1 week of 1m candles for testing
     // maxCandles: 20160,          // 1 week of 1m candles for testing
@@ -17,6 +18,9 @@ const BACKTEST_CONFIG = {
     showEveryNthTrade: 1,       // Show every Nth trade
     showFirstNTrades: 20,       // Always show first N trades
     progressEvery: 5000,        // Progress update frequency
+    
+    // Logging settings
+    showInitializationLogs: false,  // Hide immediate aggregation initialization logs
 
 };
 
@@ -579,13 +583,17 @@ async function runImmediateAggregationBacktest() {
     const timeframeData = {};
     const allTimeframePivots = {};
     
-    console.log(`${colors.cyan}\n=== INITIALIZING IMMEDIATE AGGREGATION SYSTEM ===${colors.reset}`);
+    if (BACKTEST_CONFIG.showInitializationLogs) {
+        console.log(`${colors.cyan}\n=== INITIALIZING IMMEDIATE AGGREGATION SYSTEM ===${colors.reset}`);
+    }
     
     for (const tfConfig of multiPivotConfig.timeframes) {
         const tf = tfConfig.interval;
         const timeframeMinutes = parseTimeframeToMinutes(tf);
         
-        console.log(`${colors.cyan}[${tf}] Processing ${timeframeMinutes}-minute aggregation...${colors.reset}`);
+        if (BACKTEST_CONFIG.showInitializationLogs) {
+            console.log(`${colors.cyan}[${tf}] Processing ${timeframeMinutes}-minute aggregation...${colors.reset}`);
+        }
         
         const aggregatedCandles = buildImmediateAggregatedCandles(oneMinuteCandles, timeframeMinutes);
         timeframeData[tf] = {
@@ -618,10 +626,14 @@ async function runImmediateAggregationBacktest() {
         }
         
         allTimeframePivots[tf] = pivots;
-        console.log(`${colors.green}[${tf}] Built ${aggregatedCandles.length} candles, detected ${pivots.length} pivots using immediate aggregation${colors.reset}`);
+        if (BACKTEST_CONFIG.showInitializationLogs) {
+            console.log(`${colors.green}[${tf}] Built ${aggregatedCandles.length} candles, detected ${pivots.length} pivots using immediate aggregation${colors.reset}`);
+        }
     }
     
-    console.log(`${colors.green}✅ Immediate aggregation system initialized successfully${colors.reset}`);
+    if (BACKTEST_CONFIG.showInitializationLogs) {
+        console.log(`${colors.green}✅ Immediate aggregation system initialized successfully${colors.reset}`);
+    }
     
     const totalPivots = Object.values(allTimeframePivots).reduce((sum, pivots) => sum + pivots.length, 0);
     console.log(`${colors.cyan}Total pivots detected across all timeframes: ${colors.yellow}${totalPivots}${colors.reset}`);
@@ -752,9 +764,132 @@ async function runImmediateAggregationBacktest() {
                             continue; // cannot execute without price
                         }
 
+                        // Check if current day is a no-trade day
+                        if (isNoTradeDay(actualEntryTime)) {
+                            if (tradeConfig.showTradeDetails) {
+                                const date = new Date(actualEntryTime);
+                                const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                                const currentDayName = dayNames[date.getDay()];
+                                console.log(`  ${colors.yellow}└─> [NO TRADE DAY] ${win.primaryPivot.signal.toUpperCase()} cascade signal skipped - ${currentDayName} is in noTradeDays${colors.reset}`);
+                            }
+                            // Remove executed window
+                            pendingWindows.splice(w, 1);
+                            continue;
+                        }
+
+                        // Apply direction filtering like pivot mode
+                        let shouldOpenCascadeTrade = false;
+                        let cascadeTradeType = null;
+                        
+                        if (win.primaryPivot.signal === 'long') {
+                            if (tradeConfig.direction === 'buy' || tradeConfig.direction === 'both') {
+                                shouldOpenCascadeTrade = true;
+                                cascadeTradeType = 'long';
+                            } else if (tradeConfig.direction === 'alternate') {
+                                shouldOpenCascadeTrade = true;
+                                cascadeTradeType = 'short'; // Alternate mode: invert
+                            }
+                        } else if (win.primaryPivot.signal === 'short') {
+                            if (tradeConfig.direction === 'sell' || tradeConfig.direction === 'both') {
+                                shouldOpenCascadeTrade = true;
+                                cascadeTradeType = 'short';
+                            } else if (tradeConfig.direction === 'alternate') {
+                                shouldOpenCascadeTrade = true;
+                                cascadeTradeType = 'long'; // Alternate mode: invert
+                            }
+                        }
+
+                        if (!shouldOpenCascadeTrade) {
+                            if (tradeConfig.showTradeDetails) {
+                                console.log(`  ${colors.yellow}└─> [DIRECTION FILTER] ${win.primaryPivot.signal.toUpperCase()} cascade signal skipped - direction: ${tradeConfig.direction}${colors.reset}`);
+                            }
+                            // Remove executed window
+                            pendingWindows.splice(w, 1);
+                            continue;
+                        }
+
+                        // Check singleTradeMode
+                        if (tradeConfig.singleTradeMode && openTrades.length > 0) {
+                            if (tradeConfig.showTradeDetails) {
+                                console.log(`  ${colors.yellow}└─> [SINGLE TRADE MODE] ${cascadeTradeType.toUpperCase()} cascade signal skipped - trade already open${colors.reset}`);
+                            }
+                            // Remove executed window
+                            pendingWindows.splice(w, 1);
+                            continue;
+                        }
+
+                        const tradeType = cascadeTradeType;
+                        const oppositeType = (tradeType === 'long') ? 'short' : 'long';
+                        const flipThreshold = Math.max(1, tradeConfig.numberOfOppositeSignal || 1);
+
+                        // Check for opposite direction trades and flip logic
+                        const hasOppositeOpen = openTrades.some(t => t.type === oppositeType);
+                        
+                        // Update opposite signal counters
+                        if (hasOppositeOpen) {
+                            oppositeSignalCounts[tradeType] = (oppositeSignalCounts[tradeType] || 0) + 1;
+                            oppositeSignalCounts[oppositeType] = 0;
+                        } else {
+                            oppositeSignalCounts.long = 0;
+                            oppositeSignalCounts.short = 0;
+                        }
+
+                        // Handle flip logic if enabled
+                        if (hasOppositeOpen && tradeConfig.switchOnOppositeSignal) {
+                            if (oppositeSignalCounts[tradeType] >= flipThreshold) {
+                                // Close opposite trades at current 1m close price
+                                const oppositeTradesIdx = oneMinuteTimeMap.get(minuteCandle.time);
+                                let switchExitPrice = null;
+                                if (typeof oppositeTradesIdx === 'number') {
+                                    switchExitPrice = oneMinuteCandles[oppositeTradesIdx].close;
+                                } else {
+                                    switchExitPrice = minuteCandle.close;
+                                }
+
+                                if (switchExitPrice != null) {
+                                    const oppositeTrades = openTrades.filter(t => t.type === oppositeType);
+                                    for (let k = oppositeTrades.length - 1; k >= 0; k--) {
+                                        const t = oppositeTrades[k];
+                                        const isLong = t.type === 'long';
+                                        const priceChange = isLong ? (switchExitPrice - t.entryPrice) : (t.entryPrice - switchExitPrice);
+                                        let pnl = (priceChange / t.entryPrice) * t.tradeSize * t.leverage;
+                                        const fees = t.tradeSize * (tradeConfig.totalMakerFee / 100) * 2;
+                                        pnl -= fees;
+
+                                        t.status = 'closed';
+                                        t.exitPrice = switchExitPrice;
+                                        t.exitTime = minuteCandle.time;
+                                        t.exitReason = 'FLIP';
+                                        t.pnl = pnl;
+                                        t.pnlPct = (priceChange / t.entryPrice) * 100 * t.leverage;
+
+                                        capital += pnl;
+                                        const idxOpen = openTrades.findIndex(x => x.id === t.id);
+                                        if (idxOpen !== -1) openTrades.splice(idxOpen, 1);
+
+                                        if (tradeConfig.showTradeDetails) {
+                                            const timeStr = formatDualTime(t.exitTime);
+                                            const pnlColor = t.pnl >= 0 ? colors.green : colors.red;
+                                            const pnlText = `${pnlColor}${t.pnl >= 0 ? '+' : ''}${formatNumberWithCommas(t.pnl)}${colors.reset}`;
+                                            console.log(`  \x1b[35;1m└─> [CASCADE FLIP ${oppositeSignalCounts[tradeType]}/${flipThreshold}] ${t.type.toUpperCase()} trade closed @ ${timeStr} | ${t.exitPrice}. PnL: ${pnlText}${colors.reset}`);
+                                            console.log('--------------------------------------------------------------------------------');
+                                        }
+                                    }
+                                    oppositeSignalCounts[tradeType] = 0;
+                                }
+                            } else {
+                                // Not enough opposite signals yet - skip opening new trade
+                                if (tradeConfig.showTradeDetails) {
+                                    console.log(`  ${colors.yellow}└─> [CASCADE WAITING] ${tradeType.toUpperCase()} signal ${oppositeSignalCounts[tradeType]}/${flipThreshold} - need ${flipThreshold - oppositeSignalCounts[tradeType]} more opposite signals to flip${colors.reset}`);
+                                }
+                                // Remove executed window and continue
+                                pendingWindows.splice(w, 1);
+                                continue;
+                            }
+                        }
+
                         executedTrades++;
                         confirmedSignals++;
-                        const tradeType = win.primaryPivot.signal;
                         const trade = createTrade(tradeType, win.primaryPivot, (function(){
                             switch (tradeConfig.positionSizingMode) {
                                 case 'fixed': return tradeConfig.amountPerTrade;
@@ -883,9 +1018,134 @@ async function runImmediateAggregationBacktest() {
                         entryPriceOverride = oneMinuteCandles[delayedEntryIdx].close;
                     }
                     if (entryPriceOverride) {
+                        // Check if current day is a no-trade day
+                        if (isNoTradeDay(actualEntryTime)) {
+                            if (tradeConfig.showTradeDetails) {
+                                const date = new Date(actualEntryTime);
+                                const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                                const currentDayName = dayNames[date.getDay()];
+                                console.log(`  ${colors.yellow}└─> [NO TRADE DAY] ${currentPivot.signal.toUpperCase()} immediate cascade signal skipped - ${currentDayName} is in noTradeDays${colors.reset}`);
+                            }
+                            continue;
+                        }
+
+                        // Apply direction filtering like pivot mode
+                        let shouldOpenCascadeTrade = false;
+                        let cascadeTradeType = null;
+                        
+                        if (currentPivot.signal === 'long') {
+                            if (tradeConfig.direction === 'buy' || tradeConfig.direction === 'both') {
+                                shouldOpenCascadeTrade = true;
+                                cascadeTradeType = 'long';
+                            } else if (tradeConfig.direction === 'alternate') {
+                                shouldOpenCascadeTrade = true;
+                                cascadeTradeType = 'short'; // Alternate mode: invert
+                            }
+                        } else if (currentPivot.signal === 'short') {
+                            if (tradeConfig.direction === 'sell' || tradeConfig.direction === 'both') {
+                                shouldOpenCascadeTrade = true;
+                                cascadeTradeType = 'short';
+                            } else if (tradeConfig.direction === 'alternate') {
+                                shouldOpenCascadeTrade = true;
+                                cascadeTradeType = 'long'; // Alternate mode: invert
+                            }
+                        }
+
+                        if (!shouldOpenCascadeTrade) {
+                            if (tradeConfig.showTradeDetails) {
+                                console.log(`  ${colors.yellow}└─> [DIRECTION FILTER] ${currentPivot.signal.toUpperCase()} immediate cascade signal skipped - direction: ${tradeConfig.direction}${colors.reset}`);
+                            }
+                            continue;
+                        }
+
+                        // Check singleTradeMode
+                        if (tradeConfig.singleTradeMode && openTrades.length > 0) {
+                            if (tradeConfig.showTradeDetails) {
+                                console.log(`  ${colors.yellow}└─> [SINGLE TRADE MODE] ${cascadeTradeType.toUpperCase()} immediate cascade signal skipped - trade already open${colors.reset}`);
+                            }
+                            continue;
+                        }
+
+                        const tradeType = cascadeTradeType;
+                        const oppositeType = (tradeType === 'long') ? 'short' : 'long';
+                        const flipThreshold = Math.max(1, tradeConfig.numberOfOppositeSignal || 1);
+
+                        // Check for opposite direction trades and flip logic
+                        const hasOppositeOpen = openTrades.some(t => t.type === oppositeType);
+                        
+                        // Update opposite signal counters
+                        if (hasOppositeOpen) {
+                            oppositeSignalCounts[tradeType] = (oppositeSignalCounts[tradeType] || 0) + 1;
+                            oppositeSignalCounts[oppositeType] = 0;
+                        } else {
+                            oppositeSignalCounts.long = 0;
+                            oppositeSignalCounts.short = 0;
+                        }
+
+                        // Handle flip logic if enabled
+                        if (hasOppositeOpen && tradeConfig.switchOnOppositeSignal) {
+                            if (oppositeSignalCounts[tradeType] >= flipThreshold) {
+                                // Close opposite trades at current 1m close price
+                                let switchExitPrice = null;
+                                const switchIdx = oneMinuteTimeMap.get(currentTime);
+                                if (typeof switchIdx === 'number') {
+                                    switchExitPrice = oneMinuteCandles[switchIdx].close;
+                                } else {
+                                    // Find nearest 1m candle to current time
+                                    const thirtySec = 30 * 1000;
+                                    let nearest = null;
+                                    for (const c of oneMinuteCandles) {
+                                        if (Math.abs(c.time - currentTime) <= thirtySec) {
+                                            if (!nearest || Math.abs(c.time - currentTime) < Math.abs(nearest.time - currentTime)) {
+                                                nearest = c;
+                                            }
+                                        }
+                                    }
+                                    if (nearest) switchExitPrice = nearest.close;
+                                }
+
+                                if (switchExitPrice != null) {
+                                    const oppositeTrades = openTrades.filter(t => t.type === oppositeType);
+                                    for (let k = oppositeTrades.length - 1; k >= 0; k--) {
+                                        const t = oppositeTrades[k];
+                                        const isLong = t.type === 'long';
+                                        const priceChange = isLong ? (switchExitPrice - t.entryPrice) : (t.entryPrice - switchExitPrice);
+                                        let pnl = (priceChange / t.entryPrice) * t.tradeSize * t.leverage;
+                                        const fees = t.tradeSize * (tradeConfig.totalMakerFee / 100) * 2;
+                                        pnl -= fees;
+
+                                        t.status = 'closed';
+                                        t.exitPrice = switchExitPrice;
+                                        t.exitTime = currentTime;
+                                        t.exitReason = 'FLIP';
+                                        t.pnl = pnl;
+                                        t.pnlPct = (priceChange / t.entryPrice) * 100 * t.leverage;
+
+                                        capital += pnl;
+                                        const idxOpen = openTrades.findIndex(x => x.id === t.id);
+                                        if (idxOpen !== -1) openTrades.splice(idxOpen, 1);
+
+                                        if (tradeConfig.showTradeDetails) {
+                                            const timeStr = formatDualTime(t.exitTime);
+                                            const pnlColor = t.pnl >= 0 ? colors.green : colors.red;
+                                            const pnlText = `${pnlColor}${t.pnl >= 0 ? '+' : ''}${formatNumberWithCommas(t.pnl)}${colors.reset}`;
+                                            console.log(`  \x1b[35;1m└─> [IMMEDIATE CASCADE FLIP ${oppositeSignalCounts[tradeType]}/${flipThreshold}] ${t.type.toUpperCase()} trade closed @ ${timeStr} | ${t.exitPrice}. PnL: ${pnlText}${colors.reset}`);
+                                            console.log('--------------------------------------------------------------------------------');
+                                        }
+                                    }
+                                    oppositeSignalCounts[tradeType] = 0;
+                                }
+                            } else {
+                                // Not enough opposite signals yet - skip opening new trade
+                                if (tradeConfig.showTradeDetails) {
+                                    console.log(`  ${colors.yellow}└─> [IMMEDIATE CASCADE WAITING] ${tradeType.toUpperCase()} signal ${oppositeSignalCounts[tradeType]}/${flipThreshold} - need ${flipThreshold - oppositeSignalCounts[tradeType]} more opposite signals to flip${colors.reset}`);
+                                }
+                                continue;
+                            }
+                        }
+
                         executedTrades++;
                         confirmedSignals++;
-                        const tradeType = currentPivot.signal;
                         const trade = createTrade(tradeType, { ...currentPivot, timeframe: primaryInterval }, (function(){
                             switch (tradeConfig.positionSizingMode) {
                                 case 'fixed': return tradeConfig.amountPerTrade;

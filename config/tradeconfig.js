@@ -22,10 +22,10 @@ export const tradeConfig = {
     // Flip mode: close opposite and switch to new confirmed signal 
     // switchOnOppositeSignal: true,       
     switchOnOppositeSignal: false,       
-    numberOfOppositeSignal: 3,
+    numberOfOppositeSignal: 1,
     switchPolicy: 'flip',                 // Reserved for future strategies; currently only 'flip' is supported
 
-    noTradeDays: [],
+    noTradeDays: ['Sa','Su','M'],
     // noTradeDays: ['M', 'T', 'W', 'Th', 'F', 'Sa', 'Su'],
 
     // Trailing stop loss settings
