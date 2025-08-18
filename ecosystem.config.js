@@ -5,7 +5,7 @@ module.exports = {
         script: "./immediateAggregationLive.js",
         watch: true,
         ignore_watch: ["node_modules", "logs"],
-        max_memory_restart: "1G",
+        max_memory_restart: "1000M",
       },
     ],
   };
