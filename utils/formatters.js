@@ -64,7 +64,7 @@ export const formatNumber = (num, decimals = 2) => {
 
 // Timezone-aware date/time formatting helpers
 // Uses the IANA timezone configured in `config/config.js`
-import { timezone } from '../config/config.js';
+import { timezone } from '../config bnb/config.js';
 
 // Prebuild Intl formatters for performance
 const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {

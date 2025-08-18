@@ -8,6 +8,7 @@ export const useEdges = false;    // Use pre-computed edge data; if false, use s
 export const api = 'bybit'; // 'binance' or 'bybit'
 // export const api = 'binance'; // 'binance' or 'bybit'
 export const time = '1m';
+// export const symbol = 'BNBUSDT';
 export const symbol = 'BTCUSDT';
 
 // Timezone settings

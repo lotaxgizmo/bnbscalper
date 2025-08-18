@@ -548,6 +548,8 @@ function meetsExecutionRequirements(confirmations) {
     return true;
 }
 
+
+
 // ===== MAIN BACKTESTING FUNCTION =====
 async function runImmediateAggregationBacktest() {
     const startTime = Date.now();

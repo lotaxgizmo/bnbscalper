@@ -15,8 +15,8 @@ if (isNode) {
     }
 }
 
-import { useLocalData } from '../config/config.js';
-import { historicalDataConfig } from '../config/historicalDataConfig.js';
+import { useLocalData } from '../config bnb/config.js';
+import { historicalDataConfig } from '../config bnb/historicalDataConfig.js';
 
 // =====================
 // PROXY CONFIGURATION
