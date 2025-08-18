@@ -1127,13 +1127,13 @@ class CascadeWindowManager {
         const snapshot24 = fmtTime24(currentTime);
         
         // Build confirmations list
-        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${formatUSD(window.primaryPivot.price)} (Primary)\n`;
-        confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${formatUSD(conf.pivot.price)}`).join('\n');
+        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n`;
+        confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
         
         const message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
             `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
             `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
-            `💰 *Execution Price:* $${formatUSD(window.primaryPivot.price)}\n` +
+            `💰 *Execution Price:* $${(window.primaryPivot.price)}\n` +
             `📊 *Final Confirmations:* ${totalConfirmations}/${minRequired}\n` +
             `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
             `*Confirmed Timeframes:*\n` +
@@ -1165,13 +1165,13 @@ class CascadeWindowManager {
         const timeAgo = formatTimeDifference(Math.max(0, currentTime - window.executionTime));
         
         // Build confirmations list
-        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${formatUSD(window.primaryPivot.price)} (Primary)\n`;
-        confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${formatUSD(conf.pivot.price)}`).join('\n');
+        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n`;
+        confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
         
         const message = `✅ *CASCADE EXECUTED*\n\n` +
             `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
             `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
-            `💰 *Execution Price:* $${formatUSD(executionPrice)}\n` +
+            `💰 *Execution Price:* $${(executionPrice)}\n` +
             `🏁 *Final Confirmations:* ${totalConfirmations}/${minRequired}\n` +
             `⏰ *Executed:* ${executionTimeLong} (${executionTime24})\n` +
             `🕐 *Time Ago:* ${timeAgo}\n` +
@@ -1215,15 +1215,15 @@ class CascadeWindowManager {
         const windowDuration = formatTimeDifference(currentTime - window.primaryPivot.time);
         
         // Build confirmations list
-        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${formatUSD(window.primaryPivot.price)} (Primary)\n`;
+        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n`;
         if (window.confirmations.length > 0) {
-            confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${formatUSD(conf.pivot.price)}`).join('\n');
+            confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
         }
         
         const message = `⏰ *CASCADE WINDOW EXPIRED*\n\n` +
             `${signalEmoji} *MISSED OPPORTUNITY: ${direction}*\n` +
             `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
-            `💰 *Price:* $${formatUSD(window.primaryPivot.price)}\n` +
+            `💰 *Price:* $${(window.primaryPivot.price)}\n` +
             `📊 *Final Status:* ${totalConfirmations}/${minRequired} confirmations\n` +
             `⏰ *Opened:* ${windowOpenedLong} (${windowOpenedTime24})\n` +
             `🕐 *Duration:* ${windowDuration}\n` +
