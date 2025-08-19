@@ -8,14 +8,14 @@ import {
     api,
     pivotDetectionMode,
     limit as configLimit
-} from './config/config.js';
+} from '../config/config.js';
 
-import { tradeConfig } from './config/tradeconfig.js';
-import { multiPivotConfig } from './config/multiPivotConfig.js';
-import { fronttesterconfig } from './config/fronttesterconfig.js';
-import { MultiTimeframePivotDetector } from './utils/multiTimeframePivotDetector.js';
-import { formatNumber } from './utils/formatters.js';
-import telegramNotifier from './utils/telegramNotifier.js';
+import { tradeConfig } from '../config/tradeconfig.js';
+import { multiPivotConfig } from '../config/multiPivotConfig.js';
+import { fronttesterconfig } from '../config/fronttesterconfig.js';
+import { MultiTimeframePivotDetector } from '../utils/multiTimeframePivotDetector.js';
+import { formatNumber } from '../utils/formatters.js';
+import telegramNotifier from '../utils/telegramNotifier.js';
 import WebSocket from 'ws';
 import fs from 'fs';
 import path from 'path';
@@ -732,7 +732,7 @@ class LiveMultiPivotFronttester {
         console.log(`${colors.cyan}Loading recent historical data for context...${colors.reset}`);
         
         // Import API function directly to bypass MultiTimeframePivotDetector limits
-        const { getCandles } = await import('./apis/bybit.js');
+        const { getCandles } = await import('../apis/bybit.js');
         
         for (const tf of multiPivotConfig.timeframes) {
             // Load minimal recent data for live mode context
@@ -952,7 +952,7 @@ class LiveMultiPivotFronttester {
     async fetchLatestCandle(interval) {
         try {
             // Import the API function dynamically
-            const { getCandles } = await import('./apis/bybit.js');
+            const { getCandles } = await import('../apis/bybit.js');
             
             // Fetch the latest candle - FORCE API usage in live mode (forceLocal = false)
             const newCandles = await getCandles(symbol, interval, 1, null, false);

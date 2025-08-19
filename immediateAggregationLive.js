@@ -452,9 +452,10 @@ function notifySnapshotStates(states, currentTime, windowManager) {
                 `*Confirmed Timeframes:*\n` +
                 confirmationsList;
 
-            // Only notify once when window opens (not for each confirmation change)
-            dedupKey = `WINDOW_OPENED|${s.id}`;
-            shouldNotify = shouldNotifyWindowEvent(s.id, 'OPENED');
+            // Dedup by id + confirmations + target minute (avoid spam, allow state updates)
+            const targetMinute = Math.floor(((s.time ?? w?.primaryPivot?.time ?? currentTime) / 60000));
+            dedupKey = `WAITING|${s.id}|c${confirmationsCount}|t${targetMinute}`;
+            shouldNotify = true;
         }
         
         if (shouldNotify && message) {
@@ -984,6 +985,8 @@ class CascadeWindowManager {
         };
         
         this.activeWindows.set(windowId, window);
+        // Mark lifecycle as OPENED immediately so later EXPIRED notifications are allowed
+        try { shouldNotifyWindowEvent(windowId, 'OPENED'); } catch (_) {}
         return window;
     }
 
@@ -1243,8 +1246,10 @@ class CascadeWindowManager {
         for (const [windowId, window] of this.activeWindows) {
             if (window.status === 'active' && currentTime > window.windowEndTime) {
                 window.status = 'expired';
-                // Send expiration notification for windows that didn't execute
-                this.sendExpiredNotification(window, currentTime);
+                // Only send expiration notification for windows that never executed
+                if (!window.executionTime) {
+                    this.sendExpiredNotification(window, currentTime);
+                }
             }
         }
     }
@@ -1408,9 +1413,6 @@ function simulateCascadeWindows(allTimeframePivots, analysisTime, windowManager)
         // Check for expired windows at this time
         windowManager.checkExpiredWindows(pivot.time);
     }
-    
-    // Final check for expired windows at snapshot time
-    windowManager.checkExpiredWindows(analysisTime);
 }
 
 function displayCascadeWindows(windowManager, currentTime) {
@@ -1563,8 +1565,8 @@ function displayCascadeWindows(windowManager, currentTime) {
             const t = s.time ? formatDualTime(s.time) : 'N/A';
             console.log(` - ${s.id}: ${s.mode} | $${(s.price ?? 0).toFixed(2)} | ${t}`);
         });
-        // Notify for EXECUTE/INVALID
-        notifySnapshotStates(snapshotStates, currentTime);
+        // Notify snapshot states (WAITING/EXECUTE/EXECUTED/INVALID)
+        notifySnapshotStates(snapshotStates, currentTime, windowManager);
     }
 }
 

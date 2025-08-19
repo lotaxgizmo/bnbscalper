@@ -14,11 +14,11 @@ import {
     delay,
     api,
     pivotDetectionMode
-} from './config/config.js'; 
-import { tradeConfig } from './config/tradeconfig.js';
-import { optimizerConfig } from './config/optimizerConfig.js';
-import { getCandles } from './apis/bybit.js';
-import { formatNumber } from './utils/formatters.js';
+} from '../config/config.js'; 
+import { tradeConfig } from '../config/tradeconfig.js';
+import { optimizerConfig } from '../config/optimizerConfig.js';
+import { getCandles } from '../apis/bybit.js';
+import { formatNumber } from '../utils/formatters.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

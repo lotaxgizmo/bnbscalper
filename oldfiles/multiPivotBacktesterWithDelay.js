@@ -14,12 +14,12 @@ import {
     useLocalData,
     api,
     pivotDetectionMode
-} from './config/config.js';
+} from '../config/config.js';
 
-import { tradeConfig } from './config/tradeconfig.js';
-import { multiPivotConfig } from './config/multiPivotConfig.js';
-import { MultiTimeframePivotDetector } from './utils/multiTimeframePivotDetector.js';
-import { formatNumber } from './utils/formatters.js';
+import { tradeConfig } from '../config/tradeconfig.js';
+import { multiPivotConfig } from '../config/multiPivotConfig.js';
+import { MultiTimeframePivotDetector } from '../utils/multiTimeframePivotDetector.js';
+import { formatNumber } from '../utils/formatters.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

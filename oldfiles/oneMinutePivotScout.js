@@ -2,8 +2,8 @@
 // Ultra-fast 1m pivot scout for immediate limit order ideas
 // Detects provisional (instant) and confirmed (1-bar stall) pivots based on a min swing threshold.
 
-import { symbol, useLocalData, pivotDetectionMode } from './config/config.js';
-import { getCandles } from './apis/bybit.js';
+import { symbol, useLocalData, pivotDetectionMode } from '../config/config.js';
+import { getCandles } from '../apis/bybit.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

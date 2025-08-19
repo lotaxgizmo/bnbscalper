@@ -85,7 +85,7 @@ export const tradeConfig = {
     variableFundingMax: 0.05,    // Maximum funding rate for variable mode (%)
 
     // Slippage simulation
-    enableSlippage: true,        // Enable/disable slippage simulation
+    enableSlippage: false,        // Enable/disable slippage simulation
     slippagePercent: 0.01,       // Base slippage percentage (0.02% = 2 basis points)
     slippageMode: 'fixed',       // 'fixed', 'variable', or 'market_impact'
     variableSlippageMin: 0.01,   // Minimum slippage for variable mode (%)

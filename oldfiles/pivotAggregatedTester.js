@@ -5,11 +5,11 @@ import {
     symbol,
     useLocalData,
     pivotDetectionMode
-} from './config/config.js';
+} from '../config/config.js';
 
-import { multiPivotConfig } from './config/multiPivotConfig.js';
-import { CandleAggregator } from './zaggregator/candleAggregator.js';
-import { getCandles } from './apis/bybit.js';
+import { multiPivotConfig } from '../config/multiPivotConfig.js';
+import { CandleAggregator } from '../zaggregator/candleAggregator.js';
+import { getCandles } from '../apis/bybit.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

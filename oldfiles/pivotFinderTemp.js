@@ -37,13 +37,13 @@ import {
   api,
   pivotDetectionMode,
   timezone
-} from './config/config.js';
+} from '../config/config.js';
 
-import { multiPivotConfig } from './config/multiPivotConfig.js';
-import { getCandles as getBinanceCandles } from './apis/binance.js';
-import { getCandles as getBybitCandles } from './apis/bybit.js';
-import telegramNotifier from './utils/telegramNotifier.js';
-import { fmtDateTime, fmtTime24 } from './utils/formatters.js';
+import { multiPivotConfig } from '../config/multiPivotConfig.js';
+import { getCandles as getBinanceCandles } from '../apis/binance.js';
+import { getCandles as getBybitCandles } from '../apis/bybit.js';
+import telegramNotifier from '../utils/telegramNotifier.js';
+import { fmtDateTime, fmtTime24 } from '../utils/formatters.js';
 
 const colors = {
   reset: '\x1b[0m',
