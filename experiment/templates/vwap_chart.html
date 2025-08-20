@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VWAP Live Chart - {{ config.symbol }} {{ config.target_timeframe }}</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+        }
+        
+        .header h1 {
+            color: #00ff88;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        
+        .status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #00ff88;
+        }
+        
+        .config-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .config-item {
+            background: #333;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        
+        .config-item .label {
+            color: #888;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        
+        .config-item .value {
+            color: #00ff88;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        
+        .chart-container {
+            text-align: center;
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .chart-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        
+        .refresh-info {
+            margin-top: 15px;
+            color: #888;
+            font-size: 0.9em;
+        }
+        
+        .live-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: #00ff88;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            background: #00ff88;
+            color: #1a1a1a;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 0 10px;
+            transition: background 0.3s;
+        }
+        
+        .btn:hover {
+            background: #00cc6a;
+        }
+        
+        .error {
+            color: #ff4444;
+            text-align: center;
+            padding: 20px;
+            background: #2a1a1a;
+            border-radius: 8px;
+            border-left: 4px solid #ff4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><span class="live-indicator"></span>VWAP Live Chart</h1>
+        <p>Real-time {{ config.symbol }} analysis with auto-refresh</p>
+    </div>
+    
+    <div class="status">
+        <div>
+            <strong>Status:</strong> 
+            <span style="color: #00ff88;">● LIVE</span>
+        </div>
+        <div>
+            <strong>Candles:</strong> {{ candle_count }}
+        </div>
+        <div>
+            <strong>Last Update:</strong> <span id="lastUpdate">Just now</span>
+        </div>
+    </div>
+    
+    <div class="config-panel">
+        <div class="config-item">
+            <div class="label">Symbol</div>
+            <div class="value">{{ config.symbol }}</div>
+        </div>
+        <div class="config-item">
+            <div class="label">Timeframe</div>
+            <div class="value">{{ config.target_timeframe }}</div>
+        </div>
+        <div class="config-item">
+            <div class="label">VWAP Period</div>
+            <div class="value">{{ config.vwap_length }}</div>
+        </div>
+        <div class="config-item">
+            <div class="label">Band Period</div>
+            <div class="value">{{ config.band_length }}</div>
+        </div>
+        <div class="config-item">
+            <div class="label">RSI Period</div>
+            <div class="value">{{ config.rsi_length }}</div>
+        </div>
+        <div class="config-item">
+            <div class="label">Max Candles</div>
+            <div class="value">{{ config.max_candles }}</div>
+        </div>
+    </div>
+    
+    <div class="chart-container">
+        {% if chart_image %}
+            <img src="data:image/png;base64,{{ chart_image }}" alt="VWAP Chart" class="chart-image" id="chartImage">
+        {% else %}
+            <div class="error">
+                <h3>Chart Generation Error</h3>
+                <p>Unable to generate chart. Check data availability and configuration.</p>
+            </div>
+        {% endif %}
+        
+        <div class="refresh-info">
+            Auto-refresh every {{ config.auto_refresh_seconds }} seconds
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button class="btn" onclick="refreshChart()">Refresh Now</button>
+        <button class="btn" onclick="toggleAutoRefresh()">Toggle Auto-Refresh</button>
+    </div>
+
+    <script>
+        let autoRefreshEnabled = true;
+        let refreshInterval;
+        
+        function updateTimestamp() {
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+        
+        function refreshChart() {
+            fetch('/api/chart')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.image) {
+                        document.getElementById('chartImage').src = 'data:image/png;base64,' + data.image;
+                        updateTimestamp();
+                        console.log('Chart refreshed:', new Date().toLocaleTimeString());
+                    }
+                })
+                .catch(error => {
+                    console.error('Error refreshing chart:', error);
+                });
+        }
+        
+        function toggleAutoRefresh() {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            
+            if (autoRefreshEnabled) {
+                startAutoRefresh();
+                document.querySelector('.controls .btn:last-child').textContent = 'Disable Auto-Refresh';
+                document.querySelector('.live-indicator').style.display = 'inline-block';
+            } else {
+                clearInterval(refreshInterval);
+                document.querySelector('.controls .btn:last-child').textContent = 'Enable Auto-Refresh';
+                document.querySelector('.live-indicator').style.display = 'none';
+            }
+        }
+        
+        function startAutoRefresh() {
+            refreshInterval = setInterval(refreshChart, {{ config.auto_refresh_seconds }} * 1000);
+        }
+        
+        // Start auto-refresh on page load
+        if (autoRefreshEnabled) {
+            startAutoRefresh();
+        }
+        
+        // Update timestamp on page load
+        updateTimestamp();
+    </script>
+</body>
+</html>

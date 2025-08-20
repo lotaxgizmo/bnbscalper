@@ -6,7 +6,7 @@
 const SNAPSHOT_CONFIG = {
     // Operating modes
     currentMode: false,              // true = latest candle, false = use targetTime
-    targetTime: "2025-06-30 01:00:00", // Target timestamp when currentMode is false
+    targetTime: "2025-08-08 17:00:00", // Target timestamp when currentMode is false
     // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings
@@ -72,6 +72,18 @@ function shouldSendTelegram(key) {
             if (TELEGRAM_DEDUP_CACHE.size <= 2500) break;
         }
     }
+    
+    // Clean up window lifecycle cache to prevent memory leaks
+    if (WINDOW_LIFECYCLE_CACHE.size > 1000) {
+        const cutoffTime = now - (ttlMs * 2); // Keep lifecycle data for 2x longer than dedup
+        for (const [windowId, lifecycle] of WINDOW_LIFECYCLE_CACHE) {
+            // Remove old window lifecycle data (no recent activity)
+            if (!lifecycle.lastActivity || lifecycle.lastActivity < cutoffTime) {
+                WINDOW_LIFECYCLE_CACHE.delete(windowId);
+            }
+            if (WINDOW_LIFECYCLE_CACHE.size <= 500) break;
+        }
+    }
     return true;
 }
 
@@ -83,8 +95,12 @@ function shouldNotifyWindowEvent(windowId, eventType, executionTime = null) {
         executed: false, 
         expired: false,
         executionTime: null,
-        lastConfirmationCount: 0
+        lastConfirmationCount: 0,
+        lastActivity: Date.now()
     };
+    
+    // Update activity timestamp on any event
+    lifecycle.lastActivity = Date.now();
     
     if (eventType === 'OPENED') {
         if (lifecycle.opened) return false;
@@ -275,8 +291,98 @@ function notifySnapshotStates(states, currentTime, windowManager) {
 
         let dedupKey = null;
         let shouldNotify = false;
-        if (window && window.status === 'executed') {
-            // Executed message (more informative than INVALID)
+        if (s.mode === 'EXECUTE') {
+            // READY TO EXECUTE message (when window becomes ready)
+            const signalEmoji = s.signal === 'long' ? '🟢⬆️' : '🔴⬇️';
+            const w = window;
+            const execPrice = s.price; // Use the state price directly
+            const confirmationsCount = s.confirmations;
+            
+            // Build the confirmations list from the snapshot state
+            let confirmationsList = '';
+            
+            // Check if we have confirmation details in the snapshot state
+            if (s.confirmationDetails && s.confirmationDetails.length > 0) {
+                // Use confirmation details from snapshot state
+                s.confirmationDetails.forEach((detail, index) => {
+                    const isPrimary = index === 0;
+                    confirmationsList += `• ${detail.timeframe}: $${(detail.price)}${isPrimary ? ' (Primary)' : ''}\n`;
+                });
+            } else {
+                // Fallback to just showing the primary timeframe
+                confirmationsList = `• 4h: $${(s.price)} (Primary)\n`;
+                
+                // Add dummy confirmations based on the confirmation count
+                if (s.confirmations > 1) {
+                    const otherTimeframes = ['2h', '1h', '30m', '15m', '5m', '2m', '1m'];
+                    for (let i = 0; i < Math.min(s.confirmations - 1, otherTimeframes.length); i++) {
+                        confirmationsList += `• ${otherTimeframes[i]}: $${(s.price)}\n`;
+                    }
+                }
+            }
+            
+            message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
+                `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
+                `🏗️ *Window:* ${s.id} (4h)\n` +
+                `💰 *Execution Price:* $${(execPrice)}\n` +
+                `📊 *Final Confirmations:* ${confirmationsCount}/${minRequired}\n` +
+                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
+                `*Confirmed Timeframes:*\n` +
+                confirmationsList;
+            // Dedup by execution characteristics instead of window ID
+            const executionMinute = Math.floor((s.time || currentTime) / 60000);
+            const execPriceKey = Math.round((execPrice || 0) * 100);
+            dedupKey = `READY_TO_EXECUTE|${direction}|p${execPriceKey}|t${executionMinute}`;
+            shouldNotify = shouldNotifyWindowEvent(s.id, 'READY_TO_EXECUTE');
+        } else if (s.mode === 'INVALID') {
+            // Window invalidated (missed execution minute) - send EXECUTED message
+            const signalEmoji = s.signal === 'long' ? '🟢✅' : '🔴✅';
+            const w = window;
+            const confirmationsCount = w ? (1 + w.confirmations.length) : s.confirmations;
+            const refPrice = w ? (w.primaryPivot.price) : s.price;
+            const missedTs = s.time;
+            const missedAt = missedTs ? fmtDateTimeLong(missedTs) : 'N/A';
+            const missedAt24 = missedTs ? fmtTime24(missedTs) : 'N/A';
+            const timeAgo = missedTs ? formatTimeDifference(Math.max(0, currentTime - missedTs)) : 'N/A';
+
+            // Build confirmations list
+            let confirmationsList = '';
+            if (w && w.primaryPivot) {
+                confirmationsList = `• ${w.primaryPivot.timeframe}: $${(w.primaryPivot.price)} (Primary)\n`;
+                if (w.confirmations && w.confirmations.length > 0) {
+                    for (const conf of w.confirmations) {
+                        confirmationsList += `• ${conf.timeframe}: $${(conf.pivot.price)}\n`;
+                    }
+                }
+            } else {
+                // Fallback if no window data
+                confirmationsList = `• 4h: $${(refPrice)} (Primary)\n`;
+                if (s.confirmations > 1) {
+                    const otherTimeframes = ['2h', '2m', '1m'];
+                    for (let i = 0; i < Math.min(s.confirmations - 1, otherTimeframes.length); i++) {
+                        confirmationsList += `• ${otherTimeframes[i]}: $${(refPrice)}\n`;
+                    }
+                }
+            }
+
+            message = `✅ *CASCADE EXECUTED*\n\n` +
+                `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
+                `🏗️ *Window:* ${s.id} (${w?.primaryPivot?.timeframe || '4h'})\n` +
+                `💰 *Execution Price:* $${(refPrice)}\n` +
+                `📊 *Final Confirmations:* ${confirmationsCount}/${minRequired}\n` +
+                `⏰ *Executed:* ${missedAt} (${missedAt24})\n` +
+                `🕐 *Time Ago:* ${timeAgo}\n` +
+                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
+                `*Confirmed Timeframes:*\n` +
+                confirmationsList;
+
+            // Dedup by execution characteristics instead of window ID (treating INVALID as executed)
+            const executionMinute = Math.floor((s.time || currentTime) / 60000);
+            const execPriceKey = Math.round((refPrice || 0) * 100);
+            dedupKey = `EXECUTED|${direction}|p${execPriceKey}|t${executionMinute}`;
+            shouldNotify = shouldNotifyWindowEvent(s.id, 'EXECUTED', s.time);
+        } else if (window && window.status === 'executed') {
+            // Fallback for executed windows not caught by other modes
             const signalEmoji = s.signal === 'long' ? '🟢✅' : '🔴✅';
             const executionPriceNum = getExecutionPriceForWindow(window, minRequired);
             const executionPrice = `$${(executionPriceNum)}`;
@@ -296,113 +402,11 @@ function notifySnapshotStates(states, currentTime, windowManager) {
                 `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n` +
                 window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
 
-            // Only notify once per execution
-            dedupKey = `EXECUTED|${window.id}|${window.executionTime || 'NA'}`;
+            // Dedup by execution characteristics instead of window ID
+            const executionMinute = Math.floor((window.executionTime || currentTime) / 60000);
+            const execPriceKey = Math.round((window.executionPrice || 0) * 100);
+            dedupKey = `EXECUTED|${direction}|p${execPriceKey}|t${executionMinute}`;
             shouldNotify = shouldNotifyWindowEvent(window.id, 'EXECUTED', window.executionTime);
-        } else if (s.mode === 'EXECUTE') {
-            const signalEmoji = s.signal === 'long' ? '🟢⬆️' : '🔴⬇️';
-            const w = window;
-            const execPrice = s.price; // Use the state price directly
-            const confirmationsCount = s.confirmations;
-            
-            // Debug logging
-            // console.log('\n[DEBUG] Snapshot state for EXECUTE:');
-            // console.log(`State ID: ${s.id}`);
-            // console.log(`Signal: ${s.signal}`);
-            // console.log(`Price: $${s.price}`);
-            // console.log(`Confirmations count: ${s.confirmations}`);
-            // console.log(`Confirmation details: ${JSON.stringify(s.confirmationDetails || [])}`);
-            
-            // Build the confirmations list from the snapshot state
-            let confirmationsList = '';
-            
-            // Check if we have confirmation details in the snapshot state
-            if (s.confirmationDetails && s.confirmationDetails.length > 0) {
-                // Use confirmation details from snapshot state
-                console.log('Using confirmation details from snapshot state');
-                s.confirmationDetails.forEach((detail, index) => {
-                    const isPrimary = index === 0;
-                    confirmationsList += `• ${detail.timeframe}: $${(detail.price)}${isPrimary ? ' (Primary)' : ''}\n`;
-                });
-            } else {
-                // Fallback to just showing the primary timeframe
-                // console.log('No confirmation details, using fallback');
-                confirmationsList = `• 4h: $${(s.price)} (Primary)\n`;
-                
-                // Add dummy confirmations based on the confirmation count
-                // This is just a visual representation since we don't have the actual data
-                if (s.confirmations > 1) {
-                    const otherTimeframes = ['2h', '1h', '30m', '15m', '5m', '2m', '1m'];
-                    for (let i = 0; i < Math.min(s.confirmations - 1, otherTimeframes.length); i++) {
-                        confirmationsList += `• ${otherTimeframes[i]}: $${(s.price)}\n`;
-                    }
-                }
-            }
-            
-            message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
-                `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
-                `🏗️ *Window:* ${s.id} (4h)\n` +
-                `💰 *Execution Price:* $${(execPrice)}\n` +
-                `📊 *Final Confirmations:* ${confirmationsCount}/${minRequired}\n` +
-                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
-                `*Confirmed Timeframes:*\n` +
-                confirmationsList;
-            // Only notify once when window becomes ready to execute
-            dedupKey = `READY_TO_EXECUTE|${s.id}`;
-            shouldNotify = shouldNotifyWindowEvent(s.id, 'READY_TO_EXECUTE');
-        } else if (s.mode === 'INVALID') {
-            // Window invalidated (missed execution minute or conditions failed)
-            const w = window;
-            const confirmationsCount = w ? (1 + w.confirmations.length) : s.confirmations;
-            const refPrice = w ? (w.primaryPivot.price) : s.price;
-            const missedTs = s.time;
-            const missedAt = missedTs ? fmtDateTimeLong(missedTs) : 'N/A';
-            const missedAt24 = missedTs ? fmtTime24(missedTs) : 'N/A';
-            const timeAgo = missedTs ? formatTimeDifference(Math.max(0, currentTime - missedTs)) : 'N/A';
-            const signalEmoji = s.signal === 'long' ? '🟢❌' : '🔴❌';
-            
-            // Build the confirmations list
-            let confirmationsList = '';
-            
-            if (w && w.primaryPivot) {
-                confirmationsList = `• ${w.primaryPivot.timeframe || '4h'}: $${(w.primaryPivot.price)} (Primary)\n`;
-                
-                if (w.confirmations && w.confirmations.length > 0) {
-                    confirmationsList += w.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
-                }
-            } else if (s.confirmationDetails && s.confirmationDetails.length > 0) {
-                // Use confirmation details from snapshot state
-                s.confirmationDetails.forEach((detail, index) => {
-                    const isPrimary = index === 0;
-                    confirmationsList += `• ${detail.timeframe}: $${(detail.price)}${isPrimary ? ' (Primary)' : ''}\n`;
-                });
-            } else {
-                // Fallback to showing all confirmations based on count
-                confirmationsList = `• ${s.primaryTimeframe || '4h'}: $${(refPrice)} (Primary)\n`;
-                
-                // Add dummy confirmations based on the confirmation count
-                if (confirmationsCount > 1) {
-                    const otherTimeframes = ['2h', '1h', '30m', '15m', '5m', '2m', '1m'];
-                    for (let i = 0; i < Math.min(confirmationsCount - 1, otherTimeframes.length); i++) {
-                        confirmationsList += `• ${otherTimeframes[i]}: $${(refPrice)}\n`;
-                    }
-                }
-            }
-
-            message = `🔴✅ *CASCADE EXECUTED*\n\n` +
-                `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
-                `🏗️ *Window:* ${s.id} (${w?.primaryPivot?.timeframe || '4h'})\n` +
-                `💰 *Execution Price:* $${(refPrice)}\n` +
-                `📊 *Final Confirmations:* ${confirmationsCount}/${minRequired}\n` +
-                `⏰ *Executed:* ${missedAt} (${missedAt24})\n` +
-                `🕐 *Time Ago:* ${timeAgo}\n` +
-                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
-                `*Confirmed Timeframes:*\n` +
-                confirmationsList;
-
-            // Only notify once per execution (treating INVALID as executed)
-            dedupKey = `EXECUTED|${s.id}|${s.time || 'NA'}`;
-            shouldNotify = shouldNotifyWindowEvent(s.id, 'EXECUTED', s.time);
 
         } else {
             // WAITING — send, but dedup by confirmations and target time to avoid spam
@@ -452,9 +456,11 @@ function notifySnapshotStates(states, currentTime, windowManager) {
                 `*Confirmed Timeframes:*\n` +
                 confirmationsList;
 
-            // Dedup by id + confirmations + target minute (avoid spam, allow state updates)
+            // Dedup by signal characteristics (price + direction + target minute) instead of window ID
+            // This prevents spam when same trade signal gets different window IDs across snapshot runs
             const targetMinute = Math.floor(((s.time ?? w?.primaryPivot?.time ?? currentTime) / 60000));
-            dedupKey = `WAITING|${s.id}|c${confirmationsCount}|t${targetMinute}`;
+            const priceKey = Math.round((s.price ?? 0) * 100); // Round to cents for dedup
+            dedupKey = `WAITING|${direction}|p${priceKey}|t${targetMinute}`;
             shouldNotify = true;
         }
         
@@ -962,16 +968,17 @@ function buildImmediateAggregatedCandles(oneMinCandles, timeframeMinutes) {
 
 // ===== CASCADE WINDOW MANAGEMENT =====
 class CascadeWindowManager {
+    static globalWindowCounter = 0; // Persistent across instances
+    
     constructor() {
         this.activeWindows = new Map();
-        this.windowCounter = 0;
         this.cascadeCounter = 0;
         this.allCascades = [];
     }
 
     openPrimaryWindow(primaryPivot, currentTime) {
-        this.windowCounter++;
-        const windowId = `W${this.windowCounter}`;
+        CascadeWindowManager.globalWindowCounter++;
+        const windowId = `W${CascadeWindowManager.globalWindowCounter}`;
         const confirmationWindow = multiPivotConfig.cascadeSettings?.confirmationWindow?.[primaryPivot.timeframe] || 60;
         const windowEndTime = primaryPivot.time + (confirmationWindow * 60 * 1000);
         
@@ -1183,7 +1190,10 @@ class CascadeWindowManager {
             `*Confirmed Timeframes:*\n` +
             confirmationsList;
         
-        const dedupKey = `EXECUTED|${window.id}|${window.executionTime}`;
+        // Dedup by execution characteristics instead of window ID
+        const executionMinute = Math.floor((window.executionTime || currentTime) / 60000);
+        const execPriceKey = Math.round((executionPrice || 0) * 100);
+        const dedupKey = `EXECUTED|${direction}|p${execPriceKey}|t${executionMinute}`;
         if (shouldNotifyWindowEvent(window.id, 'EXECUTED', window.executionTime) && shouldSendTelegram(dedupKey)) {
             telegramNotifier.sendMessage(message);
         }
@@ -1236,7 +1246,11 @@ class CascadeWindowManager {
             confirmationsList +
             `\n❌ *Window closed without execution - insufficient confirmations*`;
         
-        const dedupKey = `EXPIRED|${window.id}|${currentTime}`;
+        // Dedup by window characteristics instead of window ID
+        const expiredDirection = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+        const expiredMinute = Math.floor(currentTime / 60000);
+        const priceKey = Math.round((window.primaryPivot.price || 0) * 100);
+        const dedupKey = `EXPIRED|${expiredDirection}|p${priceKey}|t${expiredMinute}`;
         if (shouldNotifyWindowEvent(window.id, 'EXPIRED') && shouldSendTelegram(dedupKey)) {
             telegramNotifier.sendMessage(message);
         }

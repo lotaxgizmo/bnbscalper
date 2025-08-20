@@ -25,6 +25,7 @@ export const tradeConfig = {
     numberOfOppositeSignal: 3,
     switchPolicy: 'flip',                 // Reserved for future strategies; currently only 'flip' is supported
 
+    // noTradeDays: [],
     noTradeDays: ['Sa','M'],
     // noTradeDays: ['M', 'T', 'W', 'Th', 'F', 'Sa', 'Su'],
 

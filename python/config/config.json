@@ -1,0 +1,8 @@
+{
+    "symbol": "BTCUSDT",
+    "use_local_data": true,
+    "pivot_detection_mode": "close",
+    "min_swing_pct": 0.4,
+    "min_leg_bars": 2,
+    "pivot_lookback": 2
+}

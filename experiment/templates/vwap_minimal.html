@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VWAP Chart</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0d1117;
+            overflow: hidden;
+        }
+        
+        #chart {
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="chart"></div>
+
+    <script>
+        function loadChart() {
+            fetch('/api/chart')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.chart) {
+                        const config = {
+                            responsive: true,
+                            displayModeBar: true,
+                            modeBarButtonsToRemove: ['pan2d', 'select2d', 'lasso2d', 'toImage'],
+                            scrollZoom: true,
+                            doubleClick: 'reset+autosize'
+                        };
+                        
+                        Plotly.newPlot('chart', data.chart.data, data.chart.layout, config);
+                    }
+                })
+                .catch(error => console.error('Error loading chart:', error));
+        }
+        
+        // Auto-refresh every 5 seconds
+        function startAutoRefresh() {
+            setInterval(loadChart, 5000);
+        }
+        
+        // Server-sent events for instant updates
+        function startEventSource() {
+            const eventSource = new EventSource('/events');
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.reload) {
+                    loadChart();
+                }
+            };
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadChart();
+            startEventSource();
+        });
+    </script>
+</body>
+</html>
