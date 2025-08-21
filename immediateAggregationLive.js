@@ -6,7 +6,7 @@
 const SNAPSHOT_CONFIG = {
     // Operating modes
     currentMode: false,              // true = latest candle, false = use targetTime
-    targetTime: "2025-08-08 08:55:00", // Target timestamp when currentMode is false
+    targetTime: "2025-08-08 08:59:00", // Target timestamp when currentMode is false
     // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings
@@ -983,21 +983,39 @@ function buildImmediateAggregatedCandles(oneMinCandles, timeframeMinutes) {
 // ===== CASCADE WINDOW MANAGEMENT =====
 class CascadeWindowManager {
     static globalWindowCounter = 0; // Persistent across instances
-    
+    static signalCounter = 0; // Signal-based counter for display
+    static lastSignalTime = 0; // Track last signal time for grouping
+    static signalTimeWindow = 10 * 60 * 1000; // 10 minutes window for signal grouping
+    static snapshotTimeThreshold = null; // Only count signals at or after this time
+
     constructor() {
         this.activeWindows = new Map();
         this.cascadeCounter = 0;
         this.allCascades = [];
+// ... (rest of the code remains the same)
     }
 
     openPrimaryWindow(primaryPivot, currentTime) {
         CascadeWindowManager.globalWindowCounter++;
-        const windowId = `W${CascadeWindowManager.globalWindowCounter}`;
+        
+        // Signal-based window numbering logic - only count signals at or after threshold
+        const timeSinceLastSignal = primaryPivot.time - CascadeWindowManager.lastSignalTime;
+        const shouldCountSignal = CascadeWindowManager.snapshotTimeThreshold === null || 
+                                 primaryPivot.time >= CascadeWindowManager.snapshotTimeThreshold;
+        
+        if (shouldCountSignal && (timeSinceLastSignal > CascadeWindowManager.signalTimeWindow || CascadeWindowManager.lastSignalTime === 0)) {
+            // New signal detected - increment signal counter
+            CascadeWindowManager.signalCounter++;
+            CascadeWindowManager.lastSignalTime = primaryPivot.time;
+        }
+        
+        const windowId = `W${CascadeWindowManager.signalCounter}`;
         const confirmationWindow = multiPivotConfig.cascadeSettings?.confirmationWindow?.[primaryPivot.timeframe] || 60;
         const windowEndTime = primaryPivot.time + (confirmationWindow * 60 * 1000);
         
         const window = {
             id: windowId,
+            internalId: `W${CascadeWindowManager.globalWindowCounter}`, // Keep unique internal ID
             primaryPivot,
             openTime: currentTime,
             windowEndTime,
@@ -1006,16 +1024,16 @@ class CascadeWindowManager {
             wasWaiting: false  // NEW: Track if this window was ever in WAITING state
         };
         
-        this.activeWindows.set(windowId, window);
+        this.activeWindows.set(window.internalId, window); // Use internal ID for map key
         // Mark lifecycle as OPENED immediately
-        try { shouldNotifyWindowEvent(windowId, 'OPENED'); } catch (_) {}
+        try { shouldNotifyWindowEvent(window.internalId, 'OPENED'); } catch (_) {}
         return window;
     }
 
     checkWindowConfirmations(pivot, timeframe, currentTime) {
         const confirmedWindows = [];
         
-        for (const [windowId, window] of this.activeWindows) {
+        for (const [internalId, window] of this.activeWindows) {
             if (window.status !== 'active') continue;
             if (window.primaryPivot.signal !== pivot.signal) continue;
             if (currentTime > window.windowEndTime) {
@@ -1057,12 +1075,12 @@ class CascadeWindowManager {
                 } else if (!window.wasWaiting) {
                     // Window is not ready but has confirmations - mark as WAITING
                     window.wasWaiting = true;
-                    try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
+                    try { shouldNotifyWindowEvent(window.internalId, 'WAITING'); } catch (_) {}
                 }
             } else if (!window.wasWaiting && totalConfirmed < minRequiredTFs) {
                 // Window doesn't have enough confirmations - mark as WAITING
                 window.wasWaiting = true;
-                try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
+                try { shouldNotifyWindowEvent(window.internalId, 'WAITING'); } catch (_) {}
             }
         }
         
@@ -1174,7 +1192,7 @@ class CascadeWindowManager {
 
 
         const dedupKey = `READY_TO_EXECUTE|${window.id}`;
-        if (shouldNotifyWindowEvent(window.id, 'READY_TO_EXECUTE') && shouldSendTelegram(dedupKey)) {
+        if (shouldNotifyWindowEvent(window.internalId, 'READY_TO_EXECUTE') && shouldSendTelegram(dedupKey)) {
             telegramNotifier.sendMessage(message);
         }
     }
@@ -1217,7 +1235,7 @@ class CascadeWindowManager {
         const executionMinute = Math.floor((window.executionTime || currentTime) / 60000);
         const execPriceKey = Math.round((executionPrice || 0) * 100);
         const dedupKey = `EXECUTED|${direction}|p${execPriceKey}|t${executionMinute}`;
-        if (shouldNotifyWindowEvent(window.id, 'EXECUTED', window.executionTime) && shouldSendTelegram(dedupKey)) {
+        if (shouldNotifyWindowEvent(window.internalId, 'EXECUTED', window.executionTime) && shouldSendTelegram(dedupKey)) {
             telegramNotifier.sendMessage(message);
         }
     }
@@ -1279,13 +1297,13 @@ class CascadeWindowManager {
         const expiredMinute = Math.floor(currentTime / 60000);
         const priceKey = Math.round((window.primaryPivot.price || 0) * 100);
         const dedupKey = `EXPIRED|${expiredDirection}|p${priceKey}|t${expiredMinute}`;
-        if (shouldNotifyWindowEvent(window.id, 'EXPIRED') && shouldSendTelegram(dedupKey)) {
+        if (shouldNotifyWindowEvent(window.internalId, 'EXPIRED') && shouldSendTelegram(dedupKey)) {
             telegramNotifier.sendMessage(message);
         }
     }
 
     checkExpiredWindows(currentTime) {
-        for (const [windowId, window] of this.activeWindows) {
+        for (const [internalId, window] of this.activeWindows) {
             if (window.status === 'active' && currentTime > window.windowEndTime) {
                 window.status = 'expired';
                 // CRITICAL FIX: Only send expiration notification for windows that were WAITING
@@ -1441,12 +1459,12 @@ function simulateCascadeWindows(allTimeframePivots, analysisTime, windowManager)
                             } else if (!window.wasWaiting) {
                                 // Window is not ready but has confirmations - mark as WAITING
                                 window.wasWaiting = true;
-                                try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
+                                try { shouldNotifyWindowEvent(window.internalId, 'WAITING'); } catch (_) {}
                             }
                         } else if (!window.wasWaiting && totalConfirmed < minRequiredTFs) {
                             // Window doesn't have enough confirmations - mark as WAITING
                             window.wasWaiting = true;
-                            try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
+                            try { shouldNotifyWindowEvent(window.internalId, 'WAITING'); } catch (_) {}
                         }
                     }
                 }
@@ -1691,6 +1709,12 @@ async function runImmediateAggregationSnapshot(forcedAnalysisTime = null, preloa
     } else {
         analysisTime = parseTargetTimeInZone(SNAPSHOT_CONFIG.targetTime);
         console.log(`${colors.green}Analysis Time (requested): ${SNAPSHOT_CONFIG.targetTime}${colors.reset}`);
+    }
+    
+    // Set threshold for signal counting - only count signals at or after analysis time
+    if (CascadeWindowManager.snapshotTimeThreshold === null) {
+        CascadeWindowManager.snapshotTimeThreshold = analysisTime;
+        console.log(`${colors.dim}Signal counting threshold set: ${formatDualTime(analysisTime)}${colors.reset}`);
     }
     
     // Clamp analysis time to available data range
@@ -1995,6 +2019,13 @@ async function runCurrentModeAutoReload() {
 
 // Run the analyzer
 (async () => {
+    // Reset counters on script startup only
+    CascadeWindowManager.signalCounter = 0;
+    CascadeWindowManager.lastSignalTime = 0;
+    
+    // Set snapshot time threshold for signal counting
+    CascadeWindowManager.snapshotTimeThreshold = null;
+    
     try {
         if (SNAPSHOT_CONFIG.autoReload) {
             if (SNAPSHOT_CONFIG.currentMode) {
