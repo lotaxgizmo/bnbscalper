@@ -34,6 +34,10 @@ const SNAPSHOT_CONFIG = {
     progressionMode: 'index',       // 'index' = advance by candle index; 'time' = advance by simulated seconds
     indexStep: 1,                   // candles per reload when progressionMode = 'index'
     simSecondsPerWallSecond: 25,     // Simulation speed: sim-seconds progressed per 1 wall-second (used when progressionMode = 'time')
+    
+    // Cascade window management
+    signalTimeWindow: 1 * 60 * 1000, // Signal grouping window in milliseconds (1 minute)
+    
 };
 
 import {
@@ -253,6 +257,79 @@ function getExecutionPriceForWindow(window, minRequired) {
     if (window.executionPrice != null) return window.executionPrice;
     const candidate = computeCandidateExecution(window, minRequired);
     return candidate?.price ?? window.primaryPivot.price;
+}
+
+// Global deduplication cache for terminal notifications
+const TERMINAL_NOTIFICATION_CACHE = new Map();
+
+// Send Telegram notification based on terminal status display
+function sendTerminalStatusNotification(window, statusText, currentTime) {
+    if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
+    if (window.id === 'W0') return; // Skip W0
+    
+    const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+    const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
+    const totalConfirmations = 1 + window.confirmations.length;
+    
+    // Global deduplication to prevent spam across auto-reload cycles
+    const statusKey = `${window.id}_${statusText}_${window.executionTime || window.primaryPivot.time}`;
+    if (TERMINAL_NOTIFICATION_CACHE.has(statusKey)) return;
+    TERMINAL_NOTIFICATION_CACHE.set(statusKey, Date.now());
+    
+    // Clean old entries (older than 10 minutes)
+    const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+    for (const [key, timestamp] of TERMINAL_NOTIFICATION_CACHE.entries()) {
+        if (timestamp < tenMinutesAgo) {
+            TERMINAL_NOTIFICATION_CACHE.delete(key);
+        }
+    }
+    
+    let message = null;
+    
+    if (statusText === 'READY TO EXECUTE') {
+        const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢⬆️' : '🔴⬇️';
+        const snapshotLong = fmtDateTimeLong(currentTime);
+        const snapshot24 = fmtTime24(currentTime);
+        
+        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n`;
+        confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
+        
+        message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
+            `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
+            `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
+            `💰 *Execution Price:* $${(window.primaryPivot.price)}\n` +
+            `📊 *Final Confirmations:* ${totalConfirmations}/${minRequired}\n` +
+            `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
+            `*Confirmed Timeframes:*\n` +
+            confirmationsList;
+            
+    } else if (statusText === 'CASCADE INVALID') {
+        const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢✅' : '🔴✅';
+        const executionPrice = window.executionPrice || window.primaryPivot.price;
+        const executionTimeLong = fmtDateTimeLong(window.executionTime);
+        const executionTime24 = fmtTime24(window.executionTime);
+        const snapshotLong = fmtDateTimeLong(currentTime);
+        const snapshot24 = fmtTime24(currentTime);
+        const timeAgo = formatTimeDifference(Math.max(0, currentTime - window.executionTime));
+        
+        let confirmationsList = `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n`;
+        confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
+        
+        message = `✅ *CASCADE EXECUTED*\n\n` +
+            `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
+            `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
+            `💰 *Execution Price:* $${(executionPrice)}\n` +
+            `📊 *Final Confirmations:* ${totalConfirmations}/${minRequired}\n` +
+            `⏰ *Executed:* ${executionTimeLong} (${executionTime24})\n` +
+            `🕐 *Time Ago:* ${timeAgo}\n` +
+            `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
+            `*Confirmed Timeframes:*\n` +
+            confirmationsList;
+    }
+    
+    if (message) {
+        telegramNotifier.sendMessage(message);
+    }
 }
 
 // Send Telegram notifications with detailed messages (WAITING/EXECUTE/EXECUTED)
@@ -979,7 +1056,7 @@ class CascadeWindowManager {
     static globalWindowCounter = 0; // Persistent across instances
     static signalCounter = 0; // Signal-based counter for display
     static lastSignalTime = 0; // Track last signal time for grouping
-    static signalTimeWindow = 10 * 60 * 1000; // 10 minutes window for signal grouping
+    static signalTimeWindow = SNAPSHOT_CONFIG.signalTimeWindow; // Signal grouping window from config
     static snapshotTimeThreshold = null; // Only count signals at or after this time
 
     constructor() {
@@ -1162,10 +1239,8 @@ class CascadeWindowManager {
         // Skip W0 - it represents historical cascade from startup
         if (window.id === 'W0') return;
         
-        // Only send notifications for real-time events (within 1 minute of current time)
-        const timeDiff = Math.abs(Date.now() - currentTime);
-        const isRealTime = timeDiff <= (1 * 60 * 1000); // 1 minute threshold for live mode
-        if (!isRealTime) return;
+        // For live mode, always send notifications for ready windows
+        // The real-time filter was blocking legitimate notifications
         
         const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
         const totalConfirmations = 1 + window.confirmations.length;
@@ -1204,10 +1279,8 @@ class CascadeWindowManager {
         // Skip W0 - it represents historical cascade from startup
         if (window.id === 'W0') return;
         
-        // Only send notifications for real-time events (within 1 minute of current time)
-        const timeDiff = Math.abs(Date.now() - currentTime);
-        const isRealTime = timeDiff <= (1 * 60 * 1000); // 1 minute threshold for live mode
-        if (!isRealTime) return;
+        // For live mode, always send notifications for executed windows
+        // The real-time filter was blocking legitimate notifications
         
         const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
         const totalConfirmations = 1 + window.confirmations.length;
@@ -1316,11 +1389,14 @@ class CascadeWindowManager {
                 // CRITICAL FIX: Only send expiration notification for windows that were WAITING
                 // and only for recent windows (not historical simulation)
                 const isRecentWindow = Math.abs(Date.now() - currentTime) <= (10 * 60 * 1000); // 10 minutes
-                if (!window.executionTime && window.wasWaiting && isRecentWindow) {
+                if (window.wasWaiting && isRecentWindow) {
                     this.sendExpiredNotification(window, currentTime);
                 }
             }
         }
+        
+        // Clean up old executed/expired windows to allow new windows with same IDs
+        this.cleanupExpiredWindows(currentTime);
     }
 
     getActiveWindows(snapshotTime) {
@@ -1336,6 +1412,20 @@ class CascadeWindowManager {
             // and whose window has not yet expired relative to the snapshot
             return (w.executionTime !== undefined && w.executionTime <= snapshotTime) && (snapshotTime <= w.windowEndTime);
         });
+    }
+
+    cleanupExpiredWindows(currentTime) {
+        // Remove windows that have been executed/expired and their window time has passed
+        for (const [internalId, window] of this.activeWindows) {
+            const shouldRemove = (
+                (window.status === 'executed' || window.status === 'expired') &&
+                currentTime > window.windowEndTime + (60 * 1000) // 1 minute grace period
+            );
+            
+            if (shouldRemove) {
+                this.activeWindows.delete(internalId);
+            }
+        }
     }
 }
 
@@ -1420,6 +1510,17 @@ function simulateCascadeWindows(allTimeframePivots, analysisTime, windowManager)
         if (!tf) continue;
         
         if (tf.role === 'primary') {
+            // Check if window already exists for this pivot to prevent duplicates
+            const existingWindow = Array.from(windowManager.activeWindows.values()).find(w => 
+                w.primaryPivot.time === pivot.time && 
+                w.primaryPivot.signal === pivot.signal &&
+                w.primaryPivot.timeframe === pivot.timeframe
+            );
+            
+            if (existingWindow) {
+                continue; // Skip creating duplicate window
+            }
+            
             const window = windowManager.openPrimaryWindow(pivot, pivot.time);
             // Backfill pre-primary confirmations within ±effectiveWindowMs (pre-primary only)
             const proximityWindowMs = 5 * 60 * 1000; // 5 minutes
@@ -1583,6 +1684,9 @@ function displayCascadeWindows(windowManager, currentTime) {
             
             console.log(`${colors.dim}│   Status: ${statusColor}${statusText}${colors.reset}`);
             
+            // Send Telegram notification when terminal shows status change
+            sendTerminalStatusNotification(window, statusText, currentTime);
+            
             if (index < activeWindows.length - 1) {
                 console.log(`${colors.dim}│${colors.reset}`);
             }
@@ -1643,7 +1747,8 @@ function displayCascadeWindows(windowManager, currentTime) {
             console.log(` - ${s.id}: ${s.mode} | $${(s.price ?? 0).toFixed(2)} | ${t}`);
         });
         // Notify snapshot states (WAITING/EXECUTE/EXECUTED/INVALID)
-        notifySnapshotStates(snapshotStates, currentTime, windowManager);
+        // DISABLED: Now using terminal-based notifications instead
+        // notifySnapshotStates(snapshotStates, currentTime, windowManager);
     }
 }
 
