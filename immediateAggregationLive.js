@@ -14,7 +14,6 @@ const SNAPSHOT_CONFIG = {
     length: 5000,                   // Number of 1m candles to load for context
     useLiveAPI: false,              // Force API data (overrides useLocalData)
 
-    
     // Display options
     togglePivots: false,             // Show recent pivot activity
     toggleCascades: true,           // Show cascade analysis
