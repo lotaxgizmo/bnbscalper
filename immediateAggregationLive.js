@@ -322,22 +322,35 @@ function notifySnapshotStates(states, currentTime, windowManager) {
                     const isPrimary = index === 0;
                     confirmationsList += `• ${detail.timeframe}: $${(detail.price)}${isPrimary ? ' (Primary)' : ''}\n`;
                 });
+            } else if (w && w.primaryPivot) {
+                // Use actual window data when available
+                confirmationsList = `• ${w.primaryPivot.timeframe}: $${(w.primaryPivot.price)} (Primary)\n`;
+                if (w.confirmations && w.confirmations.length > 0) {
+                    confirmationsList += w.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
+                }
             } else {
-                // Fallback to just showing the primary timeframe
-                confirmationsList = `• 4h: $${(s.price)} (Primary)\n`;
+                // Last resort fallback - use primary timeframe from config
+                const primaryTf = multiPivotConfig.timeframes.find(tf => tf.role === 'primary')?.interval || '4h';
+                confirmationsList = `• ${primaryTf}: $${(s.price)} (Primary)\n`;
                 
-                // Add dummy confirmations based on the confirmation count
+                // Add dummy confirmations based on the confirmation count using actual config timeframes
                 if (s.confirmations > 1) {
-                    const otherTimeframes = ['2h', '1h', '30m', '15m', '5m', '2m', '1m'];
-                    for (let i = 0; i < Math.min(s.confirmations - 1, otherTimeframes.length); i++) {
-                        confirmationsList += `• ${otherTimeframes[i]}: $${(s.price)}\n`;
+                    const configuredTimeframes = multiPivotConfig.timeframes
+                        .filter(tf => tf.role !== 'primary')
+                        .map(tf => tf.interval);
+                    for (let i = 0; i < Math.min(s.confirmations - 1, configuredTimeframes.length); i++) {
+                        confirmationsList += `• ${configuredTimeframes[i]}: $${(s.price)}\n`;
                     }
                 }
             }
             
+            // Get primary timeframe for window display
+            const windowPrimaryTf = (w && w.primaryPivot) ? w.primaryPivot.timeframe : 
+                                   (multiPivotConfig.timeframes.find(tf => tf.role === 'primary')?.interval || '4h');
+            
             message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
                 `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
-                `🏗️ *Window:* ${s.id} (4h)\n` +
+                `🏗️ *Window:* ${s.id} (${windowPrimaryTf})\n` +
                 `💰 *Execution Price:* $${(execPrice)}\n` +
                 `📊 *Final Confirmations:* ${confirmationsCount}/${minRequired}\n` +
                 `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
