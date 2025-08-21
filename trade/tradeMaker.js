@@ -50,7 +50,8 @@ const app = express();
 app.use(express.json());
 
 // Logging setup
-const logsDir = path.join(process.cwd(), 'logs');
+const __dirname = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+const logsDir = path.join(__dirname, 'logs');
 const tradesLog = path.join(logsDir, 'sim_trades.jsonl');
 const capitalLog = path.join(logsDir, 'capital.jsonl');
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });

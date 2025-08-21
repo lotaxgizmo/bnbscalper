@@ -2,6 +2,8 @@
 
 import WebSocket from 'ws';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 
 dotenv.config();
 
@@ -9,8 +11,58 @@ const PORT = process.env.TRADE_SIM_PORT || 3100;
 const WS_URL = `ws://localhost:${PORT}`;
 
 const openTrades = new Map();
+const closedTrades = []; // Array to store closed trade history
 const latestPrices = new Map(); // symbol -> price
 let capital = { equity: 0, cash: 0, usedMargin: 0, realizedPnl: 0 };
+
+const MAX_CLOSED_TRADES = 20; // Keep last 20 closed trades
+
+// Path to trade logs
+const __dirname = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+const TRADE_LOGS_PATH = path.join(__dirname, 'logs', 'sim_trades.jsonl');
+
+// Load trade history from log file
+function loadTradeHistory() {
+    try {
+        if (!fs.existsSync(TRADE_LOGS_PATH)) {
+            console.log('No trade history file found. Starting fresh.');
+            return;
+        }
+        
+        const logData = fs.readFileSync(TRADE_LOGS_PATH, 'utf8');
+        const lines = logData.trim().split('\n').filter(line => line.trim());
+        
+        // Parse each line and extract closed trades
+        const historicalTrades = [];
+        for (const line of lines) {
+            try {
+                const logEntry = JSON.parse(line);
+                if (logEntry.type === 'close' || logEntry.event === 'close') {
+                    const trade = logEntry.trade || logEntry;
+                    // Ensure we have the required fields
+                    if (trade.id && trade.symbol && trade.side) {
+                        historicalTrades.push({
+                            ...trade,
+                            closedTs: logEntry.ts || trade.exitTime || trade.closeTime || Date.now()
+                        });
+                    }
+                }
+            } catch (parseError) {
+                // Skip malformed lines
+                continue;
+            }
+        }
+        
+        // Keep only the most recent trades
+        const recentTrades = historicalTrades.slice(-MAX_CLOSED_TRADES);
+        closedTrades.push(...recentTrades);
+        
+        console.log(`Loaded ${recentTrades.length} historical trades from log file.`);
+        
+    } catch (error) {
+        console.error('Error loading trade history:', error.message);
+    }
+}
 
 function formatPnl(pnl) {
     const pnlNum = Number(pnl || 0);
@@ -66,10 +118,13 @@ function displayTrades() {
     console.log(pnlStr);
     console.log('='.repeat(130));
 
+    // OPEN TRADES SECTION
+    console.log('📈 OPEN TRADES');
     const headers = [
         'ID'.padEnd(4),
         'Symbol'.padEnd(10),
         'Side'.padEnd(6),
+        'Entry Time'.padEnd(18),
         'Entry Price'.padEnd(14),
         'Margin'.padEnd(15),
         'Leverage'.padEnd(10),
@@ -80,10 +135,10 @@ function displayTrades() {
         'PnL (%)'.padEnd(12)
     ];
     console.log(headers.join(' '));
-    console.log('-'.repeat(130));
+    console.log('-'.repeat(150));
 
     if (openTrades.size === 0) {
-        console.log('\nNo open trades. Waiting for activity...');
+        console.log('No open trades. Waiting for activity...');
     } else {
         for (const trade of openTrades.values()) {
             const pnlStr = formatPnl(trade.pnl);
@@ -91,12 +146,14 @@ function displayTrades() {
             const now = Date.now();
             const ots = Number(trade.openTs);
             const dur = (Number.isFinite(ots) && ots > 0) ? formatDuration(now - ots) : '—';
+            const entryTime = (Number.isFinite(ots) && ots > 0) ? new Date(ots).toLocaleTimeString() : '—';
             const tpStr = (trade.tp === null || trade.tp === undefined) ? '—' : formatCurrency(trade.tp);
             const slStr = (trade.sl === null || trade.sl === undefined) ? '—' : formatCurrency(trade.sl);
             const row = [
                 String(trade.id).padEnd(4),
                 trade.symbol.padEnd(10),
                 trade.side.padEnd(6),
+                entryTime.padEnd(18),
                 formatCurrency(trade.entryPrice).padEnd(14),
                 formatCurrency(trade.usedMargin).padEnd(15),
                 `x${trade.leverage}`.padEnd(10),
@@ -109,6 +166,55 @@ function displayTrades() {
             console.log(row.join(' '));
         }
     }
+
+    // CLOSED TRADES SECTION
+    if (closedTrades.length > 0) {
+        console.log('\n📊 RECENT CLOSED TRADES');
+        const closedHeaders = [
+            'ID'.padEnd(4),
+            'Symbol'.padEnd(10),
+            'Side'.padEnd(6),
+            'Entry Time'.padEnd(18),
+            'Exit Time'.padEnd(18),
+            'Entry'.padEnd(14),
+            'Exit'.padEnd(14),
+            'Leverage'.padEnd(10),
+            'Duration'.padEnd(10),
+            'Result'.padEnd(8),
+            'PnL ($)'.padEnd(15),
+            'PnL (%)'.padEnd(12)
+        ];
+        console.log(closedHeaders.join(' '));
+        console.log('-'.repeat(180));
+
+        // Show most recent closed trades first
+        const recentClosed = closedTrades.slice(-10).reverse();
+        for (const trade of recentClosed) {
+            const pnlStr = formatPnl(trade.pnl);
+            const pnlPctStr = formatPnlPct(trade.pnlPct);
+            const duration = formatDuration(trade.closedTs - trade.openTs);
+            const result = trade.result || '—';
+            const entryTime = (Number.isFinite(trade.openTs) && trade.openTs > 0) ? new Date(trade.openTs).toLocaleTimeString() : '—';
+            const exitTime = (Number.isFinite(trade.closedTs) && trade.closedTs > 0) ? new Date(trade.closedTs).toLocaleTimeString() : '—';
+            
+            const row = [
+                String(trade.id).padEnd(4),
+                trade.symbol.padEnd(10),
+                trade.side.padEnd(6),
+                entryTime.padEnd(18),
+                exitTime.padEnd(18),
+                formatCurrency(trade.entryPrice).padEnd(14),
+                formatCurrency(trade.exitPrice).padEnd(14),
+                `x${trade.leverage}`.padEnd(10),
+                duration.padEnd(10),
+                result.padEnd(8),
+                pnlStr.padEnd(15 + 9), // Pad extra to account for invisible color codes
+                pnlPctStr.padEnd(12 + 9)
+            ];
+            console.log(row.join(' '));
+        }
+    }
+
     console.log('='.repeat(130));
     console.log('Watching for trade updates... (Press Ctrl+C to exit)');
 }
@@ -120,6 +226,8 @@ function connect() {
 
     ws.on('open', () => {
         console.log(`Connecting to ${WS_URL}...`);
+        // Load trade history from log file on startup
+        loadTradeHistory();
         // Start rendering the display immediately
         if (displayInterval) clearInterval(displayInterval);
         displayInterval = setInterval(displayTrades, 500); // Redraw every 500ms
@@ -162,6 +270,18 @@ function connect() {
                     }
                     break;
                 case 'trade_close':
+                    // Store in closed trades history before removing from open trades
+                    const closedTrade = {
+                        ...msg.trade,
+                        closedTs: Date.now()
+                    };
+                    closedTrades.push(closedTrade);
+                    
+                    // Keep only the most recent closed trades
+                    if (closedTrades.length > MAX_CLOSED_TRADES) {
+                        closedTrades.shift(); // Remove oldest
+                    }
+                    
                     openTrades.delete(msg.trade.id);
                     break;
                 case 'capital_update':

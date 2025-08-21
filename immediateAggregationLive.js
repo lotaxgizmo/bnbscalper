@@ -11,6 +11,7 @@ const SNAPSHOT_CONFIG = {
 
     // Data settings
     // length: 10000,                   // Number of 1m candles to load for context
+    // length: 5000,                   // Number of 1m candles to load for context
     length: 5000,                   // Number of 1m candles to load for context
     useLiveAPI: true,              // Force API data (overrides useLocalData)
 
@@ -751,7 +752,15 @@ async function loadCandlesMultithreaded(totalCandles, anchorTime = null) {
     const workers = [];
     
     // Calculate time ranges for each batch (working backwards from provided anchor or current time)
-    let currentEndTime = (anchorTime != null && Number.isFinite(anchorTime)) ? anchorTime : Date.now();
+    // For live data, snap to last completed minute to exclude forming candle
+    let currentEndTime;
+    if (anchorTime != null && Number.isFinite(anchorTime)) {
+        currentEndTime = anchorTime;
+    } else {
+        // Snap to last completed minute boundary to exclude forming candle
+        const now = Date.now();
+        currentEndTime = Math.floor(now / (60 * 1000)) * (60 * 1000); // Round down to minute boundary
+    }
     const batches = [];
     
     for (let i = 0; i < numBatches; i++) {
@@ -831,13 +840,18 @@ async function loadCandlesMultithreaded(totalCandles, anchorTime = null) {
     }
     
     // Sort all candles by time and remove duplicates
+    // Also filter out any candles from the current forming minute
+    const now = Date.now();
+    const currentMinuteBoundary = Math.floor(now / (60 * 1000)) * (60 * 1000);
+    
     const sortedCandles = allCandles
         .sort((a, b) => a.time - b.time)
         .filter((candle, index, arr) => 
             index === 0 || candle.time !== arr[index - 1].time
-        );
+        )
+        .filter(candle => candle.time < currentMinuteBoundary); // Exclude current forming minute
     
-    console.log(`${colors.green}🎯 Multithreaded loading complete: ${sortedCandles.length} unique candles${colors.reset}`);
+    console.log(`${colors.green}🎯 Multithreaded loading complete: ${sortedCandles.length} unique candles (excluding forming minute)${colors.reset}`);
     return sortedCandles;
 }
 
@@ -1812,9 +1826,10 @@ async function runImmediateAggregationSnapshot(forcedAnalysisTime = null, preloa
     
     // Determine analysis timestamp
     let analysisTime;
+    const displayTime = Date.now(); // For display purposes to show actual seconds
     if (forcedAnalysisTime != null) {
         analysisTime = forcedAnalysisTime;
-        console.log(`${colors.green}Analysis Time (requested): ${formatDualTime(analysisTime)}${colors.reset}`);
+        console.log(`${colors.green}Analysis Time (requested): ${formatDualTime(displayTime)}${colors.reset}`);
     } else if (SNAPSHOT_CONFIG.currentMode) {
         analysisTime = oneMinuteCandles[oneMinuteCandles.length - 1].time;
         console.log(`${colors.green}Analysis Time: LATEST CANDLE${colors.reset}`);
@@ -1840,7 +1855,7 @@ async function runImmediateAggregationSnapshot(forcedAnalysisTime = null, preloa
         }
     }
     
-    const analysisTimeFormatted = formatDualTime(analysisTime);
+    const analysisTimeFormatted = formatDualTime(displayTime);
     console.log(`${colors.cyan}Snapshot Timestamp: ${analysisTimeFormatted}${colors.reset}`);
     
     // Find current price at analysis time: pick the last candle at or before analysisTime
@@ -2108,17 +2123,18 @@ async function runCurrentModeAutoReload() {
             lastApiFetch = Date.now();
         }
 
-        // Use latest candle time as analysis time (currentMode behavior)
+        // Use latest candle time as analysis time (currentMode behavior) but show current real time for display
         const analysisTime = oneMinuteCandles.length > 0 ? oneMinuteCandles[oneMinuteCandles.length - 1].time : Date.now();
+        const currentRealTime = Date.now(); // For display purposes to show actual seconds
 
         // Calculate data range for progress display
         const firstAvailableTime = oneMinuteCandles.length > 0 ? oneMinuteCandles[0].time : analysisTime;
         const lastAvailableTime = oneMinuteCandles.length > 0 ? oneMinuteCandles[oneMinuteCandles.length - 1].time : analysisTime;
 
-        // Show a compact progression header
-        console.log(`${colors.dim}⏱ Current Mode Auto-Reload ${Math.round(reloadMs/1000)}s | Latest: ${formatDualTime(analysisTime)}${colors.reset}`);
+        // Show a compact progression header with real-time seconds
+        console.log(`${colors.dim}⏱ Current Mode Auto-Reload ${Math.round(reloadMs/1000)}s | Latest: ${formatDualTime(currentRealTime)}${colors.reset}`);
         if (SNAPSHOT_CONFIG.showPriceDebug) {
-            console.log(`${colors.dim}[Time Debug] Range: ${formatDualTime(firstAvailableTime)} → ${formatDualTime(lastAvailableTime)} | Current: ${formatDualTime(analysisTime)}${colors.reset}`);
+            console.log(`${colors.dim}[Time Debug] Range: ${formatDualTime(firstAvailableTime)} → ${formatDualTime(lastAvailableTime)} | Current: ${formatDualTime(currentRealTime)}${colors.reset}`);
         }
 
         // Run snapshot for latest candle time using fresh candles
