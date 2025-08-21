@@ -5,14 +5,14 @@
 // ===== SNAPSHOT CONFIGURATION =====
 const SNAPSHOT_CONFIG = {
     // Operating modes
-    currentMode: false,              // true = latest candle, false = use targetTime
+    currentMode: true,              // true = latest candle, false = use targetTime
     targetTime: "2025-08-08 08:59:00", // Target timestamp when currentMode is false
     // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings
     // length: 10000,                   // Number of 1m candles to load for context
     length: 5000,                   // Number of 1m candles to load for context
-    useLiveAPI: false,              // Force API data (overrides useLocalData)
+    useLiveAPI: true,              // Force API data (overrides useLocalData)
 
     // Display options
     togglePivots: false,             // Show recent pivot activity
@@ -28,7 +28,7 @@ const SNAPSHOT_CONFIG = {
 
     // Auto-reload configuration
     autoReload: true,               // Enable auto-reload functionality
-    reloadInterval: 2,              // UI/refresh cadence in seconds (does NOT drive simulated time)
+    reloadInterval: 10,              // UI/refresh cadence in seconds (does NOT drive simulated time)
     apiRefreshSeconds: 5,            // In API mode: how often to refresh candle data
     // Progression mode for CSV/local data
     progressionMode: 'index',       // 'index' = advance by candle index; 'time' = advance by simulated seconds
@@ -285,6 +285,9 @@ function notifySnapshotStates(states, currentTime, windowManager) {
     const snapshot24 = fmtTime24(currentTime);
 
     states.forEach(s => {
+        // Skip W0 - it represents historical cascade from startup
+        if (s.id === 'W0') return;
+        
         // Debug each state
         // console.log(`\n[DEBUG] Processing state ID: ${s.id}, mode: ${s.mode}`);
         
@@ -409,31 +412,9 @@ function notifySnapshotStates(states, currentTime, windowManager) {
             dedupKey = `EXECUTED|${direction}|p${execPriceKey}|t${executionMinute}`;
             shouldNotify = shouldNotifyWindowEvent(s.id, 'EXECUTED', s.time);
         } else if (window && window.status === 'executed') {
-            // Fallback for executed windows not caught by other modes
-            const signalEmoji = s.signal === 'long' ? '🟢✅' : '🔴✅';
-            const executionPriceNum = getExecutionPriceForWindow(window, minRequired);
-            const executionPrice = `$${(executionPriceNum)}`;
-            const executionTimeLong = window.executionTime ? fmtDateTimeLong(window.executionTime) : 'N/A';
-            const executionTime24 = window.executionTime ? fmtTime24(window.executionTime) : 'N/A';
-            const timeAgo = window.executionTime ? formatTimeDifference(Math.max(0, currentTime - window.executionTime)) : 'N/A';
-
-            message = `✅ *CASCADE EXECUTED*\n\n` +
-                `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
-                `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
-                `💰 *Execution Price:* ${executionPrice}\n` +
-                `🏁 *Final Confirmations:* ${1 + window.confirmations.length}/${minRequired}\n` +
-                `⏰ *Executed:* ${executionTimeLong} (${executionTime24})\n` +
-                `🕐 *Time Ago:* ${timeAgo}\n` +
-                `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
-                `*Confirmed Timeframes:*\n` +
-                `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n` +
-                window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
-
-            // Dedup by execution characteristics instead of window ID
-            const executionMinute = Math.floor((window.executionTime || currentTime) / 60000);
-            const execPriceKey = Math.round((window.executionPrice || 0) * 100);
-            dedupKey = `EXECUTED|${direction}|p${execPriceKey}|t${executionMinute}`;
-            shouldNotify = shouldNotifyWindowEvent(window.id, 'EXECUTED', window.executionTime);
+            // DISABLED: Window manager already handles executed notifications
+            // Skip to prevent duplicate "CASCADE EXECUTED" messages
+            return;
 
         } else {
             // WAITING — send, but dedup by confirmations and target time to avoid spam
@@ -1039,7 +1020,7 @@ class CascadeWindowManager {
         
         this.activeWindows.set(window.internalId, window); // Use internal ID for map key
         // Mark lifecycle as OPENED immediately
-        try { shouldNotifyWindowEvent(window.internalId, 'OPENED'); } catch (_) {}
+        try { shouldNotifyWindowEvent(window.id, 'OPENED'); } catch (_) {}
         return window;
     }
 
@@ -1088,12 +1069,12 @@ class CascadeWindowManager {
                 } else if (!window.wasWaiting) {
                     // Window is not ready but has confirmations - mark as WAITING
                     window.wasWaiting = true;
-                    try { shouldNotifyWindowEvent(window.internalId, 'WAITING'); } catch (_) {}
+                    try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
                 }
             } else if (!window.wasWaiting && totalConfirmed < minRequiredTFs) {
                 // Window doesn't have enough confirmations - mark as WAITING
                 window.wasWaiting = true;
-                try { shouldNotifyWindowEvent(window.internalId, 'WAITING'); } catch (_) {}
+                try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
             }
         }
         
@@ -1169,8 +1150,8 @@ class CascadeWindowManager {
         window.executionTime = executionTime;
         window.executionPrice = executionPrice;
         
-        // Send immediate EXECUTED notification
-        this.sendExecutedNotification(window, currentTime);
+        // Don't send EXECUTED notification immediately - let the snapshot states handle it
+        // when the execution minute has actually passed
         
         return cascadeInfo;
     }
@@ -1178,9 +1159,12 @@ class CascadeWindowManager {
     sendExecuteNotification(window, currentTime) {
         if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
         
-        // Only send notifications for real-time events (within 5 minutes of current time)
+        // Skip W0 - it represents historical cascade from startup
+        if (window.id === 'W0') return;
+        
+        // Only send notifications for real-time events (within 1 minute of current time)
         const timeDiff = Math.abs(Date.now() - currentTime);
-        const isRealTime = timeDiff <= (5 * 60 * 1000); // 5 minutes threshold
+        const isRealTime = timeDiff <= (1 * 60 * 1000); // 1 minute threshold for live mode
         if (!isRealTime) return;
         
         const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
@@ -1204,8 +1188,12 @@ class CascadeWindowManager {
             confirmationsList;
 
 
-        const dedupKey = `READY_TO_EXECUTE|${window.id}`;
-        if (shouldNotifyWindowEvent(window.internalId, 'READY_TO_EXECUTE') && shouldSendTelegram(dedupKey)) {
+        // Enhanced deduplication using execution characteristics instead of just window ID
+        const executionMinute = Math.floor((window.primaryPivot.time || currentTime) / 60000);
+        const priceKey = Math.round((window.primaryPivot.price || 0) * 100);
+        const dedupKey = `READY_TO_EXECUTE|${direction}|p${priceKey}|t${executionMinute}|${window.id}`;
+        
+        if (shouldNotifyWindowEvent(window.id, 'READY_TO_EXECUTE') && shouldSendTelegram(dedupKey)) {
             telegramNotifier.sendMessage(message);
         }
     }
@@ -1213,9 +1201,12 @@ class CascadeWindowManager {
     sendExecutedNotification(window, currentTime) {
         if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
         
-        // Only send notifications for real-time events (within 5 minutes of current time)
+        // Skip W0 - it represents historical cascade from startup
+        if (window.id === 'W0') return;
+        
+        // Only send notifications for real-time events (within 1 minute of current time)
         const timeDiff = Math.abs(Date.now() - currentTime);
-        const isRealTime = timeDiff <= (5 * 60 * 1000); // 5 minutes threshold
+        const isRealTime = timeDiff <= (1 * 60 * 1000); // 1 minute threshold for live mode
         if (!isRealTime) return;
         
         const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
@@ -1248,13 +1239,16 @@ class CascadeWindowManager {
         const executionMinute = Math.floor((window.executionTime || currentTime) / 60000);
         const execPriceKey = Math.round((executionPrice || 0) * 100);
         const dedupKey = `EXECUTED|${direction}|p${execPriceKey}|t${executionMinute}`;
-        if (shouldNotifyWindowEvent(window.internalId, 'EXECUTED', window.executionTime) && shouldSendTelegram(dedupKey)) {
+        if (shouldNotifyWindowEvent(window.id, 'EXECUTED', window.executionTime) && shouldSendTelegram(dedupKey)) {
             telegramNotifier.sendMessage(message);
         }
     }
     
     sendExpiredNotification(window, currentTime) {
         if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
+        
+        // Skip W0 - it represents historical cascade from startup
+        if (window.id === 'W0') return;
         
         // CRITICAL FIX: Only send expired notifications for windows that were in WAITING state
         const lifecycle = WINDOW_LIFECYCLE_CACHE.get(window.id);
@@ -1310,7 +1304,7 @@ class CascadeWindowManager {
         const expiredMinute = Math.floor(currentTime / 60000);
         const priceKey = Math.round((window.primaryPivot.price || 0) * 100);
         const dedupKey = `EXPIRED|${expiredDirection}|p${priceKey}|t${expiredMinute}`;
-        if (shouldNotifyWindowEvent(window.internalId, 'EXPIRED') && shouldSendTelegram(dedupKey)) {
+        if (shouldNotifyWindowEvent(window.id, 'EXPIRED') && shouldSendTelegram(dedupKey)) {
             telegramNotifier.sendMessage(message);
         }
     }
@@ -1472,12 +1466,12 @@ function simulateCascadeWindows(allTimeframePivots, analysisTime, windowManager)
                             } else if (!window.wasWaiting) {
                                 // Window is not ready but has confirmations - mark as WAITING
                                 window.wasWaiting = true;
-                                try { shouldNotifyWindowEvent(window.internalId, 'WAITING'); } catch (_) {}
+                                try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
                             }
                         } else if (!window.wasWaiting && totalConfirmed < minRequiredTFs) {
                             // Window doesn't have enough confirmations - mark as WAITING
                             window.wasWaiting = true;
-                            try { shouldNotifyWindowEvent(window.internalId, 'WAITING'); } catch (_) {}
+                            try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
                         }
                     }
                 }

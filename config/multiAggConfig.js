@@ -21,11 +21,11 @@ export const multiPivotConfig = {
          
 
         {
-            interval: '20m',
+            interval: '5m',
             role: 'primary',   // Additional confirmation
-            minSwingPct: 0.01,   // Same settings for easy testing
-            lookback: 2,
-            minLegBars: 2,          // Same settings for easy testing
+            minSwingPct: 0.001,   // Same settings for easy testing
+            lookback: 1,
+            minLegBars: 1,          // Same settings for easy testing
             weight: 1,
             opposite: false
         },
@@ -33,9 +33,9 @@ export const multiPivotConfig = {
         {
             interval: '1m',
             role: 'execution',      // Final execution timeframe
-            minSwingPct: 0.01,       // Same settings for easy testing
-            lookback: 2,
-            minLegBars: 3,          // Same settings for easy testing
+            minSwingPct: 0.001,       // Same settings for easy testing
+            lookback: 1,
+            minLegBars: 1,          // Same settings for easy testing
             weight: 1,
             opposite: false
         }
@@ -49,9 +49,10 @@ export const multiPivotConfig = {
             // '4h': 3,      // 🎯 OPTIMIZED: Wait up to 4 hours for 1h confirmation
             '4h': 230,      // 🎯 OPTIMIZED: Wait up to 4 hours for 1h confirmation
             '20m': 20,
+            '10m': 10,
             '1h': 60,      // 🎯 OPTIMIZED: Wait up to 1 hours for 15m confirmation  
             '15m': 15,     // 🎯 OPTIMIZED: Wait up to 2 hours for 1m confirmation
-            '5m': 55,       // 🎯 OPTIMIZED: Wait up to 30 minutes for 1m confirmation
+            '5m': 5,       // 🎯 OPTIMIZED: Wait up to 30 minutes for 1m confirmation
             '1m': 1        // 🎯 OPTIMIZED: Wait up to 30 minutes for final confirmation
         },
         
