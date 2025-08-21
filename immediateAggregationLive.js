@@ -6,7 +6,7 @@
 const SNAPSHOT_CONFIG = {
     // Operating modes
     currentMode: false,              // true = latest candle, false = use targetTime
-    targetTime: "2025-08-08 17:00:00", // Target timestamp when currentMode is false
+    targetTime: "2025-08-08 08:55:00", // Target timestamp when currentMode is false
     // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings
@@ -19,7 +19,8 @@ const SNAPSHOT_CONFIG = {
     toggleCascades: true,           // Show cascade analysis
     showData: false,                // Show raw data details
     showRecentPivots: 5,            // Number of recent pivots to show per timeframe
-    showRecentCascades: 10,         // Number of recent cascades to show
+    showRecentCascades: 3,         // Number of recent cascades to show
+    // showRecentCascades: 10,         // Number of recent cascades to show
 
     showTelegramCascades: true,
     showBuildLogs: false,           // Verbose logs when building aggregated candles and pivots
@@ -91,6 +92,7 @@ function shouldSendTelegram(key) {
 function shouldNotifyWindowEvent(windowId, eventType, executionTime = null) {
     const lifecycle = WINDOW_LIFECYCLE_CACHE.get(windowId) || {
         opened: false, 
+        waiting: false,        // NEW: Track if window was ever in WAITING state
         readyToExecute: false,
         executed: false, 
         expired: false,
@@ -105,6 +107,13 @@ function shouldNotifyWindowEvent(windowId, eventType, executionTime = null) {
     if (eventType === 'OPENED') {
         if (lifecycle.opened) return false;
         lifecycle.opened = true;
+        WINDOW_LIFECYCLE_CACHE.set(windowId, lifecycle);
+        return true;
+    }
+    
+    if (eventType === 'WAITING') {
+        if (lifecycle.waiting) return false;
+        lifecycle.waiting = true;  // Mark that this window was in WAITING state
         WINDOW_LIFECYCLE_CACHE.set(windowId, lifecycle);
         return true;
     }
@@ -126,6 +135,11 @@ function shouldNotifyWindowEvent(windowId, eventType, executionTime = null) {
     }
     
     if (eventType === 'EXPIRED') {
+        // CRITICAL FIX: Only allow EXPIRED if window was in WAITING state
+        if (!lifecycle.waiting) {
+            // Window never waited, cannot expire
+            return false;
+        }
         if (lifecycle.expired) return false;
         lifecycle.expired = true;
         WINDOW_LIFECYCLE_CACHE.set(windowId, lifecycle);
@@ -988,11 +1002,12 @@ class CascadeWindowManager {
             openTime: currentTime,
             windowEndTime,
             confirmations: [],
-            status: 'active'
+            status: 'active',
+            wasWaiting: false  // NEW: Track if this window was ever in WAITING state
         };
         
         this.activeWindows.set(windowId, window);
-        // Mark lifecycle as OPENED immediately so later EXPIRED notifications are allowed
+        // Mark lifecycle as OPENED immediately
         try { shouldNotifyWindowEvent(windowId, 'OPENED'); } catch (_) {}
         return window;
     }
@@ -1039,7 +1054,15 @@ class CascadeWindowManager {
                     // Send immediate EXECUTE notification
                     this.sendExecuteNotification(window, currentTime);
                     this.executeWindow(window, currentTime);
+                } else if (!window.wasWaiting) {
+                    // Window is not ready but has confirmations - mark as WAITING
+                    window.wasWaiting = true;
+                    try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
                 }
+            } else if (!window.wasWaiting && totalConfirmed < minRequiredTFs) {
+                // Window doesn't have enough confirmations - mark as WAITING
+                window.wasWaiting = true;
+                try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
             }
         }
         
@@ -1202,10 +1225,15 @@ class CascadeWindowManager {
     sendExpiredNotification(window, currentTime) {
         if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
         
-        // Only send expired notifications for windows that previously sent WAITING notifications
+        // CRITICAL FIX: Only send expired notifications for windows that were in WAITING state
         const lifecycle = WINDOW_LIFECYCLE_CACHE.get(window.id);
-        if (!lifecycle || !lifecycle.opened) {
-            // This window never sent a WAITING notification, skip expired notification
+        if (!lifecycle || !lifecycle.waiting) {
+            // This window never was in WAITING state, cannot expire
+            return;
+        }
+        
+        // Additional check: window must have been marked as wasWaiting
+        if (!window.wasWaiting) {
             return;
         }
         
@@ -1260,8 +1288,10 @@ class CascadeWindowManager {
         for (const [windowId, window] of this.activeWindows) {
             if (window.status === 'active' && currentTime > window.windowEndTime) {
                 window.status = 'expired';
-                // Only send expiration notification for windows that never executed
-                if (!window.executionTime) {
+                // CRITICAL FIX: Only send expiration notification for windows that were WAITING
+                // and only for recent windows (not historical simulation)
+                const isRecentWindow = Math.abs(Date.now() - currentTime) <= (10 * 60 * 1000); // 10 minutes
+                if (!window.executionTime && window.wasWaiting && isRecentWindow) {
                     this.sendExpiredNotification(window, currentTime);
                 }
             }
@@ -1408,7 +1438,15 @@ function simulateCascadeWindows(allTimeframePivots, analysisTime, windowManager)
                                 // Send immediate EXECUTE notification
                                 windowManager.sendExecuteNotification(window, pivot.time);
                                 windowManager.executeWindow(window, pivot.time);
+                            } else if (!window.wasWaiting) {
+                                // Window is not ready but has confirmations - mark as WAITING
+                                window.wasWaiting = true;
+                                try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
                             }
+                        } else if (!window.wasWaiting && totalConfirmed < minRequiredTFs) {
+                            // Window doesn't have enough confirmations - mark as WAITING
+                            window.wasWaiting = true;
+                            try { shouldNotifyWindowEvent(window.id, 'WAITING'); } catch (_) {}
                         }
                     }
                 }

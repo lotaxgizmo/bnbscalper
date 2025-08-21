@@ -68,9 +68,9 @@ export const multiPivotConfig = {
             // '4h': 3,      // 🎯 OPTIMIZED: Wait up to 4 hours for 1h confirmation
             '4h': 230,      // 🎯 OPTIMIZED: Wait up to 4 hours for 1h confirmation
             '1h': 60,      // 🎯 OPTIMIZED: Wait up to 1 hours for 15m confirmation  
-            '15m': 60,     // 🎯 OPTIMIZED: Wait up to 2 hours for 1m confirmation
-            '5m': 15,       // 🎯 OPTIMIZED: Wait up to 30 minutes for 1m confirmation
-            '1m': 30        // 🎯 OPTIMIZED: Wait up to 30 minutes for final confirmation
+            '15m': 15,     // 🎯 OPTIMIZED: Wait up to 2 hours for 1m confirmation
+            '5m': 55,       // 🎯 OPTIMIZED: Wait up to 30 minutes for 1m confirmation
+            '1m': 1        // 🎯 OPTIMIZED: Wait up to 30 minutes for final confirmation
         },
         
         // Require all timeframes to confirm, or allow partial confirmation
