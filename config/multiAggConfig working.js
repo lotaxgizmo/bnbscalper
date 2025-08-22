@@ -86,11 +86,15 @@ export const multiPivotConfig = {
     cascadeSettings: {
         // How long to wait for confirmation from smaller timeframes (in minutes)
         confirmationWindow: {
-            '4h': 240,      // 🎯 OPTIMIZED: Wait up to 4 hours for 1h confirmation
-            '1h': 60,      // 🎯 OPTIMIZED: Wait up to 1 hours for 15m confirmation  
-            '15m': 60,     // 🎯 OPTIMIZED: Wait up to 2 hours for 1m confirmation
-            '5m': 15,       // 🎯 OPTIMIZED: Wait up to 30 minutes for 1m confirmation
-            '1m': 30        // 🎯 OPTIMIZED: Wait up to 30 minutes for final confirmation
+            // '4h': 3,
+            '4h': 230,
+            '20m': 20,
+            '10m': 10,
+            '1h': 60,  
+            '15m': 15,
+            '5m': 5,   
+            '3m': 2,
+            '1m': 1
         },
         
         // Require all timeframes to confirm, or allow partial confirmation

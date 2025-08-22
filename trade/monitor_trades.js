@@ -16,53 +16,7 @@ const latestPrices = new Map(); // symbol -> price
 let capital = { equity: 0, cash: 0, usedMargin: 0, realizedPnl: 0 };
 
 const MAX_CLOSED_TRADES = 20; // Keep last 20 closed trades
-
-// Path to trade logs
-const __dirname = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
-const TRADE_LOGS_PATH = path.join(__dirname, 'logs', 'sim_trades.jsonl');
-
-// Load trade history from log file
-function loadTradeHistory() {
-    try {
-        if (!fs.existsSync(TRADE_LOGS_PATH)) {
-            console.log('No trade history file found. Starting fresh.');
-            return;
-        }
-        
-        const logData = fs.readFileSync(TRADE_LOGS_PATH, 'utf8');
-        const lines = logData.trim().split('\n').filter(line => line.trim());
-        
-        // Parse each line and extract closed trades
-        const historicalTrades = [];
-        for (const line of lines) {
-            try {
-                const logEntry = JSON.parse(line);
-                if (logEntry.type === 'close' || logEntry.event === 'close') {
-                    const trade = logEntry.trade || logEntry;
-                    // Ensure we have the required fields
-                    if (trade.id && trade.symbol && trade.side) {
-                        historicalTrades.push({
-                            ...trade,
-                            closedTs: logEntry.ts || trade.exitTime || trade.closeTime || Date.now()
-                        });
-                    }
-                }
-            } catch (parseError) {
-                // Skip malformed lines
-                continue;
-            }
-        }
-        
-        // Keep only the most recent trades
-        const recentTrades = historicalTrades.slice(-MAX_CLOSED_TRADES);
-        closedTrades.push(...recentTrades);
-        
-        console.log(`Loaded ${recentTrades.length} historical trades from log file.`);
-        
-    } catch (error) {
-        console.error('Error loading trade history:', error.message);
-    }
-}
+const TRADES_LOG_PATH = path.join(process.cwd(), 'trade', 'logs', 'sim_trades.jsonl');
 
 function formatPnl(pnl) {
     const pnlNum = Number(pnl || 0);
@@ -92,6 +46,61 @@ function formatDuration(ms) {
     const s = totalSec % 60;
     const pad = (n) => String(n).padStart(2, '0');
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function loadTradeHistory() {
+    try {
+        if (!fs.existsSync(TRADES_LOG_PATH)) {
+            console.log('No trade history file found. Starting fresh.');
+            return;
+        }
+
+        const logData = fs.readFileSync(TRADES_LOG_PATH, 'utf8');
+        const lines = logData.trim().split('\n').filter(line => line.trim());
+        
+        // Parse each line and extract closed trades
+        const historicalTrades = [];
+        for (const line of lines) {
+            try {
+                const logEntry = JSON.parse(line);
+                
+                // Look for trade close events
+                if ((logEntry.type === 'close' || logEntry.event === 'close') && logEntry.trade) {
+                    const trade = logEntry.trade;
+                    
+                    // Normalize the trade data format
+                    const normalizedTrade = {
+                        id: trade.id,
+                        symbol: trade.symbol,
+                        side: trade.side,
+                        entryPrice: trade.entryPrice,
+                        exitPrice: trade.exitPrice,
+                        leverage: trade.leverage,
+                        openTs: trade.openTime || trade.openTs,
+                        closedTs: trade.exitTime || trade.closeTime || logEntry.ts,
+                        pnl: trade.netPnl || trade.pnl,
+                        pnlPct: trade.pnlPct,
+                        result: logEntry.reason || trade.closeReason || '—',
+                        usedMargin: trade.usedMargin
+                    };
+                    
+                    historicalTrades.push(normalizedTrade);
+                }
+            } catch (parseError) {
+                // Skip malformed lines
+                continue;
+            }
+        }
+        
+        // Keep only the most recent trades and add to closedTrades array
+        const recentTrades = historicalTrades.slice(-MAX_CLOSED_TRADES);
+        closedTrades.push(...recentTrades);
+        
+        console.log(`Loaded ${recentTrades.length} historical trades from log file.`);
+        
+    } catch (error) {
+        console.error('Error loading trade history:', error.message);
+    }
 }
 
 function displayTrades() {

@@ -9,61 +9,43 @@ export const multiPivotConfig = {
     // The system will cascade from largest to smallest timeframe
     timeframes: [
 
-        {
-            interval: '4h',
-            role: 'primary',   // Additional confirmation
-            minSwingPct: 0.5,   // Same settings for easy testing
-            lookback: 1,
-            minLegBars: 1,          // Same settings for easy testing
-            weight: 1,
-            opposite: false
-        },
-        
-
         // {
-        //     interval: '1h',
+        //     interval: '4h',
         //     role: 'primary',   // Additional confirmation
-        //     minSwingPct: 0.2,   // Same settings for easy testing
+        //     minSwingPct: 0.3,   // Same settings for easy testing
         //     lookback: 1,
         //     minLegBars: 1,          // Same settings for easy testing
         //     weight: 1,
-        //     opposite: true
+        //     opposite: false
         // },
+         
 
         {
-            interval: '2h',
-            role: 'secondary',   // Secondary confirmation (not primary)
-            minSwingPct: 0.16,   // Same settings for easy testing
-            lookback: 2,
-            minLegBars: 2,          // Same settings for easy testing
-            weight: 1,
-            opposite: false
-        },
- 
-        {
-            interval: '2m',
-            role: 'execution',      // Final execution timeframe
-            minSwingPct: 0.02,       // Same settings for easy testing
+            interval: '3m',
+            role: 'primary',   // Additional confirmation
+            minSwingPct: 0.001,   // Same settings for easy testing
             lookback: 1,
             minLegBars: 1,          // Same settings for easy testing
             weight: 1,
             opposite: false
         },
+
+
         {
             interval: '1m',
             role: 'execution',      // Final execution timeframe
-            minSwingPct: 0.03,       // Same settings for easy testing
-            lookback: 3,
-            minLegBars: 2,          // Same settings for easy testing
+            minSwingPct: 0.001,       // Same settings for easy testing
+            lookback: 1,
+            minLegBars: 1,          // Same settings for easy testing
             weight: 1,
             opposite: false
-        },
+        }
     ],
     
     // Cascade confirmation settings
     cascadeSettings: {
-        minTimeframesRequired: 4,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         // How long to wait for confirmation from smaller timeframes (in minutes)
+        minTimeframesRequired: 2,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         confirmationWindow: {
             // '4h': 3,
             '4h': 230,
@@ -250,7 +232,7 @@ export const loadPreset = (presetName) => {
     if (!preset) {
         throw new Error(`Preset '${presetName}' not found. Available presets: ${Object.keys(multiPivotPresets).join(', ')}`);
     }
-    
+
     return {
         ...multiPivotConfig,
         ...preset

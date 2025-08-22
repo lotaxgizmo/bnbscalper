@@ -18,18 +18,6 @@ export const multiPivotConfig = {
             weight: 1,
             opposite: false
         },
-        
- 
-        // {
-        //     interval: '1h',
-        //     role: 'primary',   // Additional confirmation
-        //     minSwingPct: 0,   // Same settings for easy testing
-        //     lookback: 3,
-        //     minLegBars: 1,          // Same settings for easy testing
-        //     weight: 1,
-        //     opposite: true
-        // },
-
 
         {
             interval: '2h',
@@ -57,12 +45,15 @@ export const multiPivotConfig = {
         // How long to wait for confirmation from smaller timeframes (in minutes)
         minTimeframesRequired: 3,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         confirmationWindow: {
-            // '4h': 3,      // 🎯 OPTIMIZED: Wait up to 4 hours for 1h confirmation
-            '4h': 230,      // 🎯 OPTIMIZED: Wait up to 4 hours for 1h confirmation
-            '1h': 60,      // 🎯 OPTIMIZED: Wait up to 1 hours for 15m confirmation  
-            '15m': 15,     // 🎯 OPTIMIZED: Wait up to 2 hours for 1m confirmation
-            '5m': 55,       // 🎯 OPTIMIZED: Wait up to 30 minutes for 1m confirmation
-            '1m': 1        // 🎯 OPTIMIZED: Wait up to 30 minutes for final confirmation
+            // '4h': 3,
+            '4h': 230,
+            '20m': 20,
+            '10m': 10,
+            '1h': 60,  
+            '15m': 15,
+            '5m': 5,   
+            '3m': 2,
+            '1m': 1
         },
         
         // Require all timeframes to confirm, or allow partial confirmation

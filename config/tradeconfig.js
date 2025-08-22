@@ -18,8 +18,8 @@ export const tradeConfig = {
     takeProfit: 0.9,
     stopLoss: 0.3,
     // leverage: 100,        
-    leverage: 1,        
-    
+    leverage: 100,        
+
     // Flip mode: close opposite and switch to new confirmed signal 
     // switchOnOppositeSignal: true,       
     switchOnOppositeSignal: false,       
@@ -73,11 +73,11 @@ export const tradeConfig = {
     // Order settings
     orderDistancePct: 50,     // Percentage of average move to use for order placement (50 = half the distance)
     cancelThresholdPct: 100,   // Percentage of average swing to use for order cancellation (100 = same as average)
-    
+
 
     // Trading fees
     totalMakerFee: 0.06, // 0.04% maker fee
-    
+
     // Funding rate simulation (for perpetual futures)
     enableFundingRate: false,     // Enable/disable funding rate simulation
     fundingRateHours: 8,         // Funding rate charged every X hours (8 for most exchanges)
