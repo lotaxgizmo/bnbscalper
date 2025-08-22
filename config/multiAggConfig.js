@@ -12,7 +12,7 @@ export const multiPivotConfig = {
         {
             interval: '4h',
             role: 'primary',   // Additional confirmation
-            minSwingPct: 0.3,   // Same settings for easy testing
+            minSwingPct: 0.6,   // Same settings for easy testing
             lookback: 1,
             minLegBars: 1,          // Same settings for easy testing
             weight: 1,
