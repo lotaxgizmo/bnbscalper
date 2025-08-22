@@ -11,8 +11,8 @@ const BACKTEST_CONFIG = {
     useLiveAPI: false,           // Force API data
     // maxCandles: 129600,        // 1 week of 1m candles for testing
     // maxCandles: 86400,        // 1 week of 1m candles for testing
-    // maxCandles: 43200,        // 1 week of 1m candles for testing
-    maxCandles: 20160,          // 1 week of 1m candles for testing
+    maxCandles: 43200,        // 1 week of 1m candles for testing
+    // maxCandles: 20160,          // 1 week of 1m candles for testing
     // maxCandles: 20160,          // 1 week of 1m candles for testing
 
     // Output settings
