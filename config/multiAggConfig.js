@@ -23,7 +23,7 @@ export const multiPivotConfig = {
 
         {
             interval: '2h',
-            role: 'execution',   // Additional confirmation
+            role: 'secondary',   // Additional confirmation
             minSwingPct: 0.3,   // Same settings for easy testing
             lookback: 2,
             minLegBars: 2,          // Same settings for easy testing
@@ -48,7 +48,7 @@ export const multiPivotConfig = {
         minTimeframesRequired: 3,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         confirmationWindow: {
             // '4h': 3,
-            '4h': 230,
+            '4h': 60,
             '20m': 20,
             '10m': 10,
             '1h': 60,  
