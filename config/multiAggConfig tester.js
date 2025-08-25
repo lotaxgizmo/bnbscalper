@@ -8,33 +8,21 @@ export const multiPivotConfig = {
     // Timeframes to analyze (in hierarchical order - largest to smallest)
     // The system will cascade from largest to smallest timeframe
     timeframes: [
-
-        // {
-        //     interval: '4h',
-        //     role: 'primary',   // Additional confirmation
-        //     minSwingPct: 0.3,   // Same settings for easy testing
-        //     lookback: 1,
-        //     minLegBars: 1,          // Same settings for easy testing
-        //     weight: 1,
-        //     opposite: false
-        // },
-         
-
+ 
         {
             interval: '3m',
             role: 'primary',   // Additional confirmation
-            minSwingPct: 0.001,   // Same settings for easy testing
+            minSwingPct: 0,   // Same settings for easy testing
             lookback: 1,
             minLegBars: 1,          // Same settings for easy testing
             weight: 1,
             opposite: false
         },
 
-
         {
             interval: '1m',
             role: 'execution',      // Final execution timeframe
-            minSwingPct: 0.001,       // Same settings for easy testing
+            minSwingPct: 0,       // Same settings for easy testing
             lookback: 1,
             minLegBars: 1,          // Same settings for easy testing
             weight: 1,
@@ -48,8 +36,8 @@ export const multiPivotConfig = {
         minTimeframesRequired: 2,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         confirmationWindow: {
             // '4h': 3,
-            '4h': 230,
-            '20m': 20,
+            '4h': 60,
+            '2h': 60,
             '10m': 10,
             '1h': 60,  
             '15m': 15,
@@ -59,7 +47,7 @@ export const multiPivotConfig = {
         },
         
         // Require all timeframes to confirm, or allow partial confirmation
-        requireAllTimeframes: false,  // 🔧 RELAXED: Allow partial confirmation
+        requireAllTimeframes: true,  // 🔧 RELAXED: Allow partial confirmation
         
         // If partial confirmation allowed, minimum number of timeframes needed
         
@@ -232,7 +220,7 @@ export const loadPreset = (presetName) => {
     if (!preset) {
         throw new Error(`Preset '${presetName}' not found. Available presets: ${Object.keys(multiPivotPresets).join(', ')}`);
     }
-
+    
     return {
         ...multiPivotConfig,
         ...preset

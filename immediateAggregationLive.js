@@ -25,7 +25,7 @@ const SNAPSHOT_CONFIG = {
 
     showTelegramCascades: true,
     showBuildLogs: false,           // Verbose logs when building aggregated candles and pivots
-    showPriceDebug: true,          // Show detailed candle selection debug for current price
+    showPriceDebug: false,          // Show detailed candle selection debug for current price
 
     // Auto-reload configuration
     autoReload: true,               // Enable auto-reload functionality
@@ -38,6 +38,9 @@ const SNAPSHOT_CONFIG = {
     
     // Cascade window management
     signalTimeWindow: 1 * 60 * 1000, // Signal grouping window in milliseconds (1 minute)
+    
+    // Cascade serial registry cleanup
+    cascadeSerialCleanupDays: 7,    // Days to keep cascade serials before cleanup (prevents old cascade re-triggers)
     
 };
 
@@ -64,6 +67,45 @@ const __dirname = path.dirname(__filename);
 // Window lifecycle-based deduplication to prevent spam
 const TELEGRAM_DEDUP_CACHE = new Map(); // key -> lastSentTs
 const WINDOW_LIFECYCLE_CACHE = new Map(); // windowId -> {opened: bool, executed: bool, executionTime: number}
+const CASCADE_SERIAL_REGISTRY = new Map(); // serialNumber -> {notified: bool, states: Set} - Permanent registry to prevent old cascades
+
+// Generate unique serial number for cascade window based on primary pivot timestamp
+function generateCascadeSerial(primaryPivotTime, signal, price) {
+    // Create unique serial: timestamp + signal + price (rounded to cents)
+    const priceKey = Math.round(price * 100);
+    return `${primaryPivotTime}_${signal}_${priceKey}`;
+}
+
+// Check if cascade serial has already been processed for any notification state
+function isCascadeSerialProcessed(serialNumber, state) {
+    const registry = CASCADE_SERIAL_REGISTRY.get(serialNumber);
+    if (!registry) return false;
+    return registry.states.has(state);
+}
+
+// Mark cascade serial as processed for a specific state
+function markCascadeSerialProcessed(serialNumber, state) {
+    let registry = CASCADE_SERIAL_REGISTRY.get(serialNumber);
+    if (!registry) {
+        registry = { notified: false, states: new Set() };
+        CASCADE_SERIAL_REGISTRY.set(serialNumber, registry);
+    }
+    registry.states.add(state);
+    registry.notified = true;
+    
+    // Cleanup old serials (configurable days) to prevent memory bloat
+    if (CASCADE_SERIAL_REGISTRY.size > 10000) {
+        const cleanupDaysMs = (SNAPSHOT_CONFIG.cascadeSerialCleanupDays || 7) * 24 * 60 * 60 * 1000;
+        const cutoffTime = Date.now() - cleanupDaysMs;
+        for (const [serial, data] of CASCADE_SERIAL_REGISTRY) {
+            const timestamp = parseInt(serial.split('_')[0]);
+            if (timestamp < cutoffTime) {
+                CASCADE_SERIAL_REGISTRY.delete(serial);
+            }
+            if (CASCADE_SERIAL_REGISTRY.size <= 5000) break;
+        }
+    }
+}
 
 function shouldSendTelegram(key) {
     const ttlMs = ((SNAPSHOT_CONFIG?.telegramDedupSeconds ?? 3600) * 1000); // default 1h
@@ -268,6 +310,20 @@ function sendTerminalStatusNotification(window, statusText, currentTime) {
     if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
     if (window.id === 'W0') return; // Skip W0
     
+    // CRITICAL: Check cascade serial to prevent old cascades from re-triggering
+    const cascadeSerial = generateCascadeSerial(window.primaryPivot.time, window.primaryPivot.signal, window.primaryPivot.price);
+    const stateMap = {
+        'READY TO EXECUTE': 'READY_TO_EXECUTE',
+        'CASCADE INVALID': 'EXECUTED',
+        'EXECUTE': 'READY_TO_EXECUTE'
+    };
+    const serialState = stateMap[statusText] || statusText;
+    
+    if (isCascadeSerialProcessed(cascadeSerial, serialState)) {
+        // This cascade has already been processed for this state - block it
+        return;
+    }
+    
     const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
     const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
     const totalConfirmations = 1 + window.confirmations.length;
@@ -329,6 +385,8 @@ function sendTerminalStatusNotification(window, statusText, currentTime) {
     }
     
     if (message) {
+        // Mark this cascade serial as processed for the terminal status state
+        markCascadeSerialProcessed(cascadeSerial, serialState);
         telegramNotifier.sendMessage(message);
     }
 }
@@ -365,6 +423,13 @@ function notifySnapshotStates(states, currentTime, windowManager) {
     states.forEach(s => {
         // Skip W0 - it represents historical cascade from startup
         if (s.id === 'W0') return;
+        
+        // CRITICAL: Check cascade serial to prevent old cascades from re-triggering
+        const cascadeSerial = generateCascadeSerial(s.time || Date.now(), s.signal, s.price);
+        if (isCascadeSerialProcessed(cascadeSerial, s.mode)) {
+            // This cascade has already been processed for this mode - block it
+            return;
+        }
         
         // Debug each state
         // console.log(`\n[DEBUG] Processing state ID: ${s.id}, mode: ${s.mode}`);
@@ -552,6 +617,8 @@ function notifySnapshotStates(states, currentTime, windowManager) {
         
         if (shouldNotify && message) {
             if (shouldSendTelegram(dedupKey)) {
+                // Mark this cascade serial as processed for the current mode
+                markCascadeSerialProcessed(cascadeSerial, s.mode);
                 telegramNotifier.sendMessage(message);
             }
         }
@@ -1253,6 +1320,13 @@ class CascadeWindowManager {
         // Skip W0 - it represents historical cascade from startup
         if (window.id === 'W0') return;
         
+        // CRITICAL: Check cascade serial to prevent old cascades from re-triggering
+        const cascadeSerial = generateCascadeSerial(window.primaryPivot.time, window.primaryPivot.signal, window.primaryPivot.price);
+        if (isCascadeSerialProcessed(cascadeSerial, 'READY_TO_EXECUTE')) {
+            // This cascade has already sent READY_TO_EXECUTE notification - block it
+            return;
+        }
+        
         // For live mode, always send notifications for ready windows
         // The real-time filter was blocking legitimate notifications
         
@@ -1283,6 +1357,8 @@ class CascadeWindowManager {
         const dedupKey = `READY_TO_EXECUTE|${direction}|p${priceKey}|t${executionMinute}|${window.id}`;
         
         if (shouldNotifyWindowEvent(window.id, 'READY_TO_EXECUTE') && shouldSendTelegram(dedupKey)) {
+            // Mark this cascade serial as processed for READY_TO_EXECUTE state
+            markCascadeSerialProcessed(cascadeSerial, 'READY_TO_EXECUTE');
             telegramNotifier.sendMessage(message);
         }
     }
@@ -1292,6 +1368,13 @@ class CascadeWindowManager {
         
         // Skip W0 - it represents historical cascade from startup
         if (window.id === 'W0') return;
+        
+        // CRITICAL: Check cascade serial to prevent old cascades from re-triggering
+        const cascadeSerial = generateCascadeSerial(window.primaryPivot.time, window.primaryPivot.signal, window.primaryPivot.price);
+        if (isCascadeSerialProcessed(cascadeSerial, 'EXECUTED')) {
+            // This cascade has already sent EXECUTED notification - block it
+            return;
+        }
         
         // For live mode, always send notifications for executed windows
         // The real-time filter was blocking legitimate notifications
@@ -1327,6 +1410,8 @@ class CascadeWindowManager {
         const execPriceKey = Math.round((executionPrice || 0) * 100);
         const dedupKey = `EXECUTED|${direction}|p${execPriceKey}|t${executionMinute}`;
         if (shouldNotifyWindowEvent(window.id, 'EXECUTED', window.executionTime) && shouldSendTelegram(dedupKey)) {
+            // Mark this cascade serial as processed for EXECUTED state
+            markCascadeSerialProcessed(cascadeSerial, 'EXECUTED');
             telegramNotifier.sendMessage(message);
         }
     }
@@ -1336,6 +1421,13 @@ class CascadeWindowManager {
         
         // Skip W0 - it represents historical cascade from startup
         if (window.id === 'W0') return;
+        
+        // CRITICAL: Check cascade serial to prevent old cascades from re-triggering
+        const cascadeSerial = generateCascadeSerial(window.primaryPivot.time, window.primaryPivot.signal, window.primaryPivot.price);
+        if (isCascadeSerialProcessed(cascadeSerial, 'EXPIRED')) {
+            // This cascade has already sent EXPIRED notification - block it
+            return;
+        }
         
         // CRITICAL FIX: Only send expired notifications for windows that were in WAITING state
         const lifecycle = WINDOW_LIFECYCLE_CACHE.get(window.id);
@@ -1392,6 +1484,8 @@ class CascadeWindowManager {
         const priceKey = Math.round((window.primaryPivot.price || 0) * 100);
         const dedupKey = `EXPIRED|${expiredDirection}|p${priceKey}|t${expiredMinute}`;
         if (shouldNotifyWindowEvent(window.id, 'EXPIRED') && shouldSendTelegram(dedupKey)) {
+            // Mark this cascade serial as processed for EXPIRED state
+            markCascadeSerialProcessed(cascadeSerial, 'EXPIRED');
             telegramNotifier.sendMessage(message);
         }
     }

@@ -11,9 +11,9 @@ const BACKTEST_CONFIG = {
     useLiveAPI: false,           // Force API data
     // maxCandles: 129600,        // 1 week of 1m candles for testing
     // maxCandles: 86400,        // 1 week of 1m candles for testing
-    maxCandles: 43200,        // 1 week of 1m candles for testing
-    // maxCandles: 20160,          // 1 week of 1m candles for testing
-    // maxCandles: 20160,          // 1 week of 1m candles for testing
+    // maxCandles: 43200,        // 1 week of 1m candles for testing
+    maxCandles: 20160,          // 1 week of 1m candles for testing
+    // maxCandles: 10080,          // 1 week of 1m candles for testing
 
     // Output settings
     showEveryNthTrade: 1,       // Show every Nth trade
@@ -135,12 +135,19 @@ async function load1mCandles() {
         }).sort((a, b) => a.time - b.time);
         
         const limitedCandles = candles.slice(-BACKTEST_CONFIG.maxCandles);
+        const firstCandle = limitedCandles[0];
+        const lastCandle = limitedCandles[limitedCandles.length - 1];
         console.log(`${colors.green}Loaded ${limitedCandles.length} 1m candles from CSV${colors.reset}`);
+        console.log(`${colors.cyan}Data Range: ${formatDualTime(firstCandle.time)} → ${formatDualTime(lastCandle.time)}${colors.reset}`);
         return limitedCandles;
     } else {
         const candles = await getCandles(symbol, '1m', BACKTEST_CONFIG.maxCandles);
+        const sortedCandles = candles.sort((a, b) => a.time - b.time);
+        const firstCandle = sortedCandles[0];
+        const lastCandle = sortedCandles[sortedCandles.length - 1];
         console.log(`${colors.green}Loaded ${candles.length} 1m candles from API${colors.reset}`);
-        return candles.sort((a, b) => a.time - b.time);
+        console.log(`${colors.cyan}Data Range: ${formatDualTime(firstCandle.time)} → ${formatDualTime(lastCandle.time)}${colors.reset}`);
+        return sortedCandles;
     }
 }
 
@@ -985,7 +992,8 @@ async function runImmediateAggregationBacktest() {
                                             const timeStr = formatDualTime(t.exitTime);
                                             const pnlColor = t.pnl >= 0 ? colors.green : colors.red;
                                             const pnlText = `${pnlColor}${t.pnl >= 0 ? '+' : ''}${formatNumberWithCommas(t.pnl)}${colors.reset}`;
-                                            console.log(`  \x1b[35;1m└─> [CASCADE FLIP ${oppositeSignalCounts[tradeType]}/${flipThreshold}] ${t.type.toUpperCase()} trade closed @ ${timeStr} | ${t.exitPrice}. PnL: ${pnlText}${colors.reset}`);
+                                            const actionText = tradeConfig.switchPolicy === 'flip' ? 'FLIP' : 'CLOSE';
+                                            console.log(`  \x1b[35;1m└─> [CASCADE ${actionText} ${oppositeSignalCounts[oppositeType]}/${flipThreshold}] ${t.type.toUpperCase()} trade closed @ ${timeStr} | ${t.exitPrice}. PnL: ${pnlText}${colors.reset}`);
                                             console.log('--------------------------------------------------------------------------------');
                                         }
                                     }
@@ -994,7 +1002,8 @@ async function runImmediateAggregationBacktest() {
                             } else {
                                 // Not enough opposite signals yet - skip opening new trade
                                 if (tradeConfig.showTradeDetails) {
-                                    console.log(`  ${colors.yellow}└─> [CASCADE WAITING] ${tradeType.toUpperCase()} signal ${oppositeSignalCounts[tradeType]}/${flipThreshold} - need ${flipThreshold - oppositeSignalCounts[tradeType]} more opposite signals to flip${colors.reset}`);
+                                    const actionText = tradeConfig.switchPolicy === 'flip' ? 'flip' : 'close opposite';
+                                    console.log(`  ${colors.yellow}└─> [CASCADE WAITING] ${tradeType.toUpperCase()} signal ${oppositeSignalCounts[oppositeType]}/${flipThreshold} - need ${flipThreshold - oppositeSignalCounts[oppositeType]} more opposite signals to ${actionText}${colors.reset}`);
                                 }
                                 // Remove executed window and continue
                                 pendingWindows.splice(w, 1);
@@ -1043,7 +1052,7 @@ async function runImmediateAggregationBacktest() {
                             });
                             const execDelayMin = Math.round((executionTime - win.primaryPivot.time) / (60 * 1000));
                             const executionTimeStr = formatDualTime(executionTime);
-                            console.log(`${colors.yellow}   Execution: ${(1 + confs.length)}/${multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3} TFs confirmed → Execute ${execDelayMin === 0 ? 'immediately' : `after ${execDelayMin}m`} @ ${executionTimeStr}${colors.reset}`);
+                            console.log(`${colors.yellow}   Execution: ${confs.length}/${multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3} TFs confirmed → Execute ${execDelayMin === 0 ? 'immediately' : `after ${execDelayMin}m`} @ ${executionTimeStr}${colors.reset}`);
                             console.log(`${colors.cyan}   Entry Price: $${trade.entryPrice.toFixed(2)} | Size: $${formatNumberWithCommas(trade.tradeSize)} | TP: $${trade.takeProfitPrice.toFixed(2)} | SL: $${trade.stopLossPrice.toFixed(2)}${colors.reset}`);
                         }
 
@@ -1118,6 +1127,7 @@ async function runImmediateAggregationBacktest() {
             
             let shouldTrade = false;
             let confirmations = [];
+            let immediateConfirmations = null; // Store confirmations for immediate execution logging
             
             if (BACKTEST_CONFIG.tradingMode === 'pivot') {
                 // Trade individual pivots
@@ -1295,6 +1305,38 @@ async function runImmediateAggregationBacktest() {
                         })(), actualEntryTime, primaryInterval, entryPriceOverride);
                         openTrades.push(trade);
                         allTrades.push(trade);
+                        
+                        // Add cascade logging for immediate execution path
+                        if (!tradeConfig.hideCascades && BACKTEST_CONFIG.tradingMode === 'cascade') {
+                            const primaryTime12 = formatDualTime(currentTime);
+                            const confirmingTFs = confsNow.map(c => c.timeframe).join(', ');
+                            console.log(`${colors.green}🎯 CASCADE #${confirmedSignals} CONFIRMED: ${currentPivot.signal.toUpperCase()}${colors.reset}`);
+                            console.log(`${colors.cyan}   Primary: ${primaryTime12} | Strength: ${(currentPivot.swingPct || 0).toFixed(1)}% | Confirming TFs: ${confirmingTFs}${colors.reset}`);
+                            
+                            // Show detailed confirmation timestamps
+                            console.log(`${colors.dim}   Confirmation Details:${colors.reset}`);
+                            console.log(`${colors.dim}     • Primary TF: ${primaryTf.interval} @ ${formatDualTime(currentTime)}${colors.reset}`);
+                            confsNow.forEach(conf => {
+                                const confTime = formatDualTime(conf.pivot.time);
+                                const timeDiff = Math.round((conf.pivot.time - currentTime) / (60 * 1000));
+                                const timeDiffStr = timeDiff === 0 ? 'same time' : (timeDiff > 0 ? `+${timeDiff}m` : `${timeDiff}m`);
+                                console.log(`${colors.dim}     • ${conf.timeframe}: @ ${confTime} (${timeDiffStr})${colors.reset}`);
+                            });
+                            
+                            // Determine execution trigger
+                            const totalTFs = confsNow.length;
+                            const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
+                            const executionTime = Math.max(currentTime, ...confsNow.map(c => c.pivot.time));
+                            const executionTimeStr = formatDualTime(executionTime);
+                            const executionDelay = Math.round((executionTime - currentTime) / (60 * 1000));
+                            const executionDelayStr = executionDelay === 0 ? 'immediately' : `after ${executionDelay}m`;
+                            
+                            console.log(`${colors.yellow}   Execution: ${totalTFs}/${minRequired} TFs confirmed → Execute ${executionDelayStr} @ ${executionTimeStr}${colors.reset}`);
+                            console.log(`${colors.cyan}   Entry Price: $${trade.entryPrice.toFixed(2)} | Size: $${formatNumberWithCommas(trade.tradeSize)} | TP: $${trade.takeProfitPrice.toFixed(2)} | SL: $${trade.stopLossPrice.toFixed(2)}${colors.reset}`);
+                        }
+                        
+                        // Store confirmations for logging
+                        immediateConfirmations = confsNow;
                         // Remove window immediately to avoid duplicate
                         pendingWindows.pop();
                     }
@@ -1353,9 +1395,10 @@ async function runImmediateAggregationBacktest() {
                     oppositeSignalCounts.short = 0;
                 }
 
-                // Decide flipping logic based on threshold
+                // Decide switch logic based on threshold
                 if (hasOppositeOpen && tradeConfig.switchOnOppositeSignal) {
-                    if (oppositeSignalCounts[candidateTradeType] >= flipThreshold) {
+                    const oppositeType = candidateTradeType === 'LONG' ? 'SHORT' : 'LONG';
+                    if (oppositeSignalCounts[oppositeType] >= flipThreshold) {
                         // Perform flip: close opposite trades at 1m close of currentTime
                         let switchExitPrice = null;
                         const switchIdx = oneMinuteTimeMap.get(currentTime);
@@ -1407,18 +1450,28 @@ async function runImmediateAggregationBacktest() {
                                     const timeStr = formatDualTime(t.exitTime);
                                     const pnlColor = t.pnl >= 0 ? colors.green : colors.red;
                                     const pnlText = `${pnlColor}${t.pnl >= 0 ? '+' : ''}${formatNumberWithCommas(t.pnl)}${colors.reset}`;
-                                    console.log(`  \x1b[35;1m└─> [FLIP ${oppositeSignalCounts[candidateTradeType]}/${flipThreshold}] ${t.type.toUpperCase()} trade closed @ ${timeStr} | ${t.exitPrice}. PnL: ${pnlText}${colors.reset}`);
+                                    const actionText = tradeConfig.switchPolicy === 'flip' ? 'FLIP' : 'CLOSE';
+                                    console.log(`  \x1b[35;1m└─> [${actionText} ${oppositeSignalCounts[oppositeType]}/${flipThreshold}] ${t.type.toUpperCase()} trade closed @ ${timeStr} | ${t.exitPrice}. PnL: ${pnlText}${colors.reset}`);
                                     console.log('--------------------------------------------------------------------------------');
                                 }
                             }
                             
-                            // Reset counter after successful flip
-                            oppositeSignalCounts[candidateTradeType] = 0;
+                            // Reset counter after successful switch
+                            oppositeSignalCounts[oppositeType] = 0;
+                            
+                            // For 'close' policy, skip opening new trade
+                            if (tradeConfig.switchPolicy === 'close') {
+                                if (tradeConfig.showTradeDetails) {
+                                    console.log(`  ${colors.yellow}└─> [CLOSE POLICY] Opposite trades closed, skipping new ${candidateTradeType.toUpperCase()} trade${colors.reset}`);
+                                }
+                                continue; // Skip to next cascade
+                            }
                         }
                     } else {
                         // Not enough opposite signals yet - skip opening new trade
                         if (tradeConfig.showTradeDetails) {
-                            console.log(`  ${colors.yellow}└─> [WAITING] ${candidateTradeType.toUpperCase()} signal ${oppositeSignalCounts[candidateTradeType]}/${flipThreshold} - need ${flipThreshold - oppositeSignalCounts[candidateTradeType]} more opposite signals to flip${colors.reset}`);
+                            const actionText = tradeConfig.switchPolicy === 'flip' ? 'flip' : 'close opposite';
+                            console.log(`  ${colors.yellow}└─> [WAITING] ${candidateTradeType.toUpperCase()} signal ${oppositeSignalCounts[oppositeType]}/${flipThreshold} - need ${flipThreshold - oppositeSignalCounts[oppositeType]} more opposite signals to ${actionText}${colors.reset}`);
                         }
                         continue; // Skip to next iteration
                     }
@@ -1496,16 +1549,16 @@ async function runImmediateAggregationBacktest() {
                     openTrades.push(trade);
                     allTrades.push(trade);
                     
-                    if (!tradeConfig.hideCascades && BACKTEST_CONFIG.tradingMode === 'cascade' && confirmations.length > 0) {
+                    if (!tradeConfig.hideCascades && BACKTEST_CONFIG.tradingMode === 'cascade' && immediateConfirmations) {
                         const primaryTime12 = formatDualTime(currentTime);
-                        const confirmingTFs = confirmations.map(c => c.timeframe).join(', ');
+                        const confirmingTFs = immediateConfirmations.map(c => c.timeframe).join(', ');
                         console.log(`${colors.green}🎯 CASCADE #${confirmedSignals} CONFIRMED: ${currentPivot.signal.toUpperCase()}${colors.reset}`);
                         console.log(`${colors.cyan}   Primary: ${primaryTime12} | Strength: ${(currentPivot.swingPct || 0).toFixed(1)}% | Confirming TFs: ${confirmingTFs}${colors.reset}`);
                         
                         // Show detailed confirmation timestamps
                         console.log(`${colors.dim}   Confirmation Details:${colors.reset}`);
                         console.log(`${colors.dim}     • Primary TF: ${primaryTf.interval} @ ${formatDualTime(currentTime)}${colors.reset}`);
-                        confirmations.forEach(conf => {
+                        immediateConfirmations.forEach(conf => {
                             const confTime = formatDualTime(conf.pivot.time);
                             const timeDiff = Math.round((conf.pivot.time - currentTime) / (60 * 1000));
                             const timeDiffStr = timeDiff === 0 ? 'same time' : (timeDiff > 0 ? `+${timeDiff}m` : `${timeDiff}m`);
@@ -1513,9 +1566,9 @@ async function runImmediateAggregationBacktest() {
                         });
                         
                         // Determine execution trigger
-                        const totalTFs = 1 + confirmations.length; // primary + confirmations
+                        const totalTFs = immediateConfirmations.length; // confirmations include all timeframes
                         const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
-                        const executionTime = Math.max(currentTime, ...confirmations.map(c => c.pivot.time));
+                        const executionTime = Math.max(currentTime, ...immediateConfirmations.map(c => c.pivot.time));
                         const executionTimeStr = formatDualTime(executionTime);
                         const executionDelay = Math.round((executionTime - currentTime) / (60 * 1000));
                         const executionDelayStr = executionDelay === 0 ? 'immediately' : `after ${executionDelay}m`;

@@ -87,8 +87,8 @@ export const multiPivotConfig = {
         // How long to wait for confirmation from smaller timeframes (in minutes)
         confirmationWindow: {
             // '4h': 3,
-            '4h': 230,
-            '20m': 20,
+            '4h': 60,
+            '2h': 60,
             '10m': 10,
             '1h': 60,  
             '15m': 15,

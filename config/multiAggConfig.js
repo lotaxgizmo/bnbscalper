@@ -49,7 +49,7 @@ export const multiPivotConfig = {
         confirmationWindow: {
             // '4h': 3,
             '4h': 60,
-            '20m': 20,
+            '2h': 60,
             '10m': 10,
             '1h': 60,  
             '15m': 15,
@@ -59,7 +59,7 @@ export const multiPivotConfig = {
         },
         
         // Require all timeframes to confirm, or allow partial confirmation
-        requireAllTimeframes: false,  // 🔧 RELAXED: Allow partial confirmation
+        requireAllTimeframes: true,  // 🔧 RELAXED: Allow partial confirmation
         
         // If partial confirmation allowed, minimum number of timeframes needed
         
