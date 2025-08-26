@@ -17,18 +17,18 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '4h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.1, end: 0.6, step: 0.1 },
-                lookbackRange: { start: 1, end: 5, step: 1 },
-                minLegBarsRange: { start: 1, end: 5, step: 1 },               
+                minSwingPctRange: { start: 0.1, end: 0.4, step: 0.1 },
+                lookbackRange: { start: 1, end: 4, step: 1 },
+                minLegBarsRange: { start: 1, end: 4, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
             {
                 interval: '2h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.1, end: 0.2, step: 0.1 },
-                lookbackRange: { start: 1, end: 5, step: 1 },
-                minLegBarsRange: { start: 1, end: 5, step: 1 },               
+                minSwingPctRange: { start: 0.1, end: 0.4, step: 0.1 },
+                lookbackRange: { start: 1, end: 4, step: 1 },
+                minLegBarsRange: { start: 1, end: 4, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
