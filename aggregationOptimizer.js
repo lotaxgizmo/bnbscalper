@@ -5,9 +5,9 @@ import {
     symbol,
     useLocalData,
     pivotDetectionMode
-} from './config bnb/config.js';
+} from './config/config.js';
 
-import { tradeConfig } from './config bnb/tradeconfig.js';
+import { tradeConfig } from './config/tradeconfig.js';
 import { getCandles } from './apis/bybit.js';
 import fs from 'fs';
 import path from 'path';

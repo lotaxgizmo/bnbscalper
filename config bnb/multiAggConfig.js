@@ -8,28 +8,26 @@ export const multiPivotConfig = {
     // Timeframes to analyze (in hierarchical order - largest to smallest)
     // The system will cascade from largest to smallest timeframe
     timeframes: [
-        
+
+        {
+            interval: '4h',
+            role: 'primary',   // Additional confirmation
+            minSwingPct: 0.1,   // Same settings for easy testing
+            lookback: 1,
+            minLegBars: 1,          // Same settings for easy testing
+            weight: 1,
+            opposite: false
+        },
+
         // {
-        //     interval: '4h',
-        //     role: 'primary',   // Additional confirmation
-        //     minSwingPct: 0.4,   // Same settings for easy testing
+        //     interval: '1h',
+        //     role: 'secondary',   // Additional confirmation
+        //     minSwingPct: 0.2,   // Same settings for easy testing
         //     lookback: 1,
         //     minLegBars: 2,          // Same settings for easy testing
         //     weight: 1,
         //     opposite: false
         // },
-        
- 
-
-        {
-            interval: '2h',
-            role: 'primary',   // Secondary confirmation (not primary)
-            minSwingPct: 0.36,   // Same settings for easy testing
-            lookback: 2,
-            minLegBars: 3,          // Same settings for easy testing
-            weight: 1,
-            opposite: true
-        },
  
         // {
         //     interval: '2m',
@@ -39,18 +37,9 @@ export const multiPivotConfig = {
         //     minLegBars: 3,          // Same settings for easy testing
         //     weight: 1,
         //     opposite: false
-        // },
-        // {
-        //     interval: '1m',
-        //     role: 'execution',      // Final execution timeframe
-        //     minSwingPct: 0.2,       // Same settings for easy testing
-        //     lookback: 1,
-        //     minLegBars: 1,          // Same settings for easy testing
-        //     weight: 1,
-        //     opposite: false
-        // },
+        // }
     ],
-
+    
     // Cascade confirmation settings
     cascadeSettings: {
         minTimeframesRequired: 1,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)

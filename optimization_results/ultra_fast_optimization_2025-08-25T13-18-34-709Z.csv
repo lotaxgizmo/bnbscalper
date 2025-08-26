@@ -1,0 +1,4 @@
+Rank,TotalReturn%,WinRate%,TotalTrades,FinalCapital,MaxDrawdown%,AvgTradeReturn%,PivotCount,TimeframeMinutes,Lookback,MinSwingPct,MinLegBars,TakeProfit%,StopLoss%,Leverage,TradeDirection
+1,-1.10,38.9,36,98.90,4.46,0.09,76,240,1,0.1,1,0.9,0.4,1,long
+2,-3.19,35.0,40,96.81,5.11,0.04,76,240,1,0.1,1,0.9,0.4,1,short
+3,-4.26,36.8,76,95.74,6.37,0.06,76,240,1,0.1,1,0.9,0.4,1,both
