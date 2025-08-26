@@ -12,44 +12,68 @@ export const multiPivotConfig = {
         {
             interval: '4h',
             role: 'primary',   // Additional confirmation
-            minSwingPct: 0.1,   // Same settings for easy testing
+            minSwingPct: 0.5,   // Same settings for easy testing
             lookback: 1,
             minLegBars: 1,          // Same settings for easy testing
             weight: 1,
             opposite: false
         },
+        
 
         // {
         //     interval: '1h',
-        //     role: 'secondary',   // Additional confirmation
+        //     role: 'primary',   // Additional confirmation
         //     minSwingPct: 0.2,   // Same settings for easy testing
         //     lookback: 1,
-        //     minLegBars: 2,          // Same settings for easy testing
+        //     minLegBars: 1,          // Same settings for easy testing
         //     weight: 1,
-        //     opposite: false
+        //     opposite: true
         // },
+
+        {
+            interval: '2h',
+            role: 'secondary',   // Secondary confirmation (not primary)
+            minSwingPct: 0.16,   // Same settings for easy testing
+            lookback: 2,
+            minLegBars: 2,          // Same settings for easy testing
+            weight: 1,
+            opposite: false
+        },
  
-        // {
-        //     interval: '2m',
-        //     role: 'execution',      // Final execution timeframe
-        //     minSwingPct: 0.1,       // Same settings for easy testing
-        //     lookback: 1,
-        //     minLegBars: 3,          // Same settings for easy testing
-        //     weight: 1,
-        //     opposite: false
-        // }
+        {
+            interval: '2m',
+            role: 'execution',      // Final execution timeframe
+            minSwingPct: 0.02,       // Same settings for easy testing
+            lookback: 1,
+            minLegBars: 1,          // Same settings for easy testing
+            weight: 1,
+            opposite: false
+        },
+        {
+            interval: '1m',
+            role: 'execution',      // Final execution timeframe
+            minSwingPct: 0.03,       // Same settings for easy testing
+            lookback: 3,
+            minLegBars: 2,          // Same settings for easy testing
+            weight: 1,
+            opposite: false
+        },
     ],
     
     // Cascade confirmation settings
     cascadeSettings: {
-        minTimeframesRequired: 1,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
+        minTimeframesRequired: 4,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         // How long to wait for confirmation from smaller timeframes (in minutes)
         confirmationWindow: {
-            '4h': 230,      // 🎯 OPTIMIZED: Wait up to 4 hours for 1h confirmation
-            '1h': 60,      // 🎯 OPTIMIZED: Wait up to 1 hours for 15m confirmation  
-            '15m': 60,     // 🎯 OPTIMIZED: Wait up to 2 hours for 1m confirmation
-            '5m': 15,       // 🎯 OPTIMIZED: Wait up to 30 minutes for 1m confirmation
-            '1m': 30        // 🎯 OPTIMIZED: Wait up to 30 minutes for final confirmation
+            // '4h': 3,
+            '4h': 60,
+            '2h': 60,
+            '10m': 10,
+            '1h': 60,  
+            '15m': 15,
+            '5m': 5,   
+            '3m': 2,
+            '1m': 1
         },
         
         // Require all timeframes to confirm, or allow partial confirmation

@@ -14,21 +14,18 @@ export const tradeConfig = {
     // entryDelayMinutes: 60,
 
 
-    takeProfit: 0.9,
-    stopLoss: 0.75,
-    // leverage: 100,
-    leverage: 80,
 
+    takeProfit: 0.9,
+    stopLoss: 0.4,
+    leverage: 1,        
+    
     // Flip mode: close opposite and switch to new confirmed signal 
     // switchOnOppositeSignal: true,       
     switchOnOppositeSignal: false,       
-    numberOfOppositeSignal: 1,
-    switchPolicy: 'close',                 
-    // 'flip': Close opposite trades and open new trade in opposite direction
-    // 'close': Only close opposite trades, don't open new trade
+    numberOfOppositeSignal: 3,
+    switchPolicy: 'flip',                 // Reserved for future strategies; currently only 'flip' is supported
 
     noTradeDays: [],
-    // noTradeDays: ['M'],
     // noTradeDays: ['M', 'T', 'W', 'Th', 'F', 'Sa', 'Su'],
 
     // Trailing stop loss settings
@@ -46,7 +43,7 @@ export const tradeConfig = {
     // showPivot: true,
     // showTradeDetails: true,
     showPivot: false,
-    showTradeDetails: true,
+    showTradeDetails: false,
     hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
  
 
@@ -74,11 +71,11 @@ export const tradeConfig = {
     // Order settings
     orderDistancePct: 50,     // Percentage of average move to use for order placement (50 = half the distance)
     cancelThresholdPct: 100,   // Percentage of average swing to use for order cancellation (100 = same as average)
-
+    
 
     // Trading fees
     totalMakerFee: 0.06, // 0.04% maker fee
-
+    
     // Funding rate simulation (for perpetual futures)
     enableFundingRate: false,     // Enable/disable funding rate simulation
     fundingRateHours: 8,         // Funding rate charged every X hours (8 for most exchanges)
@@ -89,10 +86,10 @@ export const tradeConfig = {
 
     // Slippage simulation
     enableSlippage: false,        // Enable/disable slippage simulation
-    slippagePercent: 0.01,       // Base slippage percentage (0.02% = 2 basis points)
+    slippagePercent: 0.05,       // Base slippage percentage (0.02% = 2 basis points)
     slippageMode: 'fixed',       // 'fixed', 'variable', or 'market_impact'
     variableSlippageMin: 0.01,   // Minimum slippage for variable mode (%)
-    variableSlippageMax: 0.03,   // Maximum slippage for variable mode (%)
+    variableSlippageMax: 0.05,   // Maximum slippage for variable mode (%)
     marketImpactFactor: 0.001,   // Market impact factor for large trades (% per 1000 USDT)
      
     

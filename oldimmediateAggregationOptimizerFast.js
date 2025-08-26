@@ -8,7 +8,7 @@ const OPTIMIZATION_CONFIG = {
     stopLossRange: { start: 0.4, end: 0.4, step: 0.1 },
     leverageRange: { start: 1, end: 1, step: 1 },
     minimumTimeframes: 1,
-    tradingModes: ['pivot'],  
+    tradingModes: ['cascade'],  
     maxCandles: 20160, // 14 days of 1m candles 
     tradeDirection: ['both'],
     
@@ -17,12 +17,21 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '4h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
+                minSwingPctRange: { start: 0.1, end: 0.2, step: 0.1 },
                 lookbackRange: { start: 1, end: 1, step: 1 },
                 minLegBarsRange: { start: 1, end: 1, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
-            }
+            },
+            {
+                interval: '2h',
+                role: 'primary',
+                minSwingPctRange: { start: 0.1, end: 0.2, step: 0.1 },
+                lookbackRange: { start: 1, end: 1, step: 1 },
+                minLegBarsRange: { start: 1, end: 1, step: 1 },               
+                weight: 1,
+                oppositeRange: [false]
+            },
         ]
     ]
 };

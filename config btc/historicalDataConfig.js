@@ -1,6 +1,6 @@
 // historicalDataConfig.js
 export const historicalDataConfig = {
-    pairs: ['BTCUSDT', 'BNBUSDT'],
+    pairs: ['BTCUSDT'],
     intervals: ['1', '3', '5', '15', '30', '1h', '4h', '1d', '1w'],
     months: 1,
     dataPath: './data/historical/',

@@ -9,7 +9,7 @@ export const api = 'bybit'; // 'binance' or 'bybit'
 // export const api = 'binance'; // 'binance' or 'bybit'
 export const time = '1m';
 // export const symbol = 'BNBUSDT';
-export const symbol = 'BTCUSDT';
+export const symbol = 'BNBUSDT';
 
 // Timezone settings
 // Set the IANA timezone to use for parsing input times and formatting outputs
@@ -69,7 +69,7 @@ const getIntervalMultiplier = (intervalStr) => {
 const multiplier = getIntervalMultiplier(time);
 
 // Calculate limits in terms of number of candles
-const monthlimit = 1; // Base unit - 1 month
+const monthlimit = 0.5; // Base unit - 1 month
 const weeklimit = monthlimit * multiplier.perMonth / multiplier.perWeek;
 // const weeklimit = 8;
 const daylimit = weeklimit * 7;
