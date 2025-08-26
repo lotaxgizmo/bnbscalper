@@ -2137,7 +2137,7 @@ async function runOptimization() {
 
 // ===== EXECUTION =====
 // Check if this file is being run directly
-const isMainModule = process.argv[1] && process.argv[1].endsWith('immediateAggregationOptimizer.js');
+const isMainModule = process.argv[1] && process.argv[1].endsWith('immediateAggregationOptimizerer.js');
 if (isMainModule) {
     console.log('Starting optimization...');
     runOptimization().catch(console.error);
