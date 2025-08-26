@@ -17,18 +17,18 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '4h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.1, end: 0.4, step: 0.1 },
-                lookbackRange: { start: 1, end: 4, step: 1 },
-                minLegBarsRange: { start: 1, end: 4, step: 1 },               
+                minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
+                lookbackRange: { start: 1, end: 1, step: 1 },
+                minLegBarsRange: { start: 1, end: 1, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
             {
                 interval: '2h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.1, end: 0.4, step: 0.1 },
-                lookbackRange: { start: 1, end: 4, step: 1 },
-                minLegBarsRange: { start: 1, end: 4, step: 1 },               
+                minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
+                lookbackRange: { start: 1, end: 1, step: 1 },
+                minLegBarsRange: { start: 1, end: 1, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
@@ -187,106 +187,94 @@ async function load1mCandles() {
     }
 }
 
-// ===== PIVOT DETECTION =====
-function detectPivot(candles, index, config) {
+// ===== VECTORIZED PIVOT DETECTION =====
+function detectPivotsVectorized(candles, config) {
     const { pivotLookback, minSwingPct, minLegBars } = config;
+    const pivots = [];
     
-    // Allow lookback = 0 by skipping only the very first candle (no previous reference)
-    if (pivotLookback === 0 && index === 0) return null;
-    if (index < pivotLookback || index >= candles.length) return null;
+    if (candles.length < 2) return pivots;
     
-    const currentCandle = candles[index];
-    const currentHigh = pivotDetectionMode === 'close' ? currentCandle.close : currentCandle.high;
-    const currentLow = pivotDetectionMode === 'close' ? currentCandle.close : currentCandle.low;
+    // Pre-extract price arrays for vectorized operations
+    const highs = candles.map(c => pivotDetectionMode === 'close' ? c.close : c.high);
+    const lows = candles.map(c => pivotDetectionMode === 'close' ? c.close : c.low);
+    const times = candles.map(c => c.time);
     
-    // Check for high pivot
-    let isHighPivot = true;
-    if (pivotLookback > 0) {
-        for (let j = 1; j <= pivotLookback; j++) {
-            if (index - j < 0) {
-                isHighPivot = false;
-                break;
-            }
-            const compareHigh = pivotDetectionMode === 'close' ? candles[index - j].close : candles[index - j].high;
-            if (currentHigh <= compareHigh) {
-                isHighPivot = false;
-                break;
-            }
-        }
-    }
+    // Vectorized pivot detection
+    const startIdx = Math.max(1, pivotLookback);
     
-    // Check for low pivot
-    let isLowPivot = true;
-    if (pivotLookback > 0) {
-        for (let j = 1; j <= pivotLookback; j++) {
-            if (index - j < 0) {
-                isLowPivot = false;
-                break;
-            }
-            const compareLow = pivotDetectionMode === 'close' ? candles[index - j].close : candles[index - j].low;
-            if (currentLow >= compareLow) {
-                isLowPivot = false;
-                break;
-            }
-        }
-    }
-
-    // Special handling when lookback = 0: compare to previous candle only
-    if (pivotLookback === 0) {
-        const prev = candles[index - 1];
-        const prevHigh = pivotDetectionMode === 'close' ? prev.close : prev.high;
-        const prevLow = pivotDetectionMode === 'close' ? prev.close : prev.low;
-        isHighPivot = currentHigh > prevHigh;
-        isLowPivot = currentLow < prevLow;
-
-        // If both directions qualify (large range crossing), pick the dominant excursion
-        if (isHighPivot && isLowPivot) {
-            const upExcursion = Math.abs(currentHigh - prevHigh);
-            const downExcursion = Math.abs(prevLow - currentLow);
-            if (upExcursion >= downExcursion) {
-                isLowPivot = false;
-            } else {
-                isHighPivot = false;
-            }
-        }
-    }
-    
-    if (!isHighPivot && !isLowPivot) return null;
-    
-    const pivotType = isHighPivot ? 'high' : 'low';
-    const pivotPrice = isHighPivot ? currentHigh : currentLow;
-    
-    // Calculate swing percentage
-    let maxSwingPct = 0;
-    
-    // Validate minimum swing percentage requirement
-    if (minSwingPct > 0) {
-        // When lookback = 0, still compute swing vs previous candle (j=1)
-        const upper = pivotLookback === 0 ? 1 : pivotLookback;
-        for (let j = 1; j <= upper; j++) {
-            if (index - j < 0) break;
+    for (let i = startIdx; i < candles.length; i++) {
+        let isHighPivot = true;
+        let isLowPivot = true;
+        
+        if (pivotLookback === 0) {
+            // Special case: compare only to previous candle
+            isHighPivot = highs[i] > highs[i - 1];
+            isLowPivot = lows[i] < lows[i - 1];
             
-            const compareCandle = candles[index - j];
-            const comparePrice = pivotDetectionMode === 'close' ? compareCandle.close : 
-                                (pivotType === 'high' ? compareCandle.low : compareCandle.high);
+            // Resolve conflicts by dominant excursion
+            if (isHighPivot && isLowPivot) {
+                const upExcursion = Math.abs(highs[i] - highs[i - 1]);
+                const downExcursion = Math.abs(lows[i - 1] - lows[i]);
+                if (upExcursion >= downExcursion) {
+                    isLowPivot = false;
+                } else {
+                    isHighPivot = false;
+                }
+            }
+        } else {
+            // Vectorized lookback comparison
+            const lookbackStart = Math.max(0, i - pivotLookback);
             
-            const swingPct = Math.abs((pivotPrice - comparePrice) / comparePrice * 100);
-            maxSwingPct = Math.max(maxSwingPct, swingPct);
+            // Check high pivot using array slice and every()
+            const highSlice = highs.slice(lookbackStart, i);
+            isHighPivot = highSlice.every(h => highs[i] > h);
+            
+            // Check low pivot using array slice and every()
+            const lowSlice = lows.slice(lookbackStart, i);
+            isLowPivot = lowSlice.every(l => lows[i] < l);
         }
         
-        if (maxSwingPct < minSwingPct) {
-            return null;
+        if (!isHighPivot && !isLowPivot) continue;
+        
+        const pivotType = isHighPivot ? 'high' : 'low';
+        const pivotPrice = isHighPivot ? highs[i] : lows[i];
+        
+        // Vectorized swing percentage calculation
+        let maxSwingPct = 0;
+        if (minSwingPct > 0) {
+            const upper = pivotLookback === 0 ? 1 : pivotLookback;
+            const compareStart = Math.max(0, i - upper);
+            
+            if (pivotType === 'high') {
+                const comparePrices = lows.slice(compareStart, i);
+                const swingPcts = comparePrices.map(price => Math.abs((pivotPrice - price) / price * 100));
+                maxSwingPct = Math.max(...swingPcts);
+            } else {
+                const comparePrices = highs.slice(compareStart, i);
+                const swingPcts = comparePrices.map(price => Math.abs((pivotPrice - price) / price * 100));
+                maxSwingPct = Math.max(...swingPcts);
+            }
+            
+            if (maxSwingPct < minSwingPct) continue;
         }
+        
+        pivots.push({
+            type: pivotType,
+            price: pivotPrice,
+            time: times[i],
+            index: i,
+            signal: pivotType === 'high' ? 'short' : 'long',
+            swingPct: maxSwingPct
+        });
     }
     
-    return {
-        type: pivotType,
-        price: pivotPrice,
-        time: currentCandle.time,
-        index: index,
-        signal: pivotType === 'high' ? 'short' : 'long',
-        swingPct: maxSwingPct
-    };
+    return pivots;
+}
+
+// Legacy single pivot detection for compatibility
+function detectPivot(candles, index, config) {
+    const singleResult = detectPivotsVectorized(candles.slice(0, index + 1), config);
+    return singleResult.find(p => p.index === index) || null;
 }
 
 // ===== IMMEDIATE AGGREGATION =====
@@ -1075,28 +1063,27 @@ async function runImmediateAggregationBacktest() {
             config: tfConfig
         };
         
-        // Detect all pivots for this timeframe
+        // Vectorized pivot detection for entire timeframe
+        const allPivots = detectPivotsVectorized(aggregatedCandles, {
+            pivotLookback: tfConfig.lookback,
+            minSwingPct: tfConfig.minSwingPct,
+            minLegBars: tfConfig.minLegBars
+        });
+        
+        // Enforce minimum bars between consecutive pivots
         const pivots = [];
-        let lastAcceptedPivotIndex = null; // enforce minLegBars between accepted pivots
-        for (let i = tfConfig.lookback; i < aggregatedCandles.length; i++) {
-            const pivot = detectPivot(aggregatedCandles, i, {
-                pivotLookback: tfConfig.lookback,
-                minSwingPct: tfConfig.minSwingPct,
-                minLegBars: tfConfig.minLegBars
-            });
-
-            if (!pivot) continue;
-
-            // Enforce minimum bars between consecutive pivots
+        let lastAcceptedPivotIndex = null;
+        
+        for (const pivot of allPivots) {
             if (lastAcceptedPivotIndex !== null) {
-                const barsSinceLast = i - lastAcceptedPivotIndex;
+                const barsSinceLast = pivot.index - lastAcceptedPivotIndex;
                 if (typeof tfConfig.minLegBars === 'number' && barsSinceLast < tfConfig.minLegBars) {
                     continue; // skip pivot: not enough bars since previous accepted pivot
                 }
             }
-
+            
             pivots.push(pivot);
-            lastAcceptedPivotIndex = i;
+            lastAcceptedPivotIndex = pivot.index;
         }
         
         allTimeframePivots[tf] = pivots;
