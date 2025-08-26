@@ -1,5 +1,0 @@
-Rank,Score,Trading Mode,Direction,Take Profit,Stop Loss,Leverage,Timeframes,Total Trades,Win Rate %,Total PnL,Avg PnL,Max Drawdown %,Profit Factor,Sharpe Ratio,Final Capital
-1,14.34,cascade,both,0.9,0.4,1,"4h(0.2%)+2h(0.1%)",61,23.0,-14.51,-0.24,15.3,0.42,-0.44,85.49
-2,14.34,cascade,both,0.9,0.4,1,"4h(0.2%)+2h(0.2%)",61,23.0,-14.51,-0.24,15.3,0.42,-0.44,85.49
-3,14.29,cascade,both,0.9,0.4,1,"4h(0.1%)+2h(0.1%)",65,23.1,-15.14,-0.23,15.9,0.43,-0.43,84.86
-4,14.29,cascade,both,0.9,0.4,1,"4h(0.1%)+2h(0.2%)",65,23.1,-15.14,-0.23,15.9,0.43,-0.43,84.86

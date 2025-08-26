@@ -15,7 +15,7 @@ export const tradeConfig = {
 
 
 
-    takeProfit: 0.9,
+    takeProfit: 1,
     stopLoss: 0.4,
     leverage: 80,        
     
