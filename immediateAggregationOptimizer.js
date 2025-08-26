@@ -4,34 +4,57 @@
 
 // ===== OPTIMIZATION CONFIGURATION =====
 const OPTIMIZATION_CONFIG = {
-    takeProfitRange: { start: 0.9, end: 0.9, step: 0.1 },
-    stopLossRange: { start: 0.4, end: 0.4, step: 0.1 },
-    leverageRange: { start: 1, end: 1, step: 1 },
-    minimumTimeframes: 1,
+    takeProfitRange: { start: 0.1, end: 2, step: 0.1 },
+    stopLossRange: { start: 0.1, end: 1, step: 0.1 },
+    leverageRange: { start: 80, end: 80, step: 1 },
+    minimumTimeframes: 3,
     tradingModes: ['cascade'],  
-    maxCandles: 20160, // 14 days of 1m candles 
+    maxCandles: 86400, // 14 days of 1m candles 
+    // maxCandles: 43200, // 14 days of 1m candles 
+    // maxCandles: 20160, // 14 days of 1m candles 
     tradeDirection: ['both'],
     
     timeframeCombinations: [ 
         [
             {
-                interval: '4h',
-                role: 'primary',
-                minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
+                interval: '1m',
+                role: 'secondary',
+                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
                 lookbackRange: { start: 1, end: 1, step: 1 },
                 minLegBarsRange: { start: 1, end: 1, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
-            },
+            }, 
+ 
             {
-                interval: '2h',
+                interval: '1h',
                 role: 'primary',
+                minSwingPctRange: { start: 0.4, end: 0.4, step: 0.1 },
+                lookbackRange: { start: 4, end: 4, step: 1 },
+                minLegBarsRange: { start: 4, end: 4, step: 1 },               
+                weight: 1,
+                oppositeRange: [false]
+            }, 
+ 
+            // {
+            //     interval: '1h',
+            //     role: 'primary',
+            //     minSwingPctRange: { start: 0.4, end: 0.4, step: 0.1 },
+            //     lookbackRange: { start: 4, end: 4, step: 1 },
+            //     minLegBarsRange: { start: 4, end: 4, step: 1 },               
+            //     weight: 1,
+            //     oppositeRange: [false]
+            // },
+            {
+                interval: '30m',
+                role: 'secondary',
                 minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
-                lookbackRange: { start: 1, end: 1, step: 1 },
-                minLegBarsRange: { start: 1, end: 1, step: 1 },               
+                lookbackRange: { start: 3, end: 3, step: 1 },
+                minLegBarsRange: { start: 2, end: 2, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
+           
         ]
     ],
     
@@ -47,7 +70,7 @@ const OPTIMIZATION_CONFIG = {
 let BACKTEST_CONFIG = {
     tradingMode: 'cascade',
     useLiveAPI: false,
-    maxCandles: 20160,
+    maxCandles: OPTIMIZATION_CONFIG.maxCandles,
     showEveryNthTrade: 1,
     showFirstNTrades: 0,
     progressEvery: 50000,
@@ -63,6 +86,14 @@ import {
 // Dynamic configurations - will be overridden during optimization
 let tradeConfig = {};
 let multiPivotConfig = {};
+
+// ===== GLOBAL DATA CACHE =====
+let GLOBAL_CACHE = {
+    oneMinuteCandles: null,
+    aggregatedCandles: new Map(), // timeframe -> candles
+    pivotCache: new Map(), // timeframe -> pivots
+    initialized: false
+};
 import { getCandles } from './apis/bybit.js';
 import fs from 'fs';
 import path from 'path';
@@ -922,7 +953,9 @@ function calculatePerformanceMetrics(results) {
 }
 
 function formatOptimizationResult(params, metrics, index, total) {
-    const tfStr = params.timeframes.map(tf => `${tf.interval}(${tf.minSwingPct}%)`).join('+');
+    const tfStr = params.timeframes.map(tf => `${tf.interval}(${tf.minSwingPct}%,L${tf.lookback},B${tf.minLegBars},O${tf.opposite ? 'T' : 'F'})`).join('+');
+    const detailedTfStr = params.timeframes.map(tf => `${tf.interval}: swing=${tf.minSwingPct}%, lookback=${tf.lookback}, minLegBars=${tf.minLegBars}, opposite=${tf.opposite}`).join(' | ');
+    
     return {
         index: index + 1,
         total: total,
@@ -932,6 +965,7 @@ function formatOptimizationResult(params, metrics, index, total) {
         stopLoss: params.stopLoss,
         leverage: params.leverage,
         timeframes: tfStr,
+        detailedTimeframes: detailedTfStr,
         totalTrades: metrics.totalTrades,
         winRate: metrics.winRate.toFixed(1),
         totalPnL: metrics.totalPnL.toFixed(2),
@@ -981,7 +1015,7 @@ async function exportResults(results) {
     // Create CSV content
     const headers = [
         'Rank', 'Score', 'Trading Mode', 'Direction', 'Take Profit', 'Stop Loss', 'Leverage',
-        'Timeframes', 'Total Trades', 'Win Rate %', 'Total PnL', 'Avg PnL', 'Max Drawdown %',
+        'Timeframes', 'Detailed Timeframes', 'Total Trades', 'Win Rate %', 'Total PnL', 'Avg PnL', 'Max Drawdown %',
         'Profit Factor', 'Sharpe Ratio', 'Final Capital'
     ];
     
@@ -997,6 +1031,7 @@ async function exportResults(results) {
             result.stopLoss,
             result.leverage,
             `"${result.timeframes}"`,
+            `"${result.detailedTimeframes}"`,
             result.totalTrades,
             result.winRate,
             result.totalPnL,
@@ -1013,51 +1048,68 @@ async function exportResults(results) {
     console.log(`${colors.green}Results exported to: ${filepath}${colors.reset}`);
 }
 
-// ===== MAIN BACKTESTING FUNCTION =====
-async function runImmediateAggregationBacktest() {
-    const startTime = Date.now();
-    
-    // Silent mode for optimization - suppress detailed logs
-    if (!OPTIMIZATION_CONFIG.silentMode) {
-        console.log(`${colors.cyan}=== IMMEDIATE AGGREGATION BACKTESTER ===${colors.reset}`);
-        console.log(`${colors.yellow}Symbol: ${symbol}${colors.reset}`);
-        console.log(`${colors.yellow}Trading Mode: ${BACKTEST_CONFIG.tradingMode.toUpperCase()}${colors.reset}`);
-        console.log(`${colors.yellow}Detection Mode: ${pivotDetectionMode}${colors.reset}`);
-        
-        // Display trade configuration
-        console.log(`\n${colors.cyan}--- Trade Configuration ---${colors.reset}`);
-        let directionDisplay = tradeConfig.direction;
-        if (tradeConfig.direction === 'alternate') {
-            directionDisplay = 'alternate (LONG at highs, SHORT at lows)';
-        }
-        console.log(`Direction: ${colors.yellow}${directionDisplay}${colors.reset}`);
-        console.log(`Take Profit: ${colors.green}${tradeConfig.takeProfit}%${colors.reset}`);
-        console.log(`Stop Loss: ${colors.red}${tradeConfig.stopLoss}%${colors.reset}`);
-        console.log(`Leverage: ${colors.yellow}${tradeConfig.leverage}x${colors.reset}`);
-        console.log(`Initial Capital: ${colors.yellow}${tradeConfig.initialCapital} USDT${colors.reset}`);
-        console.log(`Trade Tracking: ${colors.green}1-minute precision${colors.reset}`);
+// ===== GLOBAL DATA CACHE FUNCTIONS =====
+async function preloadAndCacheData() {
+    if (GLOBAL_CACHE.initialized) {
+        console.log(`${colors.green}Using cached data (already loaded)${colors.reset}`);
+        return;
     }
     
-    // Load data
-    const oneMinuteCandles = await load1mCandles();
+    console.log(`${colors.cyan}=== PRELOADING AND CACHING DATA ===${colors.reset}`);
     
-    // Build aggregated candles for all timeframes
+    // Load 1m candles once
+    GLOBAL_CACHE.oneMinuteCandles = await load1mCandles();
+    console.log(`${colors.green}✓ Cached 1m candles: ${GLOBAL_CACHE.oneMinuteCandles.length} candles${colors.reset}`);
+    
+    // Pre-build all required timeframes
+    const allTimeframes = new Set();
+    for (const tfCombination of OPTIMIZATION_CONFIG.timeframeCombinations) {
+        for (const tf of tfCombination) {
+            allTimeframes.add(tf.interval);
+        }
+    }
+    
+    for (const timeframe of allTimeframes) {
+        const timeframeMinutes = parseTimeframeToMinutes(timeframe);
+        const aggregatedCandles = buildImmediateAggregatedCandles(GLOBAL_CACHE.oneMinuteCandles, timeframeMinutes);
+        GLOBAL_CACHE.aggregatedCandles.set(timeframe, aggregatedCandles);
+        console.log(`${colors.green}✓ Cached ${timeframe} candles: ${aggregatedCandles.length} candles${colors.reset}`);
+    }
+    
+    GLOBAL_CACHE.initialized = true;
+    console.log(`${colors.green}✅ Global data cache initialized successfully${colors.reset}`);
+}
+
+function getCachedAggregatedCandles(timeframe) {
+    if (!GLOBAL_CACHE.initialized) {
+        throw new Error('Global cache not initialized. Call preloadAndCacheData() first.');
+    }
+    return GLOBAL_CACHE.aggregatedCandles.get(timeframe);
+}
+
+function getCachedOneMinuteCandles() {
+    if (!GLOBAL_CACHE.initialized) {
+        throw new Error('Global cache not initialized. Call preloadAndCacheData() first.');
+    }
+    return GLOBAL_CACHE.oneMinuteCandles;
+}
+
+// ===== OPTIMIZED BACKTESTING FUNCTION =====
+async function runOptimizedBacktest(params) {
+    const startTime = Date.now();
+    
+    // Use cached data instead of loading fresh
+    const oneMinuteCandles = getCachedOneMinuteCandles();
+    
+    // Use cached aggregated candles and build pivot data
     const timeframeData = {};
     const allTimeframePivots = {};
     
-    if (BACKTEST_CONFIG.showInitializationLogs && !OPTIMIZATION_CONFIG.silentMode) {
-        console.log(`${colors.cyan}\n=== INITIALIZING IMMEDIATE AGGREGATION SYSTEM ===${colors.reset}`);
-    }
-    
     for (const tfConfig of multiPivotConfig.timeframes) {
         const tf = tfConfig.interval;
-        const timeframeMinutes = parseTimeframeToMinutes(tf);
         
-        if (BACKTEST_CONFIG.showInitializationLogs && !OPTIMIZATION_CONFIG.silentMode) {
-            console.log(`${colors.cyan}[${tf}] Processing ${timeframeMinutes}-minute aggregation...${colors.reset}`);
-        }
-        
-        const aggregatedCandles = buildImmediateAggregatedCandles(oneMinuteCandles, timeframeMinutes);
+        // Get cached aggregated candles
+        const aggregatedCandles = getCachedAggregatedCandles(tf);
         timeframeData[tf] = {
             candles: aggregatedCandles,
             config: tfConfig
@@ -1087,14 +1139,8 @@ async function runImmediateAggregationBacktest() {
         }
         
         allTimeframePivots[tf] = pivots;
-        if (BACKTEST_CONFIG.showInitializationLogs && !OPTIMIZATION_CONFIG.silentMode) {
-            console.log(`${colors.green}[${tf}] Built ${aggregatedCandles.length} candles, detected ${pivots.length} pivots using immediate aggregation${colors.reset}`);
-        }
     }
     
-    if (BACKTEST_CONFIG.showInitializationLogs && !OPTIMIZATION_CONFIG.silentMode) {
-        console.log(`${colors.green}✅ Immediate aggregation system initialized successfully${colors.reset}`);
-    }
     
     const totalPivots = Object.values(allTimeframePivots).reduce((sum, pivots) => sum + pivots.length, 0);
     if (!OPTIMIZATION_CONFIG.silentMode) {
@@ -1955,409 +2001,15 @@ async function runImmediateAggregationBacktest() {
     };
 }
 
-// ===== CACHING SYSTEM =====
-let cachedOneMinuteCandles = null;
-let cachedAggregatedCandles = new Map(); // timeframe -> candles
-let cachedPivots = new Map(); // "timeframe_lookback_minSwingPct_minLegBars" -> pivots
-
-function getCacheKey(timeframe, lookback, minSwingPct, minLegBars) {
-    return `${timeframe}_${lookback}_${minSwingPct}_${minLegBars}`;
-}
-
-async function preloadAndCacheData() {
-    console.log(`${colors.cyan}Pre-loading and caching data...${colors.reset}`);
-    
-    // Load 1m candles once
-    if (!cachedOneMinuteCandles) {
-        const shouldUseAPI = BACKTEST_CONFIG.useLiveAPI || !useLocalData;
-        
-        if (!shouldUseAPI) {
-            const csvPath = path.join(__dirname, 'data', 'historical', symbol, '1m.csv');
-            if (!fs.existsSync(csvPath)) {
-                throw new Error(`Local 1m data not found: ${csvPath}`);
-            }
-            
-            const csvData = fs.readFileSync(csvPath, 'utf8');
-            const lines = csvData.trim().split('\n').slice(1); // Skip header
-            
-            const candles = lines.map(line => {
-                const [timestamp, open, high, low, close, volume] = line.split(',');
-                return {
-                    time: parseInt(timestamp),
-                    open: parseFloat(open),
-                    high: parseFloat(high),
-                    low: parseFloat(low),
-                    close: parseFloat(close),
-                    volume: parseFloat(volume)
-                };
-            }).sort((a, b) => a.time - b.time);
-            
-            cachedOneMinuteCandles = candles.slice(-OPTIMIZATION_CONFIG.maxCandles);
-        } else {
-            const candles = await getCandles(symbol, '1m', OPTIMIZATION_CONFIG.maxCandles);
-            cachedOneMinuteCandles = candles.sort((a, b) => a.time - b.time);
-        }
-        
-        console.log(`${colors.green}Cached ${cachedOneMinuteCandles.length} 1m candles${colors.reset}`);
-    }
-    
-    // Pre-build all possible timeframe aggregations
-    const allTimeframes = new Set();
-    for (const tfCombination of OPTIMIZATION_CONFIG.timeframeCombinations) {
-        for (const tf of tfCombination) {
-            allTimeframes.add(tf.interval);
-        }
-    }
-    
-    for (const timeframe of allTimeframes) {
-        if (!cachedAggregatedCandles.has(timeframe)) {
-            const timeframeMinutes = parseTimeframeToMinutes(timeframe);
-            const aggregatedCandles = buildImmediateAggregatedCandles(cachedOneMinuteCandles, timeframeMinutes);
-            cachedAggregatedCandles.set(timeframe, aggregatedCandles);
-            console.log(`${colors.green}Cached ${aggregatedCandles.length} ${timeframe} candles${colors.reset}`);
-        }
-    }
-}
-
-function getCachedPivots(timeframe, lookback, minSwingPct, minLegBars) {
-    const cacheKey = getCacheKey(timeframe, lookback, minSwingPct, minLegBars);
-    
-    if (cachedPivots.has(cacheKey)) {
-        return cachedPivots.get(cacheKey);
-    }
-    
-    // Calculate and cache pivots
-    const aggregatedCandles = cachedAggregatedCandles.get(timeframe);
-    if (!aggregatedCandles) {
-        throw new Error(`No cached candles for timeframe ${timeframe}`);
-    }
-    
-    const pivots = [];
-    let lastAcceptedPivotIndex = null;
-    
-    for (let i = lookback; i < aggregatedCandles.length; i++) {
-        const pivot = detectPivot(aggregatedCandles, i, {
-            pivotLookback: lookback,
-            minSwingPct: minSwingPct,
-            minLegBars: minLegBars
-        });
-
-        if (!pivot) continue;
-
-        // Enforce minimum bars between consecutive pivots
-        if (lastAcceptedPivotIndex !== null) {
-            const barsSinceLast = i - lastAcceptedPivotIndex;
-            if (typeof minLegBars === 'number' && barsSinceLast < minLegBars) {
-                continue;
-            }
-        }
-
-        pivots.push(pivot);
-        lastAcceptedPivotIndex = i;
-    }
-    
-    cachedPivots.set(cacheKey, pivots);
-    return pivots;
-}
-
-// ===== OPTIMIZED BACKTESTING FUNCTION =====
-async function runOptimizedBacktest(params) {
-    const startTime = Date.now();
-    
-    // Use cached data instead of reloading
-    const oneMinuteCandles = cachedOneMinuteCandles;
-    
-    // Create multiPivotConfig from params
-    const multiPivotConfig = createMultiPivotConfig(params);
-    
-    // Build timeframe data using cached aggregated candles
-    const timeframeData = {};
-    const allTimeframePivots = {};
-    
-    for (const tfConfig of multiPivotConfig.timeframes) {
-        const tf = tfConfig.interval;
-        const aggregatedCandles = cachedAggregatedCandles.get(tf);
-        
-        if (!aggregatedCandles) {
-            throw new Error(`No cached aggregated candles for ${tf}`);
-        }
-        
-        timeframeData[tf] = {
-            candles: aggregatedCandles,
-            config: tfConfig
-        };
-        
-        // Get cached pivots
-        const pivots = getCachedPivots(tf, tfConfig.lookback, tfConfig.minSwingPct, tfConfig.minLegBars);
-        allTimeframePivots[tf] = pivots;
-    }
-    
-    // Get primary timeframe for main loop
-    const primaryTf = multiPivotConfig.timeframes.find(tf => tf.role === 'primary');
-    if (!primaryTf) {
-        throw new Error('No primary timeframe configured');
-    }
-    
-    const primaryCandles = timeframeData[primaryTf.interval].candles;
-    const primaryPivots = allTimeframePivots[primaryTf.interval];
-    
-    // Trading simulation (same logic as before but using cached data)
-    const tradeConfig = createTradeConfig(params);
-    
-    let capital = tradeConfig.initialCapital;
-    let openTrades = [];
-    let allTrades = [];
-    let confirmedSignals = 0;
-    let executedTrades = 0;
-    let totalSignals = 0;
-    let appliedFundingRates = new Set();
-    
-    const oppositeSignalCounts = { long: 0, short: 0 };
-    const pendingWindows = [];
-    
-    // Create a map of 1-minute candle times for quick lookup
-    const oneMinuteTimeMap = new Map();
-    oneMinuteCandles.forEach((candle, index) => {
-        oneMinuteTimeMap.set(candle.time, index);
-    });
-    
-    // Process each primary timeframe candle (same logic as original but faster)
-    for (let i = 0; i < primaryCandles.length; i++) {
-        const currentCandle = primaryCandles[i];
-        const currentTime = currentCandle.time;
-        
-        // Find the corresponding 1-minute candle range for this primary candle
-        const primaryTfMinutes = parseTimeframeToMinutes(primaryTf.interval);
-        const startTime = currentTime - (primaryTfMinutes * 60 * 1000);
-        
-        // Find all 1-minute candles that fall within this primary candle's time range
-        const minuteCandlesInRange = [];
-        for (let j = 0; j < oneMinuteCandles.length; j++) {
-            const minuteCandle = oneMinuteCandles[j];
-            if (minuteCandle.time > startTime && minuteCandle.time <= currentTime) {
-                minuteCandlesInRange.push(minuteCandle);
-            }
-        }
-        
-        const closedTradesThisCandle = [];
-        
-        // Apply funding rates
-        capital = applyFundingRates(currentTime, openTrades, capital, appliedFundingRates);
-        
-        // Update existing trades with each 1-minute candle in the range
-        for (const minuteCandle of minuteCandlesInRange) {
-            for (let j = openTrades.length - 1; j >= 0; j--) {
-                const trade = openTrades[j];
-                
-                if (minuteCandle.time >= trade.entryTime) {
-                    const shouldClose = updateTrade(trade, minuteCandle);
-                    
-                    if (shouldClose) {
-                        capital += trade.pnl;
-                        const closedTrade = openTrades.splice(j, 1)[0];
-                        closedTradesThisCandle.push(closedTrade);
-                    }
-                }
-            }
-
-            // Evaluate pending cascade windows
-            if (tradeConfig.direction && pendingWindows.length > 0) {
-                for (let w = pendingWindows.length - 1; w >= 0; w--) {
-                    const win = pendingWindows[w];
-                    const primaryInterval = primaryTf.interval;
-                    const proximityWindowMs = 5 * 60 * 1000;
-                    const configuredMinutes = (multiPivotConfig.cascadeSettings?.confirmationWindow?.[primaryInterval]) ?? null;
-                    const configuredWindowMs = (configuredMinutes != null) ? (configuredMinutes * 60 * 1000) : null;
-                    const effectiveWindowMs = (configuredWindowMs != null) ? Math.min(proximityWindowMs, configuredWindowMs) : proximityWindowMs;
-                    const windowEnd = win.primaryPivot.time + effectiveWindowMs;
-
-                    if (minuteCandle.time > windowEnd) {
-                        pendingWindows.splice(w, 1);
-                        continue;
-                    }
-
-                    const confs = checkCascadeConfirmation(win.primaryPivot, allTimeframePivots, minuteCandle.time, primaryInterval);
-                    if (meetsExecutionRequirements(confs)) {
-                        const lastConfTime = Math.max(...confs.map(c => c.pivot.time));
-                        const executionTime = Math.max(win.primaryPivot.time, lastConfTime);
-                        const delayMs = tradeConfig.entryDelayMinutes * 60 * 1000;
-                        const actualEntryTime = executionTime + delayMs;
-
-                        let entryPriceOverride = null;
-                        const delayedEntryIdx = oneMinuteTimeMap.get(actualEntryTime);
-                        if (typeof delayedEntryIdx === 'number') {
-                            entryPriceOverride = oneMinuteCandles[delayedEntryIdx].close;
-                        } else {
-                            const thirtySec = 30 * 1000;
-                            let nearest = null;
-                            for (const c of oneMinuteCandles) {
-                                if (Math.abs(c.time - actualEntryTime) <= thirtySec) {
-                                    if (!nearest || Math.abs(c.time - actualEntryTime) < Math.abs(nearest.time - actualEntryTime)) {
-                                        nearest = c;
-                                    }
-                                }
-                            }
-                            if (nearest) entryPriceOverride = nearest.close;
-                        }
-
-                        if (!entryPriceOverride) continue;
-
-                        if (isNoTradeDay(actualEntryTime)) continue;
-
-                        let candidateTradeType = null;
-                        let shouldOpenTrade = false;
-                        
-                        if (win.primaryPivot.signal === 'long') {
-                            if (tradeConfig.direction === 'buy' || tradeConfig.direction === 'both') {
-                                shouldOpenTrade = true;
-                                candidateTradeType = 'long';
-                            } else if (tradeConfig.direction === 'alternate') {
-                                shouldOpenTrade = true;
-                                candidateTradeType = 'short';
-                            }
-                        } else if (win.primaryPivot.signal === 'short') {
-                            if (tradeConfig.direction === 'sell' || tradeConfig.direction === 'both') {
-                                shouldOpenTrade = true;
-                                candidateTradeType = 'short';
-                            } else if (tradeConfig.direction === 'alternate') {
-                                shouldOpenTrade = true;
-                                candidateTradeType = 'long';
-                            }
-                        }
-                        
-                        if (!shouldOpenTrade) {
-                            pendingWindows.splice(w, 1);
-                            continue;
-                        }
-                        
-                        const tradeType = candidateTradeType;
-                        const oppositeType = (tradeType === 'long') ? 'short' : 'long';
-                        const flipThreshold = Math.max(1, tradeConfig.numberOfOppositeSignal || 1);
-                        const hasOppositeOpen = openTrades.some(t => t.type === oppositeType);
-                        
-                        if (hasOppositeOpen) {
-                            oppositeSignalCounts[tradeType] = (oppositeSignalCounts[tradeType] || 0) + 1;
-                            oppositeSignalCounts[oppositeType] = 0;
-                        } else {
-                            oppositeSignalCounts.long = 0;
-                            oppositeSignalCounts.short = 0;
-                        }
-
-                        if (hasOppositeOpen && tradeConfig.switchOnOppositeSignal) {
-                            if (oppositeSignalCounts[tradeType] >= flipThreshold) {
-                                let switchExitPrice = null;
-                                const switchIdx = oneMinuteTimeMap.get(minuteCandle.time);
-                                if (typeof switchIdx === 'number') {
-                                    switchExitPrice = oneMinuteCandles[switchIdx].close;
-                                } else {
-                                    switchExitPrice = minuteCandle.close;
-                                }
-
-                                if (switchExitPrice != null) {
-                                    const oppositeTrades = openTrades.filter(t => t.type === oppositeType);
-                                    for (let k = oppositeTrades.length - 1; k >= 0; k--) {
-                                        const t = oppositeTrades[k];
-                                        const isLong = t.type === 'long';
-                                        
-                                        const exitSlippage = calculateSlippage(t.tradeSize) * 0.5;
-                                        t.originalExitPrice = switchExitPrice;
-                                        t.exitSlippage = exitSlippage;
-                                        const slippageAdjustedExitPrice = applySlippageToPrice(switchExitPrice, exitSlippage, false, isLong);
-                                        
-                                        const priceChange = isLong ? (slippageAdjustedExitPrice - t.entryPrice) : (t.entryPrice - slippageAdjustedExitPrice);
-                                        let pnl = (priceChange / t.entryPrice) * t.tradeSize * t.leverage;
-                                        const fees = t.tradeSize * (tradeConfig.totalMakerFee / 100) * 2;
-                                        pnl -= fees;
-
-                                        t.status = 'closed';
-                                        t.exitPrice = slippageAdjustedExitPrice;
-                                        t.exitTime = minuteCandle.time;
-                                        t.exitReason = 'FLIP';
-                                        t.pnl = pnl;
-                                        t.pnlPct = (priceChange / t.entryPrice) * 100 * t.leverage;
-
-                                        capital += pnl;
-                                        const idxOpen = openTrades.findIndex(x => x.id === t.id);
-                                        if (idxOpen !== -1) openTrades.splice(idxOpen, 1);
-                                    }
-                                    oppositeSignalCounts[tradeType] = 0;
-                                }
-                            } else {
-                                pendingWindows.splice(w, 1);
-                                continue;
-                            }
-                        }
-
-                        confirmedSignals++;
-                        const maxTrades = tradeConfig.singleTradeMode ? 1 : (tradeConfig.maxConcurrentTrades || 1);
-                        if (openTrades.length >= maxTrades) {
-                            pendingWindows.splice(w, 1);
-                            continue;
-                        }
-
-                        executedTrades++;
-                        const trade = createTrade(tradeType, win.primaryPivot, (function(){
-                            switch (tradeConfig.positionSizingMode) {
-                                case 'fixed': return tradeConfig.amountPerTrade;
-                                case 'percent': return capital * (tradeConfig.riskPerTrade / 100);
-                                case 'minimum': return Math.max(capital * (tradeConfig.riskPerTrade / 100), tradeConfig.minimumTradeAmount || 0);
-                                default: return tradeConfig.amountPerTrade;
-                            }
-                        })(), actualEntryTime, primaryInterval, entryPriceOverride);
-                        openTrades.push(trade);
-                        allTrades.push(trade);
-                        pendingWindows.splice(w, 1);
-                    }
-                }
-            }
-        }
-        
-        // Check for new pivot signals
-        const currentPivot = primaryPivots.find(p => p.time === currentTime);
-        if (currentPivot) {
-            totalSignals++;
-            
-            if (BACKTEST_CONFIG.tradingMode === 'cascade') {
-                const primaryInterval = primaryTf.interval;
-                const proximityWindowMs = 5 * 60 * 1000;
-                const configuredMinutes = (multiPivotConfig.cascadeSettings?.confirmationWindow?.[primaryInterval]) ?? null;
-                const configuredWindowMs = (configuredMinutes != null) ? (configuredMinutes * 60 * 1000) : null;
-                const effectiveWindowMs = (configuredWindowMs != null) ? Math.min(proximityWindowMs, configuredWindowMs) : proximityWindowMs;
-                const windowEnd = currentTime + effectiveWindowMs;
-                pendingWindows.push({ primaryPivot: { ...currentPivot, timeframe: primaryInterval }, openTime: currentTime, windowEnd });
-                
-                const confsNow = checkCascadeConfirmation({ ...currentPivot, timeframe: primaryInterval }, allTimeframePivots, currentTime, primaryInterval);
-                if (meetsExecutionRequirements(confsNow)) {
-                    // Handle immediate execution (same logic as above but simplified)
-                    // ... (keeping this shorter for brevity, same logic applies)
-                }
-            }
-        }
-    }
-    
-    // Close any remaining open trades
-    for (const trade of openTrades) {
-        const lastCandle = primaryCandles[primaryCandles.length - 1];
-        updateTrade(trade, lastCandle);
-        capital += trade.pnl;
-    }
-
-    return {
-        totalSignals,
-        confirmedSignals,
-        executedTrades,
-        allTrades,
-        finalCapital: capital,
-        initialCapital: tradeConfig.initialCapital,
-        duration: Date.now() - startTime
-    };
-}
-
 // ===== MAIN OPTIMIZATION FUNCTION =====
 async function runOptimization() {
     console.log(`${colors.cyan}=== IMMEDIATE AGGREGATION OPTIMIZER ===${colors.reset}`);
     console.log(`${colors.yellow}Symbol: ${symbol}${colors.reset}`);
     console.log(`${colors.yellow}Detection Mode: ${pivotDetectionMode}${colors.reset}`);
+    
+    // Display time range information
+    const maxCandles = OPTIMIZATION_CONFIG.maxCandles; 
+    console.log(`${colors.yellow}Candle Range: ${maxCandles} Candles ${colors.reset}`);
     
     // Generate all parameter combinations
     const combinations = generateParameterCombinations();

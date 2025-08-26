@@ -17,7 +17,7 @@ export const tradeConfig = {
 
     takeProfit: 0.9,
     stopLoss: 0.4,
-    leverage: 1,        
+    leverage: 80,        
     
     // Flip mode: close opposite and switch to new confirmed signal 
     // switchOnOppositeSignal: true,       
@@ -26,6 +26,7 @@ export const tradeConfig = {
     switchPolicy: 'flip',                 // Reserved for future strategies; currently only 'flip' is supported
 
     noTradeDays: [],
+    // noTradeDays: ['M'],
     // noTradeDays: ['M', 'T', 'W', 'Th', 'F', 'Sa', 'Su'],
 
     // Trailing stop loss settings
@@ -43,7 +44,7 @@ export const tradeConfig = {
     // showPivot: true,
     // showTradeDetails: true,
     showPivot: false,
-    showTradeDetails: false,
+    showTradeDetails: true,
     hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
  
 
