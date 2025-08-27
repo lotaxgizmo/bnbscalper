@@ -105,9 +105,9 @@ async function setLeverage(symbol, leverage) {
 }
 
 async function placeOrder() {
-  const symbol = 'BNBUSDT';
+  const symbol = 'SOLUSDT';
   const side = 'Buy'; 
-  const leverage = 25; // Set your desired leverage
+  const leverage = 10; // Set your desired leverage
   
   // Configuration: Choose between 'percentage' or 'fixed'
   // const amountMode = 'percentage'; // 'percentage' or 'fixed'
@@ -121,28 +121,31 @@ async function placeOrder() {
   // Get market price
   const entryPrice = await getMarketPrice(symbol);
   
-  // Calculate USDT amount based on mode (WITHOUT leverage multiplication)
-  let usdtAmount;
+  // Calculate USDT amount based on mode (WITH leverage multiplication)
+  let baseAmount;
   if (amountMode === 'percentage') {
     // For testnet, use mock balance if balance API fails
     try {
       const balance = await getAccountBalance();
-      usdtAmount = balance.availableBalance * usePercentage / 100; // NO leverage multiplication
+      baseAmount = balance.availableBalance * usePercentage / 100;
       console.log('AVAILABLE BALANCE:', balance.availableBalance, 'USDT');
     } catch (error) {
       console.log('Balance API failed, using mock balance of 1000 USDT');
-      usdtAmount = 1000 * usePercentage / 100; // NO leverage multiplication
+      baseAmount = 1000 * usePercentage / 100;
       console.log('MOCK BALANCE:', 1000, 'USDT');
     }
   } else {
-    usdtAmount = fixedAmount; // NO leverage multiplication
+    baseAmount = fixedAmount;
     console.log('USING FIXED AMOUNT MODE');
   }
   
+  // Multiply by leverage to get actual position size
+  const usdtAmount = baseAmount * leverage;
+  
   // Calculate contract quantity and round to qtyStep (0.001 for BTCUSDT)
   const rawQty = usdtAmount / entryPrice;
-  const qtyStep = 0.01; // BTCUSDT qtyStep from API
-  // const qtyStep = 0.001; // BTCUSDT qtyStep from API
+  const qtyStep = 0.1; // TOKEN DECIMAL qtyStep from API
+  // const qtyStep = 0.001; // TOKEN DECIMAL qtyStep from API
   const contractQty = (Math.floor(rawQty / qtyStep) * qtyStep).toFixed(3);
 
   const res = await signedRequest('/v5/order/create', 'POST', {
@@ -157,12 +160,13 @@ async function placeOrder() {
   console.log('AMOUNT MODE:', amountMode);
   if (amountMode === 'percentage') {
     console.log('PERCENTAGE USED:', usePercentage + '%');
+    console.log('BASE AMOUNT:', baseAmount, 'USDT');
   } else {
-    console.log('FIXED AMOUNT:', fixedAmount, 'USDT');
+    console.log('BASE AMOUNT:', baseAmount, 'USDT');
   }
   console.log('LEVERAGE:', leverage + 'x');
-  console.log('MARGIN USED:', usdtAmount, 'USDT');
-  console.log('POSITION VALUE:', (usdtAmount * leverage), 'USDT');
+  console.log('LEVERAGED POSITION SIZE:', usdtAmount, 'USDT');
+  console.log('MARGIN REQUIRED:', (usdtAmount / leverage), 'USDT');
   console.log('ENTRY PRICE:', entryPrice);
   console.log('CONTRACT QTY:', contractQty);
   console.log('ORDER RESPONSE:', JSON.stringify(res, null, 2));

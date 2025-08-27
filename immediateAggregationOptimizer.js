@@ -12,8 +12,16 @@ const OPTIMIZATION_CONFIG = {
     // maxCandles: 86400, // 14 days of 1m candles 
     // maxCandles: 43200, // 14 days of 1m candles 
     // maxCandles: 20160, // 14 days of 1m candles 
-    maxCandles: 10080, // 14 days of 1m candles 
+    // maxCandles: 15840, // 14 days of 1m candles 
+    // maxCandles: 10080, // 14 days of 1m candles 
+    // maxCandles: 11520, // 14 days of 1m candles 
+    // maxCandles: 5760, // 14 days of 1m candles 
+    // maxCandles: 4320, // 14 days of 1m candles 
+    maxCandles: 2880, // 14 days of 1m candles 
+    // maxCandles: 1440, // 14 days of 1m candles 
     tradeDirection: ['both'],
+    delayReverseTime: 0,
+    // delayReverseTime: 2880,
     
     timeframeCombinations: [ 
         [
@@ -41,9 +49,9 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '1h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.5, end: 0.5, step: 0.1 },
-                lookbackRange: { start: 2, end: 2, step: 1 },
-                minLegBarsRange: { start: 2, end: 2, step: 1 },               
+                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
+                lookbackRange: { start: 4, end: 4, step: 1 },
+                minLegBarsRange: { start: 1, end: 1, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
@@ -199,24 +207,61 @@ async function load1mCandles() {
             };
         }).sort((a, b) => a.time - b.time);
         
-        const limitedCandles = candles.slice(-BACKTEST_CONFIG.maxCandles);
-        const firstCandle = limitedCandles[0];
-        const lastCandle = limitedCandles[limitedCandles.length - 1];
+        // Apply time travel offset if configured
+        let finalCandles;
+        if (OPTIMIZATION_CONFIG.delayReverseTime && OPTIMIZATION_CONFIG.delayReverseTime > 0) {
+            const timeOffset = OPTIMIZATION_CONFIG.delayReverseTime;
+            const totalAvailable = candles.length;
+            const startIndex = Math.max(0, totalAvailable - BACKTEST_CONFIG.maxCandles - timeOffset);
+            const endIndex = Math.max(BACKTEST_CONFIG.maxCandles, totalAvailable - timeOffset);
+            finalCandles = candles.slice(startIndex, endIndex);
+            
+            if (!OPTIMIZATION_CONFIG.silentMode) {
+                console.log(`${colors.magenta}⏰ TIME TRAVEL ACTIVE: Going back ${timeOffset} candles (${Math.round(timeOffset/1440)} days)${colors.reset}`);
+            }
+        } else {
+            finalCandles = candles.slice(-BACKTEST_CONFIG.maxCandles);
+        }
+        
+        const firstCandle = finalCandles[0];
+        const lastCandle = finalCandles[finalCandles.length - 1];
         if (!OPTIMIZATION_CONFIG.silentMode) {
-            console.log(`${colors.green}Loaded ${limitedCandles.length} 1m candles from CSV${colors.reset}`);
+            console.log(`${colors.green}Loaded ${finalCandles.length} 1m candles from CSV${colors.reset}`);
             console.log(`${colors.cyan}Data Range: ${formatDualTime(firstCandle.time)} → ${formatDualTime(lastCandle.time)}${colors.reset}`);
         }
-        return limitedCandles;
+        return finalCandles;
     } else {
-        const candles = await getCandles(symbol, '1m', BACKTEST_CONFIG.maxCandles);
+        // For API, we need to fetch extra candles if time travel is enabled
+        const candlesToFetch = OPTIMIZATION_CONFIG.delayReverseTime ? 
+            BACKTEST_CONFIG.maxCandles + OPTIMIZATION_CONFIG.delayReverseTime : 
+            BACKTEST_CONFIG.maxCandles;
+            
+        const candles = await getCandles(symbol, '1m', candlesToFetch);
         const sortedCandles = candles.sort((a, b) => a.time - b.time);
-        const firstCandle = sortedCandles[0];
-        const lastCandle = sortedCandles[sortedCandles.length - 1];
+        
+        // Apply time travel offset if configured
+        let finalCandles;
+        if (OPTIMIZATION_CONFIG.delayReverseTime && OPTIMIZATION_CONFIG.delayReverseTime > 0) {
+            const timeOffset = OPTIMIZATION_CONFIG.delayReverseTime;
+            const totalAvailable = sortedCandles.length;
+            const startIndex = Math.max(0, totalAvailable - BACKTEST_CONFIG.maxCandles - timeOffset);
+            const endIndex = Math.max(BACKTEST_CONFIG.maxCandles, totalAvailable - timeOffset);
+            finalCandles = sortedCandles.slice(startIndex, endIndex);
+            
+            if (!OPTIMIZATION_CONFIG.silentMode) {
+                console.log(`${colors.magenta}⏰ TIME TRAVEL ACTIVE: Going back ${timeOffset} candles (${Math.round(timeOffset/1440)} days)${colors.reset}`);
+            }
+        } else {
+            finalCandles = sortedCandles.slice(-BACKTEST_CONFIG.maxCandles);
+        }
+        
+        const firstCandle = finalCandles[0];
+        const lastCandle = finalCandles[finalCandles.length - 1];
         if (!OPTIMIZATION_CONFIG.silentMode) {
-            console.log(`${colors.green}Loaded ${candles.length} 1m candles from API${colors.reset}`);
+            console.log(`${colors.green}Loaded ${finalCandles.length} 1m candles from API${colors.reset}`);
             console.log(`${colors.cyan}Data Range: ${formatDualTime(firstCandle.time)} → ${formatDualTime(lastCandle.time)}${colors.reset}`);
         }
-        return sortedCandles;
+        return finalCandles;
     }
 }
 
@@ -2141,6 +2186,31 @@ async function runOptimization() {
     
     // Export results
     await exportResults(results);
+    
+    // Display time range information at the end
+    if (GLOBAL_CACHE.oneMinuteCandles && GLOBAL_CACHE.oneMinuteCandles.length > 0) {
+        const firstCandle = GLOBAL_CACHE.oneMinuteCandles[0];
+        const lastCandle = GLOBAL_CACHE.oneMinuteCandles[GLOBAL_CACHE.oneMinuteCandles.length - 1];
+        const totalDays = Math.ceil((lastCandle.time - firstCandle.time) / (24 * 60 * 60 * 1000));
+        
+        const startDate = new Date(firstCandle.time);
+        const endDate = new Date(lastCandle.time);
+        
+        const formatDate = (date) => {
+            return date.toLocaleDateString('en-US', {
+                weekday: 'short',
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        };
+        
+        console.log(`${colors.cyan}\n=== DATA TIME RANGE ===${colors.reset}`);
+        console.log(`${colors.yellow}Period: ${totalDays} days${colors.reset}`);
+        console.log(`${colors.yellow}From: ${formatDate(startDate)} (${formatDualTime(firstCandle.time)})${colors.reset}`);
+        console.log(`${colors.yellow}To: ${formatDate(endDate)} (${formatDualTime(lastCandle.time)})${colors.reset}`);
+        console.log(`${colors.yellow}Total Candles: ${formatNumberWithCommas(GLOBAL_CACHE.oneMinuteCandles.length)} (1-minute)${colors.reset}`);
+    }
     
     console.log(`${colors.green}\n=== OPTIMIZATION FINISHED ===${colors.reset}`);
     return results;

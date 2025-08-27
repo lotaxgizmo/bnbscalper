@@ -1,0 +1,2 @@
+Rank,Score,Trading Mode,Direction,Take Profit,Stop Loss,Leverage,Timeframes,Detailed Timeframes,Total Trades,Win Rate %,Total PnL,Avg PnL,Max Drawdown %,Profit Factor,Sharpe Ratio,Final Capital
+1,2248.97,cascade,both,1,0.4,80,"1m(0.2%,L3,B1,OF)+30m(0.7%,L1,B5,OF)+1h(0.1%,L4,B1,OF)","1m: swing=0.2%, lookback=3, minLegBars=1, opposite=false | 30m: swing=0.7%, lookback=1, minLegBars=5, opposite=false | 1h: swing=0.1%, lookback=4, minLegBars=1, opposite=false",3,100.0,547.33,182.44,0.0,999.00,1.93,647.33

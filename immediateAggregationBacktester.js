@@ -13,7 +13,13 @@ const BACKTEST_CONFIG = {
     // maxCandles: 86400,        // 1 week of 1m candles for testing
     // maxCandles: 43200,        // 1 week of 1m candles for testing
     // maxCandles: 20160,          // 1 week of 1m candles for testing
-    maxCandles: 10080,          // 1 week of 1m candles for testing
+    // maxCandles: 15840,          // 1 week of 1m candles for testing
+    // maxCandles: 10080,          // 1 week of 1m candles for testing
+    // maxCandles: 11520,          // 1 week of 1m candles for testing
+    // maxCandles: 5760,          // 1 week of 1m candles for testing
+    // maxCandles: 4320,          // 1 week of 1m candles for testing
+    maxCandles: 2880,          // 2 days of 1m candles for testing 
+    delayReverseTime: 0,       // Time travel: go back N candles (0 = disabled, 1440 = 1 day, 2880 = 2 days)
 
     // Output settings
     showEveryNthTrade: 1,       // Show every Nth trade
@@ -134,20 +140,58 @@ async function load1mCandles() {
             };
         }).sort((a, b) => a.time - b.time);
         
-        const limitedCandles = candles.slice(-BACKTEST_CONFIG.maxCandles);
-        const firstCandle = limitedCandles[0];
-        const lastCandle = limitedCandles[limitedCandles.length - 1];
-        console.log(`${colors.green}Loaded ${limitedCandles.length} 1m candles from CSV${colors.reset}`);
-        console.log(`${colors.cyan}Data Range: ${formatDualTime(firstCandle.time)} → ${formatDualTime(lastCandle.time)}${colors.reset}`);
-        return limitedCandles;
+        // Apply time travel if configured
+        if (BACKTEST_CONFIG.delayReverseTime > 0) {
+            const totalCandles = candles.length;
+            const startIndex = Math.max(0, totalCandles - BACKTEST_CONFIG.maxCandles - BACKTEST_CONFIG.delayReverseTime);
+            const endIndex = Math.max(BACKTEST_CONFIG.maxCandles, totalCandles - BACKTEST_CONFIG.delayReverseTime);
+            const timeShiftedCandles = candles.slice(startIndex, endIndex);
+            
+            const daysBack = (BACKTEST_CONFIG.delayReverseTime / 1440).toFixed(1);
+            console.log(`${colors.yellow}⏰ TIME TRAVEL ACTIVE: Going back ${BACKTEST_CONFIG.delayReverseTime} candles (${daysBack} days)${colors.reset}`);
+            
+            const firstCandle = timeShiftedCandles[0];
+            const lastCandle = timeShiftedCandles[timeShiftedCandles.length - 1];
+            console.log(`${colors.green}Loaded ${timeShiftedCandles.length} 1m candles from CSV (time-shifted)${colors.reset}`);
+            console.log(`${colors.cyan}Data Range: ${formatDualTime(firstCandle.time)} → ${formatDualTime(lastCandle.time)}${colors.reset}`);
+            return timeShiftedCandles;
+        } else {
+            const limitedCandles = candles.slice(-BACKTEST_CONFIG.maxCandles);
+            const firstCandle = limitedCandles[0];
+            const lastCandle = limitedCandles[limitedCandles.length - 1];
+            console.log(`${colors.green}Loaded ${limitedCandles.length} 1m candles from CSV${colors.reset}`);
+            console.log(`${colors.cyan}Data Range: ${formatDualTime(firstCandle.time)} → ${formatDualTime(lastCandle.time)}${colors.reset}`);
+            return limitedCandles;
+        }
     } else {
-        const candles = await getCandles(symbol, '1m', BACKTEST_CONFIG.maxCandles);
+        // Load extra candles for time travel if needed
+        const totalCandlesNeeded = BACKTEST_CONFIG.maxCandles + BACKTEST_CONFIG.delayReverseTime;
+        const candles = await getCandles(symbol, '1m', totalCandlesNeeded);
         const sortedCandles = candles.sort((a, b) => a.time - b.time);
-        const firstCandle = sortedCandles[0];
-        const lastCandle = sortedCandles[sortedCandles.length - 1];
-        console.log(`${colors.green}Loaded ${candles.length} 1m candles from API${colors.reset}`);
-        console.log(`${colors.cyan}Data Range: ${formatDualTime(firstCandle.time)} → ${formatDualTime(lastCandle.time)}${colors.reset}`);
-        return sortedCandles;
+        
+        // Apply time travel if configured
+        if (BACKTEST_CONFIG.delayReverseTime > 0) {
+            const totalCandles = sortedCandles.length;
+            const startIndex = Math.max(0, totalCandles - BACKTEST_CONFIG.maxCandles - BACKTEST_CONFIG.delayReverseTime);
+            const endIndex = Math.max(BACKTEST_CONFIG.maxCandles, totalCandles - BACKTEST_CONFIG.delayReverseTime);
+            const timeShiftedCandles = sortedCandles.slice(startIndex, endIndex);
+            
+            const daysBack = (BACKTEST_CONFIG.delayReverseTime / 1440).toFixed(1);
+            console.log(`${colors.yellow}⏰ TIME TRAVEL ACTIVE: Going back ${BACKTEST_CONFIG.delayReverseTime} candles (${daysBack} days)${colors.reset}`);
+            
+            const firstCandle = timeShiftedCandles[0];
+            const lastCandle = timeShiftedCandles[timeShiftedCandles.length - 1];
+            console.log(`${colors.green}Loaded ${timeShiftedCandles.length} 1m candles from API (time-shifted)${colors.reset}`);
+            console.log(`${colors.cyan}Data Range: ${formatDualTime(firstCandle.time)} → ${formatDualTime(lastCandle.time)}${colors.reset}`);
+            return timeShiftedCandles;
+        } else {
+            const limitedCandles = sortedCandles.slice(-BACKTEST_CONFIG.maxCandles);
+            const firstCandle = limitedCandles[0];
+            const lastCandle = limitedCandles[limitedCandles.length - 1];
+            console.log(`${colors.green}Loaded ${limitedCandles.length} 1m candles from API${colors.reset}`);
+            console.log(`${colors.cyan}Data Range: ${formatDualTime(firstCandle.time)} → ${formatDualTime(lastCandle.time)}${colors.reset}`);
+            return limitedCandles;
+        }
     }
 }
 
@@ -1811,6 +1855,39 @@ async function runImmediateAggregationBacktest() {
         console.log(`${colors.yellow}Final Capital: ${capital >= 0 ? colors.green : colors.red}${formatNumberWithCommas(capital)} USDT${colors.reset}`);
         
        
+    }
+    
+    // Display detailed data time range summary only when time travel is active
+    if (BACKTEST_CONFIG.delayReverseTime > 0) {
+        console.log(`\n${colors.cyan}=== DATA TIME RANGE SUMMARY ===${colors.reset}`);
+        const totalPeriodDays = ((dataEndTime - dataStartTime) / (1000 * 60 * 60 * 24)).toFixed(1);
+        const startDate = new Date(dataStartTime);
+        const endDate = new Date(dataEndTime);
+        
+        // Format start time in both 12-hour and 24-hour formats
+        const startTime12h = startDate.toLocaleString('en-US', { 
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
+        });
+        const startTime24h = startDate.toLocaleString('en-GB', { 
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false 
+        });
+        
+        // Format end time in both 12-hour and 24-hour formats
+        const endTime12h = endDate.toLocaleString('en-US', { 
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
+        });
+        const endTime24h = endDate.toLocaleString('en-GB', { 
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false 
+        });
+        
+        console.log(`${colors.yellow}Total Period: ${colors.green}${totalPeriodDays} days${colors.reset}`);
+        console.log(`${colors.yellow}Start Time: ${colors.green}${startTime12h} (${startTime24h})${colors.reset}`);
+        console.log(`${colors.yellow}End Time: ${colors.green}${endTime12h} (${endTime24h})${colors.reset}`);
+        console.log(`${colors.yellow}Total Candles: ${colors.green}${oneMinuteCandles.length.toLocaleString()}${colors.reset}`);
     }
     
     console.log(`\n${colors.cyan}--- Multi-Timeframe Backtesting Complete ---${colors.reset}`);
