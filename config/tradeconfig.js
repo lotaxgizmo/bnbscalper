@@ -17,7 +17,7 @@ export const tradeConfig = {
 
     takeProfit: 1,
     stopLoss: 0.4,
-    leverage: 80,        
+    leverage: 50,        
     
     // Flip mode: close opposite and switch to new confirmed signal 
     // switchOnOppositeSignal: true,       
@@ -44,7 +44,7 @@ export const tradeConfig = {
     // showPivot: true,
     // showTradeDetails: true,
     showPivot: false,
-    showTradeDetails: true,
+    showTradeDetails: false,
     hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
  
 
@@ -57,7 +57,7 @@ export const tradeConfig = {
 
 
  
-    initialCapital: 100,
+    initialCapital: 200,
     riskPerTrade: 100,
  
 
