@@ -12,8 +12,8 @@ const BACKTEST_CONFIG = {
     // maxCandles: 129600,        // 1 week of 1m candles for testing
     // maxCandles: 86400,        // 1 week of 1m candles for testing
     // maxCandles: 43200,        // 1 week of 1m candles for testing
-    maxCandles: 20160,          // 1 week of 1m candles for testing
-    // maxCandles: 10080,          // 1 week of 1m candles for testing
+    // maxCandles: 20160,          // 1 week of 1m candles for testing
+    maxCandles: 10080,          // 1 week of 1m candles for testing
 
     // Output settings
     showEveryNthTrade: 1,       // Show every Nth trade

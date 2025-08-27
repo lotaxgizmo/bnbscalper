@@ -4,24 +4,36 @@
 
 // ===== OPTIMIZATION CONFIGURATION =====
 const OPTIMIZATION_CONFIG = {
-    takeProfitRange: { start: 0.1, end: 2, step: 0.1 },
-    stopLossRange: { start: 0.1, end: 1, step: 0.1 },
+    takeProfitRange: { start: 1, end: 1, step: 0.1 },
+    stopLossRange: { start: 0.4, end: 0.4, step: 0.1 },
     leverageRange: { start: 80, end: 80, step: 1 },
     minimumTimeframes: 3,
     tradingModes: ['cascade'],  
-    maxCandles: 86400, // 14 days of 1m candles 
+    // maxCandles: 86400, // 14 days of 1m candles 
     // maxCandles: 43200, // 14 days of 1m candles 
     // maxCandles: 20160, // 14 days of 1m candles 
+    maxCandles: 10080, // 14 days of 1m candles 
     tradeDirection: ['both'],
     
     timeframeCombinations: [ 
         [
+          
+ 
             {
                 interval: '1m',
                 role: 'secondary',
-                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
-                lookbackRange: { start: 1, end: 1, step: 1 },
+                minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
+                lookbackRange: { start: 3, end: 3, step: 1 },
                 minLegBarsRange: { start: 1, end: 1, step: 1 },               
+                weight: 1,
+                oppositeRange: [false]
+            }, 
+            {
+                interval: '30m',
+                role: 'secondary',
+                minSwingPctRange: { start: 0.7, end: 0.7, step: 0.1 },
+                lookbackRange: { start: 1, end: 1, step: 1 },
+                minLegBarsRange: { start: 5, end: 5, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             }, 
@@ -29,31 +41,21 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '1h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.4, end: 0.4, step: 0.1 },
-                lookbackRange: { start: 4, end: 4, step: 1 },
-                minLegBarsRange: { start: 4, end: 4, step: 1 },               
-                weight: 1,
-                oppositeRange: [false]
-            }, 
- 
-            // {
-            //     interval: '1h',
-            //     role: 'primary',
-            //     minSwingPctRange: { start: 0.4, end: 0.4, step: 0.1 },
-            //     lookbackRange: { start: 4, end: 4, step: 1 },
-            //     minLegBarsRange: { start: 4, end: 4, step: 1 },               
-            //     weight: 1,
-            //     oppositeRange: [false]
-            // },
-            {
-                interval: '30m',
-                role: 'secondary',
-                minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
-                lookbackRange: { start: 3, end: 3, step: 1 },
+                minSwingPctRange: { start: 0.5, end: 0.5, step: 0.1 },
+                lookbackRange: { start: 2, end: 2, step: 1 },
                 minLegBarsRange: { start: 2, end: 2, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
+            // {
+            //     interval: '30m',
+            //     role: 'secondary',
+            //     minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
+            //     lookbackRange: { start: 3, end: 3, step: 1 },
+            //     minLegBarsRange: { start: 2, end: 2, step: 1 },               
+            //     weight: 1,
+            //     oppositeRange: [false]
+            // },
            
         ]
     ],
