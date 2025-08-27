@@ -1,152 +1,150 @@
+// file: allInOrder.js
 import { publicRequest, signedRequest } from './bybitClient.js';
 
+// ==========================
+// Get account balance
+// ==========================
 async function getAccountBalance() {
-  try {
-    console.log('Fetching account balance...');
-    
-    const res = await signedRequest('/v5/account/wallet-balance', 'GET', { 
-      accountType: 'UNIFIED'
-    });
-    
-    console.log('Raw API Response:', JSON.stringify(res, null, 2));
-    
-    // Handle different response structures
-    if (res.retCode !== 0) {
-      throw new Error(`API Error: ${res.retMsg} (Code: ${res.retCode})`);
-    }
-    
-    if (!res.result || !res.result.list) {
-      throw new Error('No account data in response');
-    }
-    
-    if (res.result.list.length === 0) {
-      // For testnet, return mock balance if no real balance exists
-      console.log('No accounts found, using mock balance for testnet');
-      return {
-        availableBalance: 1000, // Mock 1000 USDT for testnet
-        walletBalance: 1000,
-        equity: 1000
-      };
-    }
-    
-    // Find USDT balance
-    const account = res.result.list[0];
-    console.log('Account structure:', JSON.stringify(account, null, 2));
-    
-    if (!account.coin || account.coin.length === 0) {
-      console.log('No coins found, using mock balance');
-      return {
-        availableBalance: 1000,
-        walletBalance: 1000,
-        equity: 1000
-      };
-    }
-    
-    const usdtCoin = account.coin.find(coin => coin.coin === 'USDT');
-    
-    if (!usdtCoin) {
-      console.log('Available coins:', account.coin.map(c => c.coin));
-      console.log('USDT not found, using mock balance');
-      return {
-        availableBalance: 1000,
-        walletBalance: 1000,
-        equity: 1000
-      };
-    }
-    
-    console.log('USDT Coin Data:', usdtCoin);
-    
-    return {
-      availableBalance: parseFloat(usdtCoin.availableToWithdraw || usdtCoin.walletBalance || '1000'),
-      walletBalance: parseFloat(usdtCoin.walletBalance || '1000'),
-      equity: parseFloat(usdtCoin.equity || usdtCoin.walletBalance || '1000')
-    };
-  } catch (error) {
-    console.error('Balance API Error:', error.message);
-    console.log('Using mock balance for testnet');
-    return {
-      availableBalance: 1000,
-      walletBalance: 1000,
-      equity: 1000
-    };
-  }
+  const res = await signedRequest('/v5/account/wallet-balance', 'GET', { accountType: 'UNIFIED' });
+
+  if (res.retCode !== 0) throw new Error(`API Error: ${res.retMsg}`);
+
+  const account = res.result.list[0];
+  const usdtCoin = account.coin.find(c => c.coin === 'USDT');
+  if (!usdtCoin) throw new Error('USDT not found in account');
+
+  const equity = parseFloat(usdtCoin.equity || usdtCoin.walletBalance);
+  const totalPositionIM = parseFloat(usdtCoin.totalPositionIM || 0);
+  const totalOrderIM = parseFloat(usdtCoin.totalOrderIM || 0);
+  const calculatedAvailable = equity - totalPositionIM - totalOrderIM;
+  const totalAvailable = account.totalAvailableBalance
+    ? parseFloat(account.totalAvailableBalance)
+    : calculatedAvailable;
+
+  const availableBalance = Math.max(totalAvailable, calculatedAvailable, 0);
+
+  return {
+    availableBalance,
+    walletBalance: parseFloat(usdtCoin.walletBalance),
+    equity,
+    totalPositionIM,
+    totalOrderIM,
+  };
 }
 
+// ==========================
+// Get market price
+// ==========================
 async function getMarketPrice(symbol) {
-  try {
-    const res = await publicRequest('/v5/market/tickers', 'GET', { category: 'linear', symbol });
-    
-    if (!res.result || !res.result.list || !res.result.list[0]) {
-      throw new Error('Invalid API response structure');
-    }
-    
-    return parseFloat(res.result.list[0].lastPrice);
-  } catch (error) {
-    console.error('Error getting market price:', error);
-    throw error;
-  }
+  const res = await publicRequest('/v5/market/tickers', 'GET', {
+    category: 'linear',
+    symbol,
+  });
+  return parseFloat(res.result.list[0].lastPrice);
 }
 
+// ==========================
+// Get instrument info (qtyStep, minOrderQty)
+// ==========================
+async function getInstrumentInfo(symbol) {
+  const res = await publicRequest('/v5/market/instruments-info', 'GET', {
+    category: 'linear',
+    symbol,
+  });
+
+  if (!res.result.list || res.result.list.length === 0) {
+    throw new Error(`No instrument info for ${symbol}`);
+  }
+
+  const info = res.result.list[0];
+  const qtyStep = parseFloat(info.lotSizeFilter.qtyStep);
+  const minOrderQty = parseFloat(info.lotSizeFilter.minOrderQty);
+
+  return { qtyStep, minOrderQty };
+}
+
+// ==========================
+// Set margin mode
+// ==========================
+async function setIsolatedMargin(symbol) {
+  await signedRequest('/v5/position/switch-isolated', 'POST', {
+    category: 'linear',
+    symbol,
+    tradeMode: 1, // 1 = Isolated
+    buyLeverage: '1',
+    sellLeverage: '1',
+  });
+  console.log('✅ Margin Mode: Isolated');
+}
+
+// ==========================
+// Set leverage
+// ==========================
 async function setLeverage(symbol, leverage) {
-  try {
-    const res = await signedRequest('/v5/position/set-leverage', 'POST', {
-      category: 'linear',
-      symbol,
-      buyLeverage: leverage.toString(),
-      sellLeverage: leverage.toString()
-    });
-    
-    console.log('LEVERAGE SET TO:', leverage + 'x');
-    return res;
-  } catch (error) {
-    console.error('Error setting leverage:', error);
-    throw error;
-  }
+  await signedRequest('/v5/position/set-leverage', 'POST', {
+    category: 'linear',
+    symbol,
+    buyLeverage: leverage.toString(),
+    sellLeverage: leverage.toString(),
+  });
+  console.log(`✅ Leverage set: ${leverage}x`);
 }
 
+// ==========================
+// Place order (all-in or fixed)
+// ==========================
 async function placeOrder() {
-  const symbol = 'SOLUSDT';
-  const side = 'Buy'; 
-  const leverage = 10; // Set your desired leverage
-  
-  // Configuration: Choose between 'percentage' or 'fixed'
-  // const amountMode = 'percentage'; // 'percentage' or 'fixed'
-  const amountMode = 'fixed'; // 'percentage' or 'fixed'
-  const usePercentage = 100; // Use 100% of available balance (when mode = 'percentage')
-  const fixedAmount = 50; // Fixed USDT amount (when mode = 'fixed') - increased for minimum order size
+  const symbol = 'SOLUSDT';     // change symbol here
+  const side = 'Buy';           // 'Buy' = long, 'Sell' = short
+  const leverage = 1;          // leverage to use
+  const amountMode = 'percentage'; // 'percentage' or 'fixed'
+  const usePercentage = 100;    // 100% balance if percentage
+  const fixedAmount = 200;      // USDT amount if fixed mode
+  const upperLimit = 50000;     // Max notional cap
 
-  // Set leverage first
+  await setIsolatedMargin(symbol);
   await setLeverage(symbol, leverage);
 
-  // Get market price
   const entryPrice = await getMarketPrice(symbol);
-  
-  // Calculate USDT amount based on mode (WITH leverage multiplication)
+  const { qtyStep, minOrderQty } = await getInstrumentInfo(symbol);
+
   let baseAmount;
   if (amountMode === 'percentage') {
-    // For testnet, use mock balance if balance API fails
-    try {
-      const balance = await getAccountBalance();
-      baseAmount = balance.availableBalance * usePercentage / 100;
-      console.log('AVAILABLE BALANCE:', balance.availableBalance, 'USDT');
-    } catch (error) {
-      console.log('Balance API failed, using mock balance of 1000 USDT');
-      baseAmount = 1000 * usePercentage / 100;
-      console.log('MOCK BALANCE:', 1000, 'USDT');
-    }
+    const balance = await getAccountBalance();
+    baseAmount = balance.availableBalance * usePercentage / 100;
+    console.log('Available Balance:', balance.availableBalance, 'USDT');
   } else {
     baseAmount = fixedAmount;
-    console.log('USING FIXED AMOUNT MODE');
+    console.log('Using fixed amount:', baseAmount, 'USDT');
   }
-  
-  // Multiply by leverage to get actual position size
-  const usdtAmount = baseAmount * leverage;
-  
-  // Calculate contract quantity and round to qtyStep (0.001 for BTCUSDT)
-  const rawQty = usdtAmount / entryPrice;
-  const qtyStep = 0.1; // TOKEN DECIMAL qtyStep from API
-  // const qtyStep = 0.001; // TOKEN DECIMAL qtyStep from API
-  const contractQty = (Math.floor(rawQty / qtyStep) * qtyStep).toFixed(3);
+
+  // Cap position size
+  let notional = baseAmount * leverage;
+  if (upperLimit && notional > upperLimit) {
+    console.log(`🚨 Position capped to ${upperLimit} USDT notional`);
+    baseAmount = upperLimit / leverage;
+    notional = baseAmount * leverage;
+  }
+
+  // Raw contracts
+  const rawQty = notional / entryPrice;
+
+  // Apply qtyStep precision
+  const precision = Math.log10(1 / qtyStep);
+  let contractQty = (Math.floor(rawQty / qtyStep) * qtyStep).toFixed(precision);
+
+  // Ensure min order size
+  if (parseFloat(contractQty) < minOrderQty) {
+    contractQty = minOrderQty.toFixed(precision);
+    console.log(`⚠️ Raised to minOrderQty: ${contractQty}`);
+  }
+
+  console.log('Symbol:', symbol);
+  console.log('Side:', side);
+  console.log('Leverage:', leverage);
+  console.log('Entry Price:', entryPrice);
+  console.log('Notional Size:', notional.toFixed(2), 'USDT');
+  console.log('Contract Qty:', contractQty, `(step ${qtyStep}, min ${minOrderQty})`);
 
   const res = await signedRequest('/v5/order/create', 'POST', {
     category: 'linear',
@@ -154,25 +152,12 @@ async function placeOrder() {
     side,
     orderType: 'Market',
     qty: contractQty,
-    timeInForce: 'IOC' // Immediate or Cancel for market orders
+    timeInForce: 'IOC',
   });
 
-  console.log('AMOUNT MODE:', amountMode);
-  if (amountMode === 'percentage') {
-    console.log('PERCENTAGE USED:', usePercentage + '%');
-    console.log('BASE AMOUNT:', baseAmount, 'USDT');
-  } else {
-    console.log('BASE AMOUNT:', baseAmount, 'USDT');
-  }
-  console.log('LEVERAGE:', leverage + 'x');
-  console.log('LEVERAGED POSITION SIZE:', usdtAmount, 'USDT');
-  console.log('MARGIN REQUIRED:', (usdtAmount / leverage), 'USDT');
-  console.log('ENTRY PRICE:', entryPrice);
-  console.log('CONTRACT QTY:', contractQty);
-  console.log('ORDER RESPONSE:', JSON.stringify(res, null, 2));
+  console.log('📩 ORDER RESPONSE:', JSON.stringify(res, null, 2));
 }
 
-placeOrder().catch(error => {
-  console.error('Main error:', error);
-  process.exit(1);
+placeOrder().catch(err => {
+  console.error('❌ Error:', err.message);
 });
