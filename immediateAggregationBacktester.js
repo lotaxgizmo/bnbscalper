@@ -11,13 +11,13 @@ const BACKTEST_CONFIG = {
     useLiveAPI: false,           // Force API data
     // maxCandles: 129600,        // 1 week of 1m candles for testing
     // maxCandles: 86400,        // 1 week of 1m candles for testing
-    // maxCandles: 43200,        // 1 week of 1m candles for testing
-    // maxCandles: 20160,          // 1 week of 1m candles for testing
+    // maxCandles: 43200,        // 1 month of 1m candles for testing
+    // maxCandles: 20160,          // 2 weeks of 1m candles for testing
     // maxCandles: 15840,          // 1 week of 1m candles for testing
     // maxCandles: 10080,          // 1 week of 1m candles for testing
-    // maxCandles: 11520,          // 1 week of 1m candles for testing
-    // maxCandles: 5760,          // 1 week of 1m candles for testing
-    // maxCandles: 4320,          // 1 week of 1m candles for testing
+    // maxCandles: 11520,          // 8 days of 1m candles for testing
+    // maxCandles: 5760,          // 4 days of 1m candles for testing
+    // maxCandles: 4320,          // 3 days of 1m candles for testing
     maxCandles: 2880,          // 2 days of 1m candles for testing 
     delayReverseTime: 0,       // Time travel: go back N candles (0 = disabled, 1440 = 1 day, 2880 = 2 days)
 
@@ -1055,8 +1055,27 @@ async function runImmediateAggregationBacktest() {
                             }
                         }
 
-                        // Count confirmed cascade signal regardless of trade execution
-                        confirmedSignals++;
+                        // Display cascade confirmation (before trade filtering)
+                        if (!tradeConfig.hideCascades) {
+                            confirmedSignals++;
+                            const primaryTime12 = formatDualTime(win.primaryPivot.time);
+                            const confirmingTFs = confs.map(c => c.timeframe).join(', ');
+                            console.log(`${colors.green}🎯 CASCADE #${confirmedSignals} CONFIRMED: ${tradeType.toUpperCase()}${colors.reset}`);
+                            console.log(`${colors.cyan}   Primary: ${primaryTime12} | Strength: ${(win.primaryPivot.swingPct || 0).toFixed(1)}% | Confirming TFs: ${confirmingTFs}${colors.reset}`);
+                            console.log(`${colors.dim}   Confirmation Details:${colors.reset}`);
+                            console.log(`${colors.dim}     • Primary TF: ${primaryInterval} @ ${formatDualTime(win.primaryPivot.time)}${colors.reset}`);
+                            confs.forEach(conf => {
+                                const confTime = formatDualTime(conf.pivot.time);
+                                const timeDiff = Math.round((conf.pivot.time - win.primaryPivot.time) / (60 * 1000));
+                                const timeDiffStr = timeDiff === 0 ? 'same time' : (timeDiff > 0 ? `+${timeDiff}m` : `${timeDiff}m`);
+                                console.log(`${colors.dim}     • ${conf.timeframe}: @ ${confTime} (${timeDiffStr})${colors.reset}`);
+                            });
+                            const execDelayMin = Math.round((executionTime - win.primaryPivot.time) / (60 * 1000));
+                            const executionTimeStr = formatDualTime(executionTime);
+                            console.log(`${colors.yellow}   Execution: ${confs.length}/${multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3} TFs confirmed → Execute ${execDelayMin === 0 ? 'immediately' : `after ${execDelayMin}m`} @ ${executionTimeStr}${colors.reset}`);
+                        } else {
+                            confirmedSignals++;
+                        }
 
                         // Respect maxConcurrentTrades limit
                         const maxTrades = tradeConfig.singleTradeMode ? 1 : (tradeConfig.maxConcurrentTrades || 1);
@@ -1081,22 +1100,8 @@ async function runImmediateAggregationBacktest() {
                         openTrades.push(trade);
                         allTrades.push(trade);
 
-                        if (!tradeConfig.hideCascades) {
-                            const primaryTime12 = formatDualTime(win.primaryPivot.time);
-                            const confirmingTFs = confs.map(c => c.timeframe).join(', ');
-                            console.log(`${colors.green}🎯 CASCADE #${confirmedSignals} CONFIRMED: ${tradeType.toUpperCase()}${colors.reset}`);
-                            console.log(`${colors.cyan}   Primary: ${primaryTime12} | Strength: ${(win.primaryPivot.swingPct || 0).toFixed(1)}% | Confirming TFs: ${confirmingTFs}${colors.reset}`);
-                            console.log(`${colors.dim}   Confirmation Details:${colors.reset}`);
-                            console.log(`${colors.dim}     • Primary TF: ${primaryInterval} @ ${formatDualTime(win.primaryPivot.time)}${colors.reset}`);
-                            confs.forEach(conf => {
-                                const confTime = formatDualTime(conf.pivot.time);
-                                const timeDiff = Math.round((conf.pivot.time - win.primaryPivot.time) / (60 * 1000));
-                                const timeDiffStr = timeDiff === 0 ? 'same time' : (timeDiff > 0 ? `+${timeDiff}m` : `${timeDiff}m`);
-                                console.log(`${colors.dim}     • ${conf.timeframe}: @ ${confTime} (${timeDiffStr})${colors.reset}`);
-                            });
-                            const execDelayMin = Math.round((executionTime - win.primaryPivot.time) / (60 * 1000));
-                            const executionTimeStr = formatDualTime(executionTime);
-                            console.log(`${colors.yellow}   Execution: ${confs.length}/${multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3} TFs confirmed → Execute ${execDelayMin === 0 ? 'immediately' : `after ${execDelayMin}m`} @ ${executionTimeStr}${colors.reset}`);
+                        // Show trade entry details
+                        if (tradeConfig.showTradeDetails) {
                             console.log(`${colors.cyan}   Entry Price: $${trade.entryPrice.toFixed(2)} | Size: $${formatNumberWithCommas(trade.tradeSize)} | TP: $${trade.takeProfitPrice.toFixed(2)} | SL: $${trade.stopLossPrice.toFixed(2)}${colors.reset}`);
                         }
 
@@ -1189,6 +1194,27 @@ async function runImmediateAggregationBacktest() {
                 // Immediate evaluation at primary time (captures pre/same-time confirmations)
                 const confsNow = checkCascadeConfirmation({ ...currentPivot, timeframe: primaryInterval }, allTimeframePivots, currentTime, primaryInterval);
                 if (meetsExecutionRequirements(confsNow)) {
+                    // Display cascade confirmation immediately (before trade filtering)
+                    if (!tradeConfig.hideCascades) {
+                        confirmedSignals++;
+                        const primaryTime12 = formatDualTime(currentTime);
+                        const confirmingTFs = confsNow.map(c => c.timeframe).join(', ');
+                        console.log(`${colors.green}🎯 CASCADE #${confirmedSignals} CONFIRMED: ${currentPivot.signal.toUpperCase()}${colors.reset}`);
+                        console.log(`${colors.cyan}   Primary: ${primaryTime12} | Strength: ${(currentPivot.swingPct || 0).toFixed(1)}% | Confirming TFs: ${confirmingTFs}${colors.reset}`);
+                        console.log(`${colors.dim}   Confirmation Details:${colors.reset}`);
+                        console.log(`${colors.dim}     • Primary TF: ${primaryTf.interval} @ ${formatDualTime(currentTime)}${colors.reset}`);
+                        confsNow.forEach(conf => {
+                            const confTime = formatDualTime(conf.pivot.time);
+                            const timeDiff = Math.round((conf.pivot.time - currentTime) / (60 * 1000));
+                            const timeDiffStr = timeDiff === 0 ? 'same time' : (timeDiff > 0 ? `+${timeDiff}m` : `${timeDiff}m`);
+                            console.log(`${colors.dim}     • ${conf.timeframe}: @ ${confTime} (${timeDiffStr})${colors.reset}`);
+                        });
+                        const executionTime = Math.max(currentTime, ...confsNow.map(c => c.pivot.time));
+                        const executionTimeStr = formatDualTime(executionTime);
+                        const executionDelay = Math.round((executionTime - currentTime) / (60 * 1000));
+                        const executionDelayStr = executionDelay === 0 ? 'immediately' : `after ${executionDelay}m`;
+                        console.log(`${colors.yellow}   Execution: ${confsNow.length}/${multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3} TFs confirmed → Execute ${executionDelayStr} @ ${executionTimeStr}${colors.reset}`);
+                    }
                     // Will be picked up in minute loop next iteration at currentTime; also try execute now
                     const lastConfTime = Math.max(...confsNow.map(c => c.pivot.time));
                     const executionTime = Math.max(currentTime, lastConfTime);
@@ -1212,24 +1238,24 @@ async function runImmediateAggregationBacktest() {
                         }
 
                         // Apply direction filtering logic
-                        let candidateTradeType = null;
+                        let immediateTradeType = null;
                         let shouldOpenTrade = false;
                         
                         if (currentPivot.signal === 'long') {
                             if (tradeConfig.direction === 'buy' || tradeConfig.direction === 'both') {
                                 shouldOpenTrade = true;
-                                candidateTradeType = 'long';
+                                immediateTradeType = 'long';
                             } else if (tradeConfig.direction === 'alternate') {
                                 shouldOpenTrade = true;
-                                candidateTradeType = 'short'; // Alternate mode: invert
+                                immediateTradeType = 'short'; // Alternate mode: invert
                             }
                         } else if (currentPivot.signal === 'short') {
                             if (tradeConfig.direction === 'sell' || tradeConfig.direction === 'both') {
                                 shouldOpenTrade = true;
-                                candidateTradeType = 'short';
+                                immediateTradeType = 'short';
                             } else if (tradeConfig.direction === 'alternate') {
                                 shouldOpenTrade = true;
-                                candidateTradeType = 'long'; // Alternate mode: invert
+                                immediateTradeType = 'long'; // Alternate mode: invert
                             }
                         }
                         
@@ -1241,7 +1267,7 @@ async function runImmediateAggregationBacktest() {
                             continue;
                         }
                         
-                        const tradeType = candidateTradeType;
+                        const tradeType = immediateTradeType;
                         const oppositeType = (tradeType === 'long') ? 'short' : 'long';
                         const flipThreshold = Math.max(1, tradeConfig.numberOfOppositeSignal || 1);
 
@@ -1326,9 +1352,6 @@ async function runImmediateAggregationBacktest() {
                             }
                         }
 
-                        // Count confirmed cascade signal regardless of trade execution
-                        confirmedSignals++;
-
                         // Respect maxConcurrentTrades limit
                         const maxTrades = tradeConfig.singleTradeMode ? 1 : (tradeConfig.maxConcurrentTrades || 1);
                         if (openTrades.length >= maxTrades) {
@@ -1350,32 +1373,8 @@ async function runImmediateAggregationBacktest() {
                         openTrades.push(trade);
                         allTrades.push(trade);
                         
-                        // Add cascade logging for immediate execution path
-                        if (!tradeConfig.hideCascades && BACKTEST_CONFIG.tradingMode === 'cascade') {
-                            const primaryTime12 = formatDualTime(currentTime);
-                            const confirmingTFs = confsNow.map(c => c.timeframe).join(', ');
-                            console.log(`${colors.green}🎯 CASCADE #${confirmedSignals} CONFIRMED: ${currentPivot.signal.toUpperCase()}${colors.reset}`);
-                            console.log(`${colors.cyan}   Primary: ${primaryTime12} | Strength: ${(currentPivot.swingPct || 0).toFixed(1)}% | Confirming TFs: ${confirmingTFs}${colors.reset}`);
-                            
-                            // Show detailed confirmation timestamps
-                            console.log(`${colors.dim}   Confirmation Details:${colors.reset}`);
-                            console.log(`${colors.dim}     • Primary TF: ${primaryTf.interval} @ ${formatDualTime(currentTime)}${colors.reset}`);
-                            confsNow.forEach(conf => {
-                                const confTime = formatDualTime(conf.pivot.time);
-                                const timeDiff = Math.round((conf.pivot.time - currentTime) / (60 * 1000));
-                                const timeDiffStr = timeDiff === 0 ? 'same time' : (timeDiff > 0 ? `+${timeDiff}m` : `${timeDiff}m`);
-                                console.log(`${colors.dim}     • ${conf.timeframe}: @ ${confTime} (${timeDiffStr})${colors.reset}`);
-                            });
-                            
-                            // Determine execution trigger
-                            const totalTFs = confsNow.length;
-                            const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
-                            const executionTime = Math.max(currentTime, ...confsNow.map(c => c.pivot.time));
-                            const executionTimeStr = formatDualTime(executionTime);
-                            const executionDelay = Math.round((executionTime - currentTime) / (60 * 1000));
-                            const executionDelayStr = executionDelay === 0 ? 'immediately' : `after ${executionDelay}m`;
-                            
-                            console.log(`${colors.yellow}   Execution: ${totalTFs}/${minRequired} TFs confirmed → Execute ${executionDelayStr} @ ${executionTimeStr}${colors.reset}`);
+                        // Show trade entry details
+                        if (tradeConfig.showTradeDetails) {
                             console.log(`${colors.cyan}   Entry Price: $${trade.entryPrice.toFixed(2)} | Size: $${formatNumberWithCommas(trade.tradeSize)} | TP: $${trade.takeProfitPrice.toFixed(2)} | SL: $${trade.stopLossPrice.toFixed(2)}${colors.reset}`);
                         }
                         
@@ -1593,35 +1592,8 @@ async function runImmediateAggregationBacktest() {
                     openTrades.push(trade);
                     allTrades.push(trade);
                     
-                    if (!tradeConfig.hideCascades && BACKTEST_CONFIG.tradingMode === 'cascade' && immediateConfirmations) {
-                        const primaryTime12 = formatDualTime(currentTime);
-                        const confirmingTFs = immediateConfirmations.map(c => c.timeframe).join(', ');
-                        console.log(`${colors.green}🎯 CASCADE #${confirmedSignals} CONFIRMED: ${currentPivot.signal.toUpperCase()}${colors.reset}`);
-                        console.log(`${colors.cyan}   Primary: ${primaryTime12} | Strength: ${(currentPivot.swingPct || 0).toFixed(1)}% | Confirming TFs: ${confirmingTFs}${colors.reset}`);
-                        
-                        // Show detailed confirmation timestamps
-                        console.log(`${colors.dim}   Confirmation Details:${colors.reset}`);
-                        console.log(`${colors.dim}     • Primary TF: ${primaryTf.interval} @ ${formatDualTime(currentTime)}${colors.reset}`);
-                        immediateConfirmations.forEach(conf => {
-                            const confTime = formatDualTime(conf.pivot.time);
-                            const timeDiff = Math.round((conf.pivot.time - currentTime) / (60 * 1000));
-                            const timeDiffStr = timeDiff === 0 ? 'same time' : (timeDiff > 0 ? `+${timeDiff}m` : `${timeDiff}m`);
-                            console.log(`${colors.dim}     • ${conf.timeframe}: @ ${confTime} (${timeDiffStr})${colors.reset}`);
-                        });
-                        
-                        // Determine execution trigger
-                        const totalTFs = immediateConfirmations.length; // confirmations include all timeframes
-                        const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
-                        const executionTime = Math.max(currentTime, ...immediateConfirmations.map(c => c.pivot.time));
-                        const executionTimeStr = formatDualTime(executionTime);
-                        const executionDelay = Math.round((executionTime - currentTime) / (60 * 1000));
-                        const executionDelayStr = executionDelay === 0 ? 'immediately' : `after ${executionDelay}m`;
-                        
-                        console.log(`${colors.yellow}   Execution: ${totalTFs}/${minRequired} TFs confirmed → Execute ${executionDelayStr} @ ${executionTimeStr}${colors.reset}`);
+                    if (tradeConfig.showTradeDetails) {
                         console.log(`${colors.cyan}   Entry Price: $${trade.entryPrice.toFixed(2)} | Size: $${formatNumberWithCommas(trade.tradeSize)} | TP: $${trade.takeProfitPrice.toFixed(2)} | SL: $${trade.stopLossPrice.toFixed(2)}${colors.reset}`);
-                    } else if (tradeConfig.showTradeDetails) {
-                        const timeStr = formatDualTime(currentTime);
-                        console.log(`${colors.green}OPEN ${trade.type.toUpperCase()} [${timeStr}] ${trade.timeframe} @ $${trade.entryPrice.toFixed(2)} | Size: $${formatNumberWithCommas(trade.tradeSize)} | TP: $${trade.takeProfitPrice.toFixed(2)} | SL: $${trade.stopLossPrice.toFixed(2)}${colors.reset}`);
                     }
                 }
             }

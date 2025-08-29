@@ -2,6 +2,30 @@
 import { publicRequest, signedRequest } from './bybitClient.js';
 
 // ==========================
+// TRADING CONFIGURATION - EDIT HERE
+// ==========================
+const TRADING_CONFIG = {
+  symbol: 'SOLUSDT',           // change symbol here
+  side: 'Buy',                 // 'Buy' = long, 'Sell' = short
+  leverage: 80,               // leverage to use
+  amountMode: 'fixed',    // 'percentage' or 'fixed'
+  // amountMode: 'percentage',    // 'percentage' or 'fixed'
+  usePercentage: 100,          // 100% = all-in (before buffer)
+  fixedAmount: 100,            // USDT amount if fixed mode
+  upperLimit: 50000,           // Max notional cap
+};
+
+// ==========================
+// Auto-calc usable factor from leverage
+// ==========================
+function calcUsableFactor(leverage) {
+  // Power law fit from tested data
+  const factor = 1 - (3.5 / Math.pow(leverage, 0.6));
+  // Clamp between 0.85 and 0.99 to be safe
+  return Math.max(0.85, Math.min(0.99, factor));
+}
+
+// ==========================
 // Get account balance
 // ==========================
 async function getAccountBalance() {
@@ -94,13 +118,7 @@ async function setLeverage(symbol, leverage) {
 // Place order (all-in or fixed)
 // ==========================
 async function placeOrder() {
-  const symbol = 'SOLUSDT';     // change symbol here
-  const side = 'Buy';           // 'Buy' = long, 'Sell' = short
-  const leverage = 1;          // leverage to use
-  const amountMode = 'percentage'; // 'percentage' or 'fixed'
-  const usePercentage = 100;    // 100% balance if percentage
-  const fixedAmount = 200;      // USDT amount if fixed mode
-  const upperLimit = 50000;     // Max notional cap
+  const { symbol, side, leverage, amountMode, usePercentage, fixedAmount, upperLimit } = TRADING_CONFIG;
 
   await setIsolatedMargin(symbol);
   await setLeverage(symbol, leverage);
@@ -108,11 +126,17 @@ async function placeOrder() {
   const entryPrice = await getMarketPrice(symbol);
   const { qtyStep, minOrderQty } = await getInstrumentInfo(symbol);
 
+  const usableFactor = calcUsableFactor(leverage);
+  console.log(`📊 Usable Factor for ${leverage}x leverage: ${usableFactor.toFixed(4)}`);
+
   let baseAmount;
   if (amountMode === 'percentage') {
     const balance = await getAccountBalance();
-    baseAmount = balance.availableBalance * usePercentage / 100;
+    const adjustedBalance = balance.availableBalance * usableFactor;
+
+    baseAmount = adjustedBalance * usePercentage / 100;
     console.log('Available Balance:', balance.availableBalance, 'USDT');
+    console.log('Adjusted Balance (usable):', adjustedBalance.toFixed(4), 'USDT');
   } else {
     baseAmount = fixedAmount;
     console.log('Using fixed amount:', baseAmount, 'USDT');
@@ -143,7 +167,7 @@ async function placeOrder() {
   console.log('Side:', side);
   console.log('Leverage:', leverage);
   console.log('Entry Price:', entryPrice);
-  console.log('Notional Size:', notional.toFixed(2), 'USDT');
+  console.log('Notional Size (after factor):', notional.toFixed(2), 'USDT');
   console.log('Contract Qty:', contractQty, `(step ${qtyStep}, min ${minOrderQty})`);
 
   const res = await signedRequest('/v5/order/create', 'POST', {
