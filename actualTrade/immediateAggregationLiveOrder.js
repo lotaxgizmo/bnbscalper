@@ -915,7 +915,7 @@ const colors = {
 // Inline worker code as string for dynamic worker creation
 const workerCode = `
 import { parentPort, workerData } from 'worker_threads';
-import { getCandles } from './apis/bybit.js';
+import { getCandles } from '../apis/bybit.js';
 
 async function loadCandleBatch() {
     try {

@@ -48,6 +48,10 @@ const SNAPSHOT_CONFIG = {
     // Cascade serial registry cleanup
     cascadeSerialCleanupDays: 7,    // Days to keep cascade serials before cleanup (prevents old cascade re-triggers)
     
+    
+    // === TRADE EXECUTION PARAMETERS ===
+    takeProfitPercent: 0.1,         // Take profit percentage (0.6 = 0.6%)
+    stopLossPercent: 0.1,           // Stop loss percentage (0.4 = 0.4%)
 };
 
 import {
@@ -213,6 +217,34 @@ function shouldNotifyWindowEvent(windowId, eventType, executionTime = null) {
 }
 
 // ===== UTILITY FUNCTIONS =====
+
+/**
+ * Calculate Take Profit and Stop Loss prices based on execution price and signal direction
+ */
+function calculateTPSL(executionPrice, signal) {
+    const tpPercent = SNAPSHOT_CONFIG.takeProfitPercent;
+    const slPercent = SNAPSHOT_CONFIG.stopLossPercent;
+    
+    let takeProfitPrice, stopLossPrice;
+    
+    if (signal === 'long') {
+        // LONG trade: TP above entry, SL below entry
+        takeProfitPrice = executionPrice * (1 + tpPercent / 100);
+        stopLossPrice = executionPrice * (1 - slPercent / 100);
+    } else {
+        // SHORT trade: TP below entry, SL above entry
+        takeProfitPrice = executionPrice * (1 - tpPercent / 100);
+        stopLossPrice = executionPrice * (1 + slPercent / 100);
+    }
+    
+    return {
+        takeProfitPrice: parseFloat(takeProfitPrice.toFixed(3)),
+        stopLossPrice: parseFloat(stopLossPrice.toFixed(3)),
+        takeProfitPercent: tpPercent,
+        stopLossPercent: slPercent
+    };
+}
+
 /**
  * Parse timeframe string to minutes
  * Supports: 1m, 5m, 15m, 1h, 4h, 1d, etc.
@@ -671,7 +703,10 @@ function getWindowSnapshotStates(windowManager, currentTime) {
     for (const w of [...activeWindowsRaw, ...executedWindowsRaw]) windowMap.set(w.id, w);
     const windows = Array.from(windowMap.values());
 
-    return windows.map(w => {
+    // Sort windows by time (newest first) to prioritize recent windows
+    const sortedWindows = windows.sort((a, b) => b.primaryPivot.time - a.primaryPivot.time);
+    
+    return sortedWindows.map(w => {
         const totalConfirmations = 1 + w.confirmations.length;
         const isReady = totalConfirmations >= minRequired;
         const candidate = isReady ? computeCandidateExecution(w, minRequired) : null;
@@ -711,11 +746,19 @@ function getWindowSnapshotStates(windowManager, currentTime) {
                 time = candidate.time; // upcoming target minute
                 price = candidate.price;
             }
+        } else if (isReady) {
+            // Window is ready but no specific execution time - execute immediately
+            mode = 'EXECUTE';
+            time = w.primaryPivot.time;
+            price = w.primaryPivot.price;
         } else {
             mode = 'WAITING';
             time = w.primaryPivot.time;
             price = w.primaryPivot.price;
         }
+
+        // Calculate TP/SL for executable signals
+        const tpslData = (mode === 'EXECUTE') ? calculateTPSL(price, w.primaryPivot.signal) : null;
 
         return {
             id: w.id,
@@ -723,7 +766,8 @@ function getWindowSnapshotStates(windowManager, currentTime) {
             time,
             price,
             signal: w.primaryPivot.signal,
-            confirmations: totalConfirmations
+            confirmations: totalConfirmations,
+            tpsl: tpslData
         };
     });
 }
@@ -1737,8 +1781,12 @@ function displayCascadeWindows(windowManager, currentTime) {
             const confirmationCount = window.confirmations.length;
             const totalConfirmations = 1 + confirmationCount; // Primary + confirmations
             
+            // Calculate TP/SL for display
+            const tpslData = calculateTPSL(window.primaryPivot.price, window.primaryPivot.signal);
+            
             console.log(`${colors.yellow}│ ${window.id}: ${signalColor}${signalText}${colors.reset} @ $${window.primaryPivot.price.toFixed(2)} | ${totalConfirmations} confirmations`);
             console.log(`${colors.dim}│   Opened: ${openedDual} | Time left: ${minutesRemaining}m ${secondsRemaining}s${colors.reset}`);
+            console.log(`${colors.cyan}│   TP: $${tpslData.takeProfitPrice} (+${tpslData.takeProfitPercent}%) | SL: $${tpslData.stopLossPrice} (-${tpslData.stopLossPercent}%)${colors.reset}`);
             
             if (window.confirmations.length > 0) {
                 const confirmingTFs = window.confirmations.map(c => c.timeframe).join(', ');
@@ -2103,9 +2151,13 @@ async function runImmediateAggregationSnapshot(forcedAnalysisTime = null, preloa
                 const signalText = cascade.primaryPivot.signal.toUpperCase();
                 const confirmingTFs = cascade.confirmations.map(c => c.timeframe).join(', ');
                 
+                // Calculate TP/SL for cascade display
+                const cascadeTpsl = calculateTPSL(cascade.primaryPivot.price, cascade.primaryPivot.signal);
+                
                 console.log(`\n${colors.green}🎯 CASCADE #${recentCascades.length - index}: ${signalColor}${signalText}${colors.reset} | Strength: ${cascade.strength} | ${age}`);
                 console.log(`   ${colors.cyan}Executed: ${execTimeFormatted}${colors.reset}`);
                 console.log(`   ${colors.cyan}Primary:  ${primaryTimeFormatted} | $${cascade.primaryPivot.price.toFixed(2)} | Swing: ${cascade.primaryPivot.swingPct.toFixed(2)}%${colors.reset}`);
+                console.log(`   ${colors.cyan}TP: $${cascadeTpsl.takeProfitPrice} (+${cascadeTpsl.takeProfitPercent}%) | SL: $${cascadeTpsl.stopLossPrice} (-${cascadeTpsl.stopLossPercent}%)${colors.reset}`);
                 console.log(`   ${colors.cyan}Confirming TFs: ${confirmingTFs}${colors.reset}`);
             });
         }
@@ -2117,6 +2169,18 @@ async function runImmediateAggregationSnapshot(forcedAnalysisTime = null, preloa
     console.log(`${colors.cyan}\n=== SNAPSHOT ANALYSIS COMPLETE ===${colors.reset}`);
     console.log(`${colors.dim}Analysis completed in ${duration}ms${colors.reset}`);
     console.log(`${colors.green}✅ Market state snapshot captured successfully${colors.reset}`);
+    
+    // Return execution data for external use
+    const states = getWindowSnapshotStates(windowManager, analysisTime);
+    const readyToExecute = states.filter(s => s.mode === 'EXECUTE');
+    
+    return {
+        analysisTime,
+        currentPrice: analysisCandle?.close,
+        states,
+        readyToExecute,
+        hasExecutableSignals: readyToExecute.length > 0
+    };
 }
 
 // ===== AUTO-RELOAD TIME-FORWARD DRIVER =====
@@ -2243,27 +2307,32 @@ async function runCurrentModeAutoReload() {
     }
 }
 
-// Run the analyzer
-(async () => {
-    // Reset counters on script startup only
-    CascadeWindowManager.signalCounter = 0;
-    CascadeWindowManager.lastSignalTime = 0;
-    
-    // Set snapshot time threshold for signal counting
-    CascadeWindowManager.snapshotTimeThreshold = null;
-    
-    try {
-        if (SNAPSHOT_CONFIG.autoReload) {
-            if (SNAPSHOT_CONFIG.currentMode) {
-                await runCurrentModeAutoReload();
+// Export the main function for external use
+export { runImmediateAggregationSnapshot };
+
+// Run the analyzer only if this file is executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+    (async () => {
+        // Reset counters on script startup only
+        CascadeWindowManager.signalCounter = 0;
+        CascadeWindowManager.lastSignalTime = 0;
+        
+        // Set snapshot time threshold for signal counting
+        CascadeWindowManager.snapshotTimeThreshold = null;
+        
+        try {
+            if (SNAPSHOT_CONFIG.autoReload) {
+                if (SNAPSHOT_CONFIG.currentMode) {
+                    await runCurrentModeAutoReload();
+                } else {
+                    await runAutoReloadProgression();
+                }
             } else {
-                await runAutoReloadProgression();
+                await runImmediateAggregationSnapshot();
             }
-        } else {
-            await runImmediateAggregationSnapshot();
+        } catch (err) {
+            console.error('\nAn error occurred during snapshot analysis:', err);
+            process.exit(1);
         }
-    } catch (err) {
-        console.error('\nAn error occurred during snapshot analysis:', err);
-        process.exit(1);
-    }
-})();
+    })();
+}
