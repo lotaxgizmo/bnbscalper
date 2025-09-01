@@ -3,67 +3,90 @@
 // Systematically tests different configurations to find optimal settings
 
 // ===== OPTIMIZATION CONFIGURATION =====
+
+const daysamount = 2;
+const days = 1440 * daysamount;
+
 const OPTIMIZATION_CONFIG = {
-    takeProfitRange: { start: 1, end: 1, step: 0.1 },
+    takeProfitRange: { start: 0.6, end: 0.6, step: 0.1 },
     stopLossRange: { start: 0.4, end: 0.4, step: 0.1 },
     leverageRange: { start: 80, end: 80, step: 1 },
-    minimumTimeframes: 3,
+    minimumTimeframes: 2,
     tradingModes: ['cascade'],  
     // maxCandles: 86400, // 14 days of 1m candles 
     // maxCandles: 43200, // 14 days of 1m candles 
+    // maxCandles: 30240, // 14 days of 1m candles 
     // maxCandles: 20160, // 14 days of 1m candles 
     // maxCandles: 15840, // 14 days of 1m candles 
-    // maxCandles: 10080, // 14 days of 1m candles 
     // maxCandles: 11520, // 14 days of 1m candles 
-    // maxCandles: 5760, // 14 days of 1m candles 
-    // maxCandles: 4320, // 14 days of 1m candles 
-    maxCandles: 2880, // 14 days of 1m candles 
-    // maxCandles: 1440, // 14 days of 1m candles 
+    maxCandles: 10080, // 7 days of 1m candles 
+    // maxCandles: 5760, // 4 days of 1m candles 
+    // maxCandles: 4320, // 3 days of 1m candles 
+    // maxCandles: 2880, // 2 days of 1m candles 
+    // maxCandles: 1440, // 1 days of 1m candles 
     tradeDirection: ['both'],
+    // tradeDirection: ['both', 'alternate'],
+    // delayReverseTime: 4320,
     delayReverseTime: 0,
-    // delayReverseTime: 2880,
+    
+    // 🎯 RECENT TRADE PERFORMANCE FILTER
+    recentTradeFilter: {
+        enabled: true,                    // Enable/disable recent trade filtering
+        lookbackTrades: 5,               // Number of recent trades to examine
+        minProfitableTrades: 2,          // Minimum profitable trades required in lookback window
+        requireConsecutiveProfits: true, // If true, requires consecutive profits (not just total count)
+        minRecentWinRate: 0,            // Alternative: minimum win rate % in recent trades (0-100, 0 = disabled)
+        excludeIfInsufficientTrades: true // If true, exclude configs with fewer than lookbackTrades total trades
+    },
     
     timeframeCombinations: [ 
         [
-          
+
+            
  
             {
-                interval: '1m',
-                role: 'secondary',
-                minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
-                lookbackRange: { start: 3, end: 3, step: 1 },
-                minLegBarsRange: { start: 1, end: 1, step: 1 },               
+                interval: '3h',
+                role: 'primary',
+                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
+                lookbackRange: { start: 4, end: 4, step: 1 },
+                minLegBarsRange: { start: 4, end: 4, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
-            }, 
+            },
+            
+            
             {
-                interval: '30m',
+                interval: '1h',
                 role: 'secondary',
-                minSwingPctRange: { start: 0.7, end: 0.7, step: 0.1 },
+                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
                 lookbackRange: { start: 1, end: 1, step: 1 },
                 minLegBarsRange: { start: 5, end: 5, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
-            }, 
- 
+            },
+            
+            
             {
-                interval: '1h',
-                role: 'primary',
-                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
+                interval: '30m',
+                role: 'secondary',
+                minSwingPctRange: { start: 0.3, end: 0.3, step: 0.1 },
                 lookbackRange: { start: 2, end: 2, step: 1 },
-                minLegBarsRange: { start: 1, end: 1, step: 1 },               
+                minLegBarsRange: { start: 2, end: 2, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
-            // {
-            //     interval: '30m',
-            //     role: 'secondary',
-            //     minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
-            //     lookbackRange: { start: 3, end: 3, step: 1 },
-            //     minLegBarsRange: { start: 2, end: 2, step: 1 },               
-            //     weight: 1,
-            //     oppositeRange: [false]
-            // },
+            
+ 
+            {
+                interval: '1m',
+                role: 'secondary',
+                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
+                lookbackRange: { start: 2, end: 2, step: 1 },
+                minLegBarsRange: { start: 4, end: 4, step: 1 },               
+                weight: 1,
+                oppositeRange: [false]
+            }, 
+           
            
         ]
     ],
@@ -75,6 +98,43 @@ const OPTIMIZATION_CONFIG = {
     exportPath: './optimization_results/',
     silentMode: true  // Suppress individual backtest output
 };
+
+function createTradeConfig(params) {
+    return {
+        direction: params.direction,
+        entryDelayMinutes: 0,
+        takeProfit: params.takeProfit,
+        stopLoss: params.stopLoss,
+        leverage: params.leverage,
+        switchOnOppositeSignal: false,
+        numberOfOppositeSignal: 3,
+        switchPolicy: 'flip',
+        noTradeDays: [],
+        enableTrailingStopLoss: false,
+        enableTrailingTakeProfit: false,
+        showCandle: false,
+        showLimits: false,
+        showPivot: false,
+        showTradeDetails: false,
+        hideCascades: true,
+        singleTradeMode: true,
+        maxConcurrentTrades: baseTradeConfig.maxConcurrentTrades,
+        positionSizingMode: baseTradeConfig.positionSizingMode,
+        amountPerTrade: baseTradeConfig.amountPerTrade,
+        minimumTradeAmount: baseTradeConfig.minimumTradeAmount,
+        initialCapital: baseTradeConfig.initialCapital,
+        riskPerTrade: baseTradeConfig.riskPerTrade,
+        maxTradeTimeMinutes: 0,
+        orderDistancePct: 50,
+        cancelThresholdPct: 100,
+        totalMakerFee: baseTradeConfig.totalMakerFee,
+        enableFundingRate: baseTradeConfig.enableFundingRate,
+        enableSlippage: baseTradeConfig.enableSlippage,
+        performanceMode: true,
+        enterAll: false,
+        saveToFile: false
+    };
+}
 
 // ===== DYNAMIC BACKTEST CONFIGURATION =====
 let BACKTEST_CONFIG = {
@@ -92,6 +152,8 @@ import {
     useLocalData,
     pivotDetectionMode
 } from './config/config.js';
+
+import { tradeConfig as baseTradeConfig } from './config/tradeconfig.js';
 
 // Dynamic configurations - will be overridden during optimization
 let tradeConfig = {};
@@ -254,7 +316,7 @@ async function load1mCandles() {
         } else {
             finalCandles = sortedCandles.slice(-BACKTEST_CONFIG.maxCandles);
         }
-        
+
         const firstCandle = finalCandles[0];
         const lastCandle = finalCandles[finalCandles.length - 1];
         if (!OPTIMIZATION_CONFIG.silentMode) {
@@ -861,42 +923,7 @@ function generateTimeframeCombinations(tfTemplate) {
     return combinations;
 }
 
-function createTradeConfig(params) {
-    return {
-        direction: params.direction,
-        entryDelayMinutes: 0,
-        takeProfit: params.takeProfit,
-        stopLoss: params.stopLoss,
-        leverage: params.leverage,
-        switchOnOppositeSignal: false,
-        numberOfOppositeSignal: 3,
-        switchPolicy: 'flip',
-        noTradeDays: [],
-        enableTrailingStopLoss: false,
-        enableTrailingTakeProfit: false,
-        showCandle: false,
-        showLimits: false,
-        showPivot: false,
-        showTradeDetails: false,
-        hideCascades: true,
-        singleTradeMode: true,
-        maxConcurrentTrades: 1,
-        positionSizingMode: 'percent',
-        amountPerTrade: 100,
-        minimumTradeAmount: 100,
-        initialCapital: 100,
-        riskPerTrade: 100,
-        maxTradeTimeMinutes: 0,
-        orderDistancePct: 50,
-        cancelThresholdPct: 100,
-        totalMakerFee: 0.06,
-        enableFundingRate: false,
-        enableSlippage: false,
-        performanceMode: true,
-        enterAll: false,
-        saveToFile: false
-    };
-}
+
 
 function createMultiPivotConfig(params) {
     return {
@@ -951,7 +978,14 @@ function calculatePerformanceMetrics(results) {
             maxDrawdown: 0,
             profitFactor: 0,
             sharpeRatio: 0,
-            finalCapital: results.finalCapital || 100
+            finalCapital: results.finalCapital || 100,
+            recentTradeAnalysis: {
+                passesFilter: false,
+                recentTrades: 0,
+                recentProfitable: 0,
+                recentWinRate: 0,
+                reason: 'No trades executed'
+            }
         };
     }
     
@@ -987,6 +1021,9 @@ function calculatePerformanceMetrics(results) {
     const stdDev = Math.sqrt(returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length);
     const sharpeRatio = stdDev > 0 ? avgReturn / stdDev : 0;
     
+    // 🎯 RECENT TRADE PERFORMANCE ANALYSIS
+    const recentTradeAnalysis = analyzeRecentTradePerformance(trades);
+    
     return {
         totalTrades: trades.length,
         winRate: winRate,
@@ -995,7 +1032,91 @@ function calculatePerformanceMetrics(results) {
         maxDrawdown: maxDrawdown,
         profitFactor: profitFactor,
         sharpeRatio: sharpeRatio,
-        finalCapital: results.finalCapital || (results.initialCapital || 100) + totalPnL
+        finalCapital: results.finalCapital || (results.initialCapital || 100) + totalPnL,
+        recentTradeAnalysis: recentTradeAnalysis
+    };
+}
+
+// 🎯 RECENT TRADE PERFORMANCE ANALYZER
+function analyzeRecentTradePerformance(allTrades) {
+    const filter = OPTIMIZATION_CONFIG.recentTradeFilter;
+    
+    if (!filter.enabled) {
+        return {
+            passesFilter: true,
+            recentTrades: allTrades.length,
+            recentProfitable: allTrades.filter(t => t.pnl > 0).length,
+            recentWinRate: allTrades.length > 0 ? (allTrades.filter(t => t.pnl > 0).length / allTrades.length) * 100 : 0,
+            reason: 'Filter disabled'
+        };
+    }
+    
+    // Check if we have enough trades
+    if (filter.excludeIfInsufficientTrades && allTrades.length < filter.lookbackTrades) {
+        return {
+            passesFilter: false,
+            recentTrades: allTrades.length,
+            recentProfitable: 0,
+            recentWinRate: 0,
+            reason: `Insufficient trades: ${allTrades.length} < ${filter.lookbackTrades} required`
+        };
+    }
+    
+    // Get the most recent trades (sorted by exit time, then entry time)
+    const sortedTrades = [...allTrades].sort((a, b) => {
+        // Sort by exit time if both have exit times, otherwise by entry time
+        const aTime = a.exitTime || a.entryTime;
+        const bTime = b.exitTime || b.entryTime;
+        return bTime - aTime; // Most recent first
+    });
+    
+    const recentTrades = sortedTrades.slice(0, filter.lookbackTrades);
+    const recentProfitable = recentTrades.filter(t => t.pnl > 0);
+    const recentWinRate = recentTrades.length > 0 ? (recentProfitable.length / recentTrades.length) * 100 : 0;
+    
+    let passesFilter = true;
+    let reason = 'Passes all filters';
+    
+    // Check minimum profitable trades requirement
+    if (recentProfitable.length < filter.minProfitableTrades) {
+        passesFilter = false;
+        reason = `Recent profitable trades: ${recentProfitable.length} < ${filter.minProfitableTrades} required`;
+    }
+    
+    // Check consecutive profits requirement
+    if (passesFilter && filter.requireConsecutiveProfits) {
+        let consecutiveProfits = 0;
+        for (const trade of recentTrades) {
+            if (trade.pnl > 0) {
+                consecutiveProfits++;
+            } else {
+                break; // Stop at first loss
+            }
+        }
+        
+        if (consecutiveProfits < filter.minProfitableTrades) {
+            passesFilter = false;
+            reason = `Consecutive profits: ${consecutiveProfits} < ${filter.minProfitableTrades} required`;
+        }
+    }
+    
+    // Check minimum recent win rate requirement
+    if (passesFilter && filter.minRecentWinRate > 0 && recentWinRate < filter.minRecentWinRate) {
+        passesFilter = false;
+        reason = `Recent win rate: ${recentWinRate.toFixed(1)}% < ${filter.minRecentWinRate}% required`;
+    }
+    
+    return {
+        passesFilter: passesFilter,
+        recentTrades: recentTrades.length,
+        recentProfitable: recentProfitable.length,
+        recentWinRate: recentWinRate,
+        reason: reason,
+        tradeDetails: recentTrades.map(t => ({
+            pnl: t.pnl,
+            profitable: t.pnl > 0,
+            exitTime: t.exitTime || t.entryTime
+        }))
     };
 }
 
@@ -1021,7 +1142,12 @@ function formatOptimizationResult(params, metrics, index, total) {
         profitFactor: metrics.profitFactor.toFixed(2),
         sharpeRatio: metrics.sharpeRatio.toFixed(2),
         finalCapital: metrics.finalCapital.toFixed(2),
-        score: calculateScore(metrics)
+        score: calculateScore(metrics),
+        // 🎯 RECENT TRADE PERFORMANCE DATA
+        recentTrades: metrics.recentTradeAnalysis.recentTrades,
+        recentProfitable: metrics.recentTradeAnalysis.recentProfitable,
+        recentWinRate: metrics.recentTradeAnalysis.recentWinRate.toFixed(1),
+        recentTradeStatus: metrics.recentTradeAnalysis.reason
     };
 }
 
@@ -1063,7 +1189,7 @@ async function exportResults(results) {
     const headers = [
         'Rank', 'Score', 'Trading Mode', 'Direction', 'Take Profit', 'Stop Loss', 'Leverage',
         'Timeframes', 'Detailed Timeframes', 'Total Trades', 'Win Rate %', 'Total PnL', 'Avg PnL', 'Max Drawdown %',
-        'Profit Factor', 'Sharpe Ratio', 'Final Capital'
+        'Profit Factor', 'Sharpe Ratio', 'Final Capital', 'Recent Trades', 'Recent Profitable', 'Recent Win Rate %', 'Recent Status'
     ];
     
     const csvContent = [headers.join(',')];
@@ -1086,7 +1212,11 @@ async function exportResults(results) {
             result.maxDrawdown,
             result.profitFactor,
             result.sharpeRatio,
-            result.finalCapital
+            result.finalCapital,
+            result.recentTrades,
+            result.recentProfitable,
+            result.recentWinRate,
+            `"${result.recentTradeStatus}"`
         ];
         csvContent.push(row.join(','));
     });
@@ -2095,10 +2225,18 @@ async function runOptimization() {
             
             // Calculate performance metrics
             const metrics = calculatePerformanceMetrics(backtestResults);
-            
-            // Format and store result
-            const result = formatOptimizationResult(params, metrics, i, combinations.length);
-            results.push(result);
+        
+        // 🎯 APPLY RECENT TRADE PERFORMANCE FILTER
+        if (!metrics.recentTradeAnalysis.passesFilter) {
+            if (OPTIMIZATION_CONFIG.showProgress) {
+                // console.log(`${colors.yellow}[${i + 1}/${combinations.length}] FILTERED OUT: ${metrics.recentTradeAnalysis.reason}${colors.reset}`);
+            }
+            continue; // Skip this configuration
+        }
+        
+        const formattedResult = formatOptimizationResult(params, metrics, i, combinations.length);
+        
+        results.push(formattedResult);
             
         } catch (error) {
             console.log(`${colors.red}Error in combination ${i + 1}: ${error.message}${colors.reset}`);
@@ -2170,6 +2308,7 @@ async function runOptimization() {
         const best = topResults[0];
         console.log(`${colors.green}\n=== BEST CONFIGURATION DETAILS ===${colors.reset}`);
         console.log(`${colors.yellow}Score: ${colors.green}${best.score.toFixed(2)}${colors.reset}`);
+        console.log(`${colors.yellow}Initial capital: ${colors.green}${baseTradeConfig.initialCapital}$${colors.reset}`);
         console.log(`${colors.yellow}Trading Mode: ${colors.green}${best.tradingMode}${colors.reset}`);
         console.log(`${colors.yellow}Direction: ${colors.green}${best.direction}${colors.reset}`);
         console.log(`${colors.yellow}Take Profit: ${colors.green}${best.takeProfit}%${colors.reset}`);
@@ -2181,7 +2320,7 @@ async function runOptimization() {
         console.log(`${colors.yellow}Total P&L: ${colors.green}${best.totalPnL}${colors.reset}`);
         console.log(`${colors.yellow}Profit Factor: ${colors.green}${best.profitFactor}${colors.reset}`);
         console.log(`${colors.yellow}Max Drawdown: ${colors.green}${best.maxDrawdown}%${colors.reset}`);
-        console.log(`${colors.yellow}Final Capital: ${colors.green}${best.finalCapital}${colors.reset}`);
+        console.log(`${colors.yellow}Final Capital: ${colors.green}${best.finalCapital}$${colors.reset}`);
     }
     
     // Export results

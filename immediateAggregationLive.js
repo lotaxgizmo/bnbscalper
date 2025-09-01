@@ -6,7 +6,7 @@
 const SNAPSHOT_CONFIG = {
     // Operating modes
     currentMode: true,              // true = latest candle, false = use targetTime
-    targetTime: "2025-08-08 08:59:00", // Target timestamp when currentMode is false
+    targetTime: "2025-07-27 20:55:00", // Target timestamp when currentMode is false
     // targetTime: "2025-08-14 00:59:00", // Target timestamp when currentMode is false
 
     // Data settings
@@ -29,6 +29,7 @@ const SNAPSHOT_CONFIG = {
 
     // Auto-reload configuration
     autoReload: true,               // Enable auto-reload functionality
+    // reloadInterval: 2,              // UI/refresh cadence in seconds (does NOT drive simulated time)
     reloadInterval: 10,              // UI/refresh cadence in seconds (does NOT drive simulated time)
     apiRefreshSeconds: 5,            // In API mode: how often to refresh candle data
     // Progression mode for CSV/local data

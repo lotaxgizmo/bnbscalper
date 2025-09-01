@@ -1,3 +1,5 @@
 node_modules
 data
 .vscode
+logs
+optimization_results

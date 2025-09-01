@@ -15,7 +15,7 @@ export const tradeConfig = {
 
 
 
-    takeProfit: 1,
+    takeProfit: 0.6,
     stopLoss: 0.4,
     leverage: 80,        
     
@@ -45,7 +45,7 @@ export const tradeConfig = {
     // showTradeDetails: true,
     showPivot: false,
     showTradeDetails: true,
-    hideCascades: false,  // Hide cascade confirmation logs (keeps trade execution logs)
+    hideCascades: true,  // Hide cascade confirmation logs (keeps trade execution logs)
  
 
     // Multi-trade settings
@@ -57,9 +57,9 @@ export const tradeConfig = {
 
 
  
-    initialCapital: 100,
+    initialCapital: 50,
     riskPerTrade: 100,
- 
+
 
     // Display settings
     // Export settings

@@ -10,11 +10,21 @@ export const multiPivotConfig = {
     timeframes: [
 
         {
-            interval: '1h',
+            interval: '3h',
             role: 'primary',   // Additional confirmation
-            minSwingPct: 0.1,   // Same settings for easy testing
-            lookback: 2,
-            minLegBars: 1,          // Same settings for easy testing
+            minSwingPct: 0.1,       // Same settings for easy testing
+            lookback: 4,
+            minLegBars: 4,          // Same settings for easy testing
+            weight: 1,
+            opposite: false
+        },
+
+        {
+            interval: '1h',
+            role: 'secondary',   // Additional confirmation
+            minSwingPct: 0.1,       // Same settings for easy testing
+            lookback: 1,
+            minLegBars: 5,          // Same settings for easy testing
             weight: 1,
             opposite: false
         },
@@ -22,19 +32,19 @@ export const multiPivotConfig = {
         {
             interval: '30m',
             role: 'secondary',   // Additional confirmation
-            minSwingPct: 0.7,   // Same settings for easy testing
-            lookback: 1,
-            minLegBars: 5,          // Same settings for easy testing
+            minSwingPct: 0.3,   // Same settings for easy testing
+            lookback: 2,
+            minLegBars: 2,          // Same settings for easy testing
             weight: 1,
             opposite: false
         },
  
-        {
+        {   
             interval: '1m',
             role: 'execution',      // Final execution timeframe
-            minSwingPct: 0.2,       // Same settings for easy testing
-            lookback: 3,
-            minLegBars: 1,          // Same settings for easy testing
+            minSwingPct: 0.1,       // Same settings for easy testing
+            lookback: 2,
+            minLegBars: 4,          // Same settings for easy testing
             weight: 1,
             opposite: false
         }
@@ -42,12 +52,12 @@ export const multiPivotConfig = {
     
     // Cascade confirmation settings
     cascadeSettings: {
-        minTimeframesRequired: 3,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
+        minTimeframesRequired: 2,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         // How long to wait for confirmation from smaller timeframes (in minutes)
         confirmationWindow: {
             '4h': 230,      // 🎯 OPTIMIZED: Wait up to 4 hours for 1h confirmation
-            '1h': 60,      // 🎯 OPTIMIZED: Wait up to 1 hours for 15m confirmation  
-            '15m': 60,     // 🎯 OPTIMIZED: Wait up to 2 hours for 1m confirmation
+            '1h': 30,      // 🎯 OPTIMIZED: Wait up to 1 hours for 15m confirmation  
+            '30m': 30,     // 🎯 OPTIMIZED: Wait up to 2 hours for 1m confirmation
             '5m': 15,       // 🎯 OPTIMIZED: Wait up to 30 minutes for 1m confirmation
             '1m': 30        // 🎯 OPTIMIZED: Wait up to 30 minutes for final confirmation
         },

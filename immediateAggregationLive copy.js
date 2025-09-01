@@ -39,6 +39,11 @@ const SNAPSHOT_CONFIG = {
     // Cascade window management
     signalTimeWindow: 1 * 60 * 1000, // Signal grouping window in milliseconds (1 minute)
     
+    // === NEW: Freshness gate for notifications ===
+    // Only notify if the event's execution minute is close to the snapshot minute.
+    // This blocks historical backfill "READY" from firing days later.
+    freshnessWindowSeconds: 120, // +/- 90s around snapshot minute
+    
     // Cascade serial registry cleanup
     cascadeSerialCleanupDays: 7,    // Days to keep cascade serials before cleanup (prevents old cascade re-triggers)
     
@@ -69,11 +74,22 @@ const TELEGRAM_DEDUP_CACHE = new Map(); // key -> lastSentTs
 const WINDOW_LIFECYCLE_CACHE = new Map(); // windowId -> {opened: bool, executed: bool, executionTime: number}
 const CASCADE_SERIAL_REGISTRY = new Map(); // serialNumber -> {notified: bool, states: Set} - Permanent registry to prevent old cascades
 
-// Generate unique serial number for cascade window based on primary pivot timestamp
-function generateCascadeSerial(primaryPivotTime, signal, price) {
-    // Create unique serial: timestamp + signal + price (rounded to cents)
-    const priceKey = Math.round(price * 100);
-    return `${primaryPivotTime}_${signal}_${priceKey}`;
+// ===== FRESHNESS GUARD (core fix) =====
+function isFreshEvent(eventTime, snapshotTime) {
+    if (!Number.isFinite(eventTime) || !Number.isFinite(snapshotTime)) return false;
+    const windowMs = (SNAPSHOT_CONFIG.freshnessWindowSeconds ?? 90) * 1000;
+    // Compare against the snapshot minute (last closed candle minute in current mode)
+    return Math.abs(eventTime - snapshotTime) <= windowMs;
+}
+
+// ===== SERIAL ID (hardened) =====
+// Include snapshot-minute + symbol + primary TF to defeat tiny price jitter bypassing dedup.
+// Keep primaryPivotTime first (numeric) so age-based cleanup can still parse it.
+function generateCascadeSerial(primaryPivotTime, signal, price, snapshotTime, primaryTimeframe = 'NA') {
+    const priceKey = Math.round((price ?? 0) * 100);            // cents
+    const ppMin = Math.floor((primaryPivotTime ?? 0) / 60000);  // minute bucket
+    const snapMin = Math.floor((snapshotTime ?? Date.now()) / 60000);
+    return `${primaryPivotTime}|${symbol}|${primaryTimeframe}|${signal}|p${priceKey}|pp${ppMin}|snap${snapMin}`;
 }
 
 // Check if cascade serial has already been processed for any notification state
@@ -93,17 +109,16 @@ function markCascadeSerialProcessed(serialNumber, state) {
     registry.states.add(state);
     registry.notified = true;
     
-    // Cleanup old serials (configurable days) to prevent memory bloat
-    if (CASCADE_SERIAL_REGISTRY.size > 10000) {
-        const cleanupDaysMs = (SNAPSHOT_CONFIG.cascadeSerialCleanupDays || 7) * 24 * 60 * 60 * 1000;
-        const cutoffTime = Date.now() - cleanupDaysMs;
-        for (const [serial, data] of CASCADE_SERIAL_REGISTRY) {
-            const timestamp = parseInt(serial.split('_')[0]);
-            if (timestamp < cutoffTime) {
-                CASCADE_SERIAL_REGISTRY.delete(serial);
-            }
-            if (CASCADE_SERIAL_REGISTRY.size <= 5000) break;
+    // Cleanup old serials (configurable days) to prevent memory bloat (age-based)
+    const cleanupDaysMs = (SNAPSHOT_CONFIG.cascadeSerialCleanupDays || 7) * 24 * 60 * 60 * 1000;
+    const cutoffTime = Date.now() - cleanupDaysMs;
+    for (const [serial] of CASCADE_SERIAL_REGISTRY) {
+        const firstToken = serial.split('|')[0];
+        const timestamp = Number(firstToken);
+        if (Number.isFinite(timestamp) && timestamp < cutoffTime) {
+            CASCADE_SERIAL_REGISTRY.delete(serial);
         }
+        if (CASCADE_SERIAL_REGISTRY.size <= 5000) break;
     }
 }
 
@@ -306,51 +321,60 @@ function getExecutionPriceForWindow(window, minRequired) {
 const TERMINAL_NOTIFICATION_CACHE = new Map();
 
 // Send Telegram notification based on terminal status display
-function sendTerminalStatusNotification(window, statusText, currentTime) {
+function sendTerminalStatusNotification(window, statusText, currentTime /* snapshotTime */) {
     if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
     if (window.id === 'W0') return; // Skip W0
-    
-    // CRITICAL: Check cascade serial to prevent old cascades from re-triggering
-    const cascadeSerial = generateCascadeSerial(window.primaryPivot.time, window.primaryPivot.signal, window.primaryPivot.price);
+
+    // Proper state mapping (fix: INVALID != EXECUTED)
     const stateMap = {
         'READY TO EXECUTE': 'READY_TO_EXECUTE',
-        'CASCADE INVALID': 'EXECUTED',
+        'CASCADE INVALID': 'INVALID',
         'EXECUTE': 'READY_TO_EXECUTE'
     };
     const serialState = stateMap[statusText] || statusText;
-    
-    if (isCascadeSerialProcessed(cascadeSerial, serialState)) {
-        // This cascade has already been processed for this state - block it
-        return;
-    }
-    
-    const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
+
     const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
+    const candidate = computeCandidateExecution(window, minRequired);
+
+    // Choose the relevant event time for freshness checking
+    const eventTime =
+        statusText === 'READY TO EXECUTE' ? (candidate?.time ?? window.primaryPivot.time)
+      : statusText === 'CASCADE INVALID' ? (candidate?.time ?? window.executionTime ?? window.primaryPivot.time)
+      : window.executionTime ?? candidate?.time ?? window.primaryPivot.time;
+
+    // Freshness gate: only notify if event overlaps snapshot minute window
+    if (!isFreshEvent(eventTime, currentTime)) return;
+
+    // Serial includes snapshot minute & TF (hardened)
+    const cascadeSerial = generateCascadeSerial(
+        window.primaryPivot.time,
+        window.primaryPivot.signal,
+        window.primaryPivot.price,
+        currentTime,
+        window.primaryPivot.timeframe
+    );
+    if (isCascadeSerialProcessed(cascadeSerial, serialState)) return;
+
+    const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
     const totalConfirmations = 1 + window.confirmations.length;
-    
-    // Global deduplication to prevent spam across auto-reload cycles
-    const statusKey = `${window.id}_${statusText}_${window.executionTime || window.primaryPivot.time}`;
+
+    // Global terminal dedup
+    const statusKey = `${window.id}_${statusText}_${eventTime || window.primaryPivot.time}`;
     if (TERMINAL_NOTIFICATION_CACHE.has(statusKey)) return;
     TERMINAL_NOTIFICATION_CACHE.set(statusKey, Date.now());
-    
-    // Clean old entries (older than 10 minutes)
     const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
     for (const [key, timestamp] of TERMINAL_NOTIFICATION_CACHE.entries()) {
-        if (timestamp < tenMinutesAgo) {
-            TERMINAL_NOTIFICATION_CACHE.delete(key);
-        }
+        if (timestamp < tenMinutesAgo) TERMINAL_NOTIFICATION_CACHE.delete(key);
     }
-    
+
     let message = null;
-    
+
     if (statusText === 'READY TO EXECUTE') {
         const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢⬆️' : '🔴⬇️';
         const snapshotLong = fmtDateTimeLong(currentTime);
         const snapshot24 = fmtTime24(currentTime);
-        
         let confirmationsList = `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n`;
         confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
-        
         message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
             `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
             `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
@@ -359,19 +383,16 @@ function sendTerminalStatusNotification(window, statusText, currentTime) {
             `🕐 *Snapshot:* ${snapshotLong} (${snapshot24})\n\n` +
             `*Confirmed Timeframes:*\n` +
             confirmationsList;
-            
     } else if (statusText === 'CASCADE INVALID') {
         const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢✅' : '🔴✅';
         const executionPrice = window.executionPrice || window.primaryPivot.price;
-        const executionTimeLong = fmtDateTimeLong(window.executionTime);
-        const executionTime24 = fmtTime24(window.executionTime);
+        const executionTimeLong = fmtDateTimeLong(eventTime);
+        const executionTime24 = fmtTime24(eventTime);
         const snapshotLong = fmtDateTimeLong(currentTime);
         const snapshot24 = fmtTime24(currentTime);
-        const timeAgo = formatTimeDifference(Math.max(0, currentTime - window.executionTime));
-        
+        const timeAgo = formatTimeDifference(Math.max(0, currentTime - eventTime));
         let confirmationsList = `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n`;
         confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
-        
         message = `✅ *CASCADE EXECUTED*\n\n` +
             `${signalEmoji} *TRADE COMPLETED: ${direction}*\n` +
             `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
@@ -383,9 +404,8 @@ function sendTerminalStatusNotification(window, statusText, currentTime) {
             `*Confirmed Timeframes:*\n` +
             confirmationsList;
     }
-    
+
     if (message) {
-        // Mark this cascade serial as processed for the terminal status state
         markCascadeSerialProcessed(cascadeSerial, serialState);
         telegramNotifier.sendMessage(message);
     }
@@ -1134,13 +1154,14 @@ function buildImmediateAggregatedCandles(oneMinCandles, timeframeMinutes) {
 
 // ===== CASCADE WINDOW MANAGEMENT =====
 class CascadeWindowManager {
-    static globalWindowCounter = 0; // Persistent across instances
-    static signalCounter = 0; // Signal-based counter for display
-    static lastSignalTime = 0; // Track last signal time for grouping
-    static signalTimeWindow = SNAPSHOT_CONFIG.signalTimeWindow; // Signal grouping window from config
-    static snapshotTimeThreshold = null; // Only count signals at or after this time
+    static globalWindowCounter = 0;
+    static signalCounter = 0;
+    static lastSignalTime = 0;
+    static signalTimeWindow = SNAPSHOT_CONFIG.signalTimeWindow;
+    static snapshotTimeThreshold = null;
 
-    constructor() {
+    constructor(snapshotTime) {
+        this.snapshotTime = snapshotTime; // NEW: used for freshness gating inside class methods
         this.activeWindows = new Map();
         this.cascadeCounter = 0;
         this.allCascades = [];
@@ -1314,33 +1335,36 @@ class CascadeWindowManager {
         return cascadeInfo;
     }
     
-    sendExecuteNotification(window, currentTime) {
+    sendExecuteNotification(window, currentTime /* event production time */) {
         if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
-        
-        // Skip W0 - it represents historical cascade from startup
         if (window.id === 'W0') return;
-        
-        // CRITICAL: Check cascade serial to prevent old cascades from re-triggering
-        const cascadeSerial = generateCascadeSerial(window.primaryPivot.time, window.primaryPivot.signal, window.primaryPivot.price);
-        if (isCascadeSerialProcessed(cascadeSerial, 'READY_TO_EXECUTE')) {
-            // This cascade has already sent READY_TO_EXECUTE notification - block it
-            return;
-        }
-        
-        // For live mode, always send notifications for ready windows
-        // The real-time filter was blocking legitimate notifications
-        
+
         const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
+        const candidate = computeCandidateExecution(window, minRequired);
+        const eventTime = candidate?.time ?? window.primaryPivot.time;
+        const snapshotTime = this.snapshotTime ?? currentTime;
+
+        // Freshness gate: ONLY notify if event overlaps snapshot minute window
+        if (!isFreshEvent(eventTime, snapshotTime)) return;
+
+        const cascadeSerial = generateCascadeSerial(
+            window.primaryPivot.time,
+            window.primaryPivot.signal,
+            window.primaryPivot.price,
+            snapshotTime,
+            window.primaryPivot.timeframe
+        );
+        if (isCascadeSerialProcessed(cascadeSerial, 'READY_TO_EXECUTE')) return;
+
         const totalConfirmations = 1 + window.confirmations.length;
         const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
         const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢⬆️' : '🔴⬇️';
-        const snapshotLong = fmtDateTimeLong(currentTime);
-        const snapshot24 = fmtTime24(currentTime);
-        
-        // Build confirmations list
+        const snapshotLong = fmtDateTimeLong(snapshotTime);
+        const snapshot24 = fmtTime24(snapshotTime);
+
         let confirmationsList = `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n`;
         confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
-        
+
         const message = `🚀 *CASCADE READY TO EXECUTE*\n\n` +
             `${signalEmoji} *TRADE SIGNAL: ${direction}*\n` +
             `🏗️ *Window:* ${window.id} (${window.primaryPivot.timeframe})\n` +
@@ -1350,14 +1374,11 @@ class CascadeWindowManager {
             `*Confirmed Timeframes:*\n` +
             confirmationsList;
 
-
-        // Enhanced deduplication using execution characteristics instead of just window ID
-        const executionMinute = Math.floor((window.primaryPivot.time || currentTime) / 60000);
+        const executionMinute = Math.floor((window.primaryPivot.time || snapshotTime) / 60000);
         const priceKey = Math.round((window.primaryPivot.price || 0) * 100);
         const dedupKey = `READY_TO_EXECUTE|${direction}|p${priceKey}|t${executionMinute}|${window.id}`;
         
         if (shouldNotifyWindowEvent(window.id, 'READY_TO_EXECUTE') && shouldSendTelegram(dedupKey)) {
-            // Mark this cascade serial as processed for READY_TO_EXECUTE state
             markCascadeSerialProcessed(cascadeSerial, 'READY_TO_EXECUTE');
             telegramNotifier.sendMessage(message);
         }
@@ -1365,20 +1386,21 @@ class CascadeWindowManager {
     
     sendExecutedNotification(window, currentTime) {
         if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
-        
-        // Skip W0 - it represents historical cascade from startup
         if (window.id === 'W0') return;
-        
-        // CRITICAL: Check cascade serial to prevent old cascades from re-triggering
-        const cascadeSerial = generateCascadeSerial(window.primaryPivot.time, window.primaryPivot.signal, window.primaryPivot.price);
-        if (isCascadeSerialProcessed(cascadeSerial, 'EXECUTED')) {
-            // This cascade has already sent EXECUTED notification - block it
-            return;
-        }
-        
-        // For live mode, always send notifications for executed windows
-        // The real-time filter was blocking legitimate notifications
-        
+
+        const snapshotTime = this.snapshotTime ?? currentTime;
+        const eventTime = window.executionTime ?? window.primaryPivot.time;
+        if (!isFreshEvent(eventTime, snapshotTime)) return;
+
+        const cascadeSerial = generateCascadeSerial(
+            window.primaryPivot.time,
+            window.primaryPivot.signal,
+            window.primaryPivot.price,
+            snapshotTime,
+            window.primaryPivot.timeframe
+        );
+        if (isCascadeSerialProcessed(cascadeSerial, 'EXECUTED')) return;
+
         const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
         const totalConfirmations = 1 + window.confirmations.length;
         const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
@@ -1386,11 +1408,10 @@ class CascadeWindowManager {
         const executionPrice = window.executionPrice || window.primaryPivot.price;
         const executionTimeLong = fmtDateTimeLong(window.executionTime);
         const executionTime24 = fmtTime24(window.executionTime);
-        const snapshotLong = fmtDateTimeLong(currentTime);
-        const snapshot24 = fmtTime24(currentTime);
-        const timeAgo = formatTimeDifference(Math.max(0, currentTime - window.executionTime));
+        const snapshotLong = fmtDateTimeLong(snapshotTime);
+        const snapshot24 = fmtTime24(snapshotTime);
+        const timeAgo = formatTimeDifference(Math.max(0, snapshotTime - window.executionTime));
         
-        // Build confirmations list
         let confirmationsList = `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n`;
         confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
         
@@ -1405,12 +1426,10 @@ class CascadeWindowManager {
             `*Confirmed Timeframes:*\n` +
             confirmationsList;
         
-        // Dedup by execution characteristics instead of window ID
-        const executionMinute = Math.floor((window.executionTime || currentTime) / 60000);
+        const executionMinute = Math.floor((window.executionTime || snapshotTime) / 60000);
         const execPriceKey = Math.round((executionPrice || 0) * 100);
         const dedupKey = `EXECUTED|${direction}|p${execPriceKey}|t${executionMinute}`;
         if (shouldNotifyWindowEvent(window.id, 'EXECUTED', window.executionTime) && shouldSendTelegram(dedupKey)) {
-            // Mark this cascade serial as processed for EXECUTED state
             markCascadeSerialProcessed(cascadeSerial, 'EXECUTED');
             telegramNotifier.sendMessage(message);
         }
@@ -1418,49 +1437,35 @@ class CascadeWindowManager {
     
     sendExpiredNotification(window, currentTime) {
         if (!SNAPSHOT_CONFIG.showTelegramCascades) return;
-        
-        // Skip W0 - it represents historical cascade from startup
         if (window.id === 'W0') return;
-        
-        // CRITICAL: Check cascade serial to prevent old cascades from re-triggering
-        const cascadeSerial = generateCascadeSerial(window.primaryPivot.time, window.primaryPivot.signal, window.primaryPivot.price);
-        if (isCascadeSerialProcessed(cascadeSerial, 'EXPIRED')) {
-            // This cascade has already sent EXPIRED notification - block it
-            return;
-        }
-        
-        // CRITICAL FIX: Only send expired notifications for windows that were in WAITING state
+
+        const snapshotTime = this.snapshotTime ?? currentTime;
+        const eventTime = snapshotTime; // expiration evaluated at snapshot
+        if (!isFreshEvent(eventTime, snapshotTime)) return; // practically always true
+
+        const cascadeSerial = generateCascadeSerial(
+            window.primaryPivot.time,
+            window.primaryPivot.signal,
+            window.primaryPivot.price,
+            snapshotTime,
+            window.primaryPivot.timeframe
+        );
+        if (isCascadeSerialProcessed(cascadeSerial, 'EXPIRED')) return;
+
         const lifecycle = WINDOW_LIFECYCLE_CACHE.get(window.id);
-        if (!lifecycle || !lifecycle.waiting) {
-            // This window never was in WAITING state, cannot expire
-            return;
-        }
-        
-        // Additional check: window must have been marked as wasWaiting
-        if (!window.wasWaiting) {
-            return;
-        }
-        
-        // Skip time filters entirely in auto-reload mode to allow all testing notifications
-        if (!SNAPSHOT_CONFIG.autoReload) {
-            // Only send notifications for real-time events (within 5 minutes of current time)
-            const timeDiff = Math.abs(Date.now() - currentTime);
-            const isRealTime = timeDiff <= (5 * 60 * 1000); // 5 minutes threshold
-            if (!isRealTime) return;
-        }
-        // In auto-reload mode: allow all expired notifications (no time filter)
-        
+        if (!lifecycle || !lifecycle.waiting) return;
+        if (!window.wasWaiting) return;
+
         const minRequired = multiPivotConfig.cascadeSettings?.minTimeframesRequired || 3;
         const totalConfirmations = 1 + window.confirmations.length;
         const direction = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
         const signalEmoji = window.primaryPivot.signal === 'long' ? '🟢⏰' : '🔴⏰';
-        const snapshotLong = fmtDateTimeLong(currentTime);
-        const snapshot24 = fmtTime24(currentTime);
+        const snapshotLong = fmtDateTimeLong(snapshotTime);
+        const snapshot24 = fmtTime24(snapshotTime);
         const windowOpenedLong = fmtDateTimeLong(window.primaryPivot.time);
         const windowOpenedTime24 = fmtTime24(window.primaryPivot.time);
-        const windowDuration = formatTimeDifference(currentTime - window.primaryPivot.time);
+        const windowDuration = formatTimeDifference(snapshotTime - window.primaryPivot.time);
         
-        // Build confirmations list
         let confirmationsList = `• ${window.primaryPivot.timeframe}: $${(window.primaryPivot.price)} (Primary)\n`;
         if (window.confirmations.length > 0) {
             confirmationsList += window.confirmations.map(conf => `• ${conf.timeframe}: $${(conf.pivot.price)}`).join('\n');
@@ -1478,13 +1483,11 @@ class CascadeWindowManager {
             confirmationsList +
             `\n❌ *Window closed without execution - insufficient confirmations*`;
         
-        // Dedup by window characteristics instead of window ID
         const expiredDirection = window.primaryPivot.signal === 'long' ? 'LONG' : 'SHORT';
-        const expiredMinute = Math.floor(currentTime / 60000);
+        const expiredMinute = Math.floor(snapshotTime / 60000);
         const priceKey = Math.round((window.primaryPivot.price || 0) * 100);
         const dedupKey = `EXPIRED|${expiredDirection}|p${priceKey}|t${expiredMinute}`;
         if (shouldNotifyWindowEvent(window.id, 'EXPIRED') && shouldSendTelegram(dedupKey)) {
-            // Mark this cascade serial as processed for EXPIRED state
             markCascadeSerialProcessed(cascadeSerial, 'EXPIRED');
             telegramNotifier.sendMessage(message);
         }
@@ -1702,7 +1705,7 @@ function simulateCascadeWindows(allTimeframePivots, analysisTime, windowManager)
 }
 
 function displayCascadeWindows(windowManager, currentTime) {
-    const timezone = 'America/New_York';
+    
     const activeWindowsRaw = windowManager.getActiveWindows(currentTime);
     const executedWindowsRaw = windowManager.getRecentlyExecutedWindows(currentTime);
     // Combine active + executed (still within window) so they show under one section
@@ -1978,7 +1981,7 @@ async function runImmediateAggregationSnapshot(forcedAnalysisTime = null, preloa
     console.log(`${colors.yellow}Current Price: $${analysisCandle?.close?.toFixed(2) ?? 'N/A'}${colors.reset}`);
     
     // Initialize cascade window manager
-    const windowManager = new CascadeWindowManager();
+    const windowManager = new CascadeWindowManager(analysisTime);
     
     // Build aggregated candles for all timeframes
     const timeframeData = {};

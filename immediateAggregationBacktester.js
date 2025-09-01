@@ -2,6 +2,11 @@
 // Advanced backtester using immediate aggregation technology
 // Supports both individual pivot trading and cascade confirmation strategies
 // ===== CONFIGURATION =====
+
+
+const daysamount = 5;
+const days = 1440 * daysamount;
+
 const BACKTEST_CONFIG = {
     // Trading mode
     tradingMode: 'cascade',     // 'pivot' = trade individual pivots, 'cascade' = require multi-timeframe confirmation
@@ -12,15 +17,21 @@ const BACKTEST_CONFIG = {
     // maxCandles: 129600,        // 1 week of 1m candles for testing
     // maxCandles: 86400,        // 1 week of 1m candles for testing
     // maxCandles: 43200,        // 1 month of 1m candles for testing
+    // maxCandles: 30240,        // 1 month of 1m candles for testing
     // maxCandles: 20160,          // 2 weeks of 1m candles for testing
     // maxCandles: 15840,          // 1 week of 1m candles for testing
-    // maxCandles: 10080,          // 1 week of 1m candles for testing
     // maxCandles: 11520,          // 8 days of 1m candles for testing
+    // maxCandles: 20160,          // 2 weeks of 1m candles for testing
+    maxCandles: 10080,          // 1 week of 1m candles for testing
     // maxCandles: 5760,          // 4 days of 1m candles for testing
     // maxCandles: 4320,          // 3 days of 1m candles for testing
-    maxCandles: 2880,          // 2 days of 1m candles for testing 
+    // maxCandles: 2880,          // 2 days of 1m candles for testing 
+    // maxCandles: 1440,          // 2 days of 1m candles for testing 
+    // maxCandles: 1,          // 2 days of 1m candles for testing 
     delayReverseTime: 0,       // Time travel: go back N candles (0 = disabled, 1440 = 1 day, 2880 = 2 days)
+    // delayReverseTime: days,       // Time travel: go back N candles (0 = disabled, 1440 = 1 day, 2880 = 2 days)
 
+    
     // Output settings
     showEveryNthTrade: 1,       // Show every Nth trade
     showFirstNTrades: 20,       // Always show first N trades
@@ -1624,16 +1635,20 @@ async function runImmediateAggregationBacktest() {
             allTrades.forEach((trade, index) => {
                 // Format dates to be more readable
                 const entryDate = new Date(trade.entryTime);
-                const exitDate = new Date(trade.exitTime);
                 const entryTime12 = entryDate.toLocaleTimeString();
                 const entryTime24Only = entryDate.toLocaleTimeString('en-GB', { hour12: false });
-                const exitTime12 = exitDate.toLocaleTimeString();
-                const exitTime24Only = exitDate.toLocaleTimeString('en-GB', { hour12: false });
                 const entryDateStr = `${entryDate.toLocaleDateString('en-US', { weekday: 'short' })} ${entryDate.toLocaleDateString()} ${entryTime12} (${entryTime24Only})`;
-                const exitDateStr = `${exitDate.toLocaleDateString('en-US', { weekday: 'short' })} ${exitDate.toLocaleDateString()} ${exitTime12} (${exitTime24Only})`;
                 
-                // Calculate and format duration using actual trade times
-                const durationMs = trade.exitTime - trade.entryTime;
+                // Only format exit data if trade is closed
+                let exitDateStr = '';
+                let durationMs = 0;
+                if (trade.exitTime !== null) {
+                    const exitDate = new Date(trade.exitTime);
+                    const exitTime12 = exitDate.toLocaleTimeString();
+                    const exitTime24Only = exitDate.toLocaleTimeString('en-GB', { hour12: false });
+                    exitDateStr = `${exitDate.toLocaleDateString('en-US', { weekday: 'short' })} ${exitDate.toLocaleDateString()} ${exitTime12} (${exitTime24Only})`;
+                    durationMs = trade.exitTime - trade.entryTime;
+                }
                 const formatDuration = (ms) => {
                     const totalMinutes = Math.floor(ms / (1000 * 60));
                     const days = Math.floor(totalMinutes / (24 * 60));
@@ -1650,17 +1665,22 @@ async function runImmediateAggregationBacktest() {
                 };
                 const durationStr = formatDuration(durationMs);
                 
-                // Determine if win or loss
-                const resultColor = trade.pnl >= 0 ? colors.green : colors.red;
-                const resultText = trade.pnl >= 0 ? 'WIN' : 'LOSS';
-                const pnlPct = ((trade.pnl / trade.tradeSize) * 100).toFixed(2);
+                // Determine if win or loss (handle null PnL for open trades)
+                const safePnl = trade.pnl || 0;
+                const resultColor = safePnl >= 0 ? colors.green : colors.red;
+                const resultText = trade.status === 'open' ? 'OPEN' : (safePnl >= 0 ? 'WIN' : 'LOSS');
+                const pnlPct = ((safePnl / trade.tradeSize) * 100).toFixed(2);
                 
                 // Format the trade header - entire line in result color
                 console.log(`${resultColor}[TRADE ${(index + 1).toString().padStart(2, ' ')}] ${trade.type.toUpperCase()} | P&L: ${pnlPct}% | ${resultText} | Result: ${trade.exitReason}${colors.reset}`);
                 console.log();
                 console.log(`${colors.cyan}  Entry: ${entryDateStr} at $${trade.entryPrice.toFixed(2)}${colors.reset}`);
-                console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${trade.exitPrice.toFixed(2)}${colors.reset}`);
-                console.log(`${colors.cyan}  Duration: ${durationStr}${colors.reset}`);
+                if (trade.exitPrice !== null && trade.exitTime !== null) {
+                    console.log(`${colors.cyan}  Exit:  ${exitDateStr} at $${trade.exitPrice.toFixed(2)}${colors.reset}`);
+                    console.log(`${colors.cyan}  Duration: ${durationStr}${colors.reset}`);
+                } else {
+                    console.log(`${colors.yellow}  Status: STILL OPEN (no exit data)${colors.reset}`);
+                }
                 
                 // Add trade amount, loss, and remainder information
                 const tradeAmount = trade.tradeSize;
@@ -1686,11 +1706,13 @@ async function runImmediateAggregationBacktest() {
                     console.log(`  Max Unfavorable Movement: ${unfavorableColor}${trade.maxUnfavorable.toFixed(4)}%${colors.reset}`);
                 }
                 
-                // Add price movement information
-                const priceDiff = trade.exitPrice - trade.entryPrice;
-                const priceDiffPct = (priceDiff / trade.entryPrice * 100).toFixed(4);
-                const priceColor = priceDiff >= 0 ? colors.green : colors.red;
-                console.log(`  Price Movement: ${priceColor}${priceDiff > 0 ? '+' : ''}${priceDiffPct}%${colors.reset} (${priceColor}$${formatNumberWithCommas(priceDiff)}${colors.reset})`);
+                // Add price movement information (only for closed trades)
+                if (trade.exitPrice !== null) {
+                    const priceDiff = trade.exitPrice - trade.entryPrice;
+                    const priceDiffPct = (priceDiff / trade.entryPrice * 100).toFixed(4);
+                    const priceColor = priceDiff >= 0 ? colors.green : colors.red;
+                    console.log(`  Price Movement: ${priceColor}${priceDiff > 0 ? '+' : ''}${priceDiffPct}%${colors.reset} (${priceColor}$${formatNumberWithCommas(priceDiff)}${colors.reset})`);
+                }
                 
                 // Display funding costs if any
                 if (tradeConfig.enableFundingRate && trade.fundingCosts && trade.fundingCosts.length > 0) {
@@ -1708,8 +1730,8 @@ async function runImmediateAggregationBacktest() {
                         console.log(`  Slippage Impact: ${slippageDisplay}`);
                     }
                     
-                    // Show original vs slippage-adjusted prices if available
-                    if (trade.originalExitPrice && Math.abs(trade.originalExitPrice - trade.exitPrice) > 0.0001) {
+                    // Show original vs slippage-adjusted prices if available (only for closed trades)
+                    if (trade.originalExitPrice && trade.exitPrice && Math.abs(trade.originalExitPrice - trade.exitPrice) > 0.0001) {
                         const isLong = trade.type === 'long';
                         const madeWorse = isLong ? (trade.exitPrice < trade.originalExitPrice) : (trade.exitPrice > trade.originalExitPrice);
                         const diffAbs = Math.abs(trade.exitPrice - trade.originalExitPrice);
