@@ -17,7 +17,16 @@ function parseTimeframeToMs(tf) {
 }
 
 function getBucketStart(ts, tfMs) {
-  return Math.floor(ts / tfMs) * tfMs;
+  // Get UTC midnight of the day containing this timestamp
+  const date = new Date(ts);
+  const utcMidnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  
+  // Calculate how many complete intervals have passed since midnight
+  const msSinceMidnight = ts - utcMidnight;
+  const intervalsSinceMidnight = Math.floor(msSinceMidnight / tfMs);
+  
+  // Return the start of the current interval
+  return utcMidnight + (intervalsSinceMidnight * tfMs);
 }
 
 function cloneCandle(c) {

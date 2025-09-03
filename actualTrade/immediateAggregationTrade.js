@@ -1167,8 +1167,12 @@ function buildImmediateAggregatedCandles(oneMinCandles, timeframeMinutes) {
     const buckets = new Map();
     
     for (const candle of oneMinCandles) {
-        // Calculate bucket END time for proper timeframe representation
-        const bucketEnd = Math.ceil(candle.time / bucketSizeMs) * bucketSizeMs;
+        // Calculate bucket END time using UTC midnight alignment
+        const date = new Date(candle.time);
+        const utcMidnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+        const msSinceMidnight = candle.time - utcMidnight;
+        const intervalsSinceMidnight = Math.ceil(msSinceMidnight / bucketSizeMs);
+        const bucketEnd = utcMidnight + (intervalsSinceMidnight * bucketSizeMs);
         
         if (!buckets.has(bucketEnd)) {
             buckets.set(bucketEnd, []);

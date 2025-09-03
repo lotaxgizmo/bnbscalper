@@ -10,7 +10,7 @@ const days = 1440 * daysamount;
 const OPTIMIZATION_CONFIG = {
     takeProfitRange: { start: 0.6, end: 0.6, step: 0.1 },
     stopLossRange: { start: 0.4, end: 0.4, step: 0.1 },
-    leverageRange: { start: 50, end: 50, step: 1 },
+    leverageRange: { start: 80, end: 80, step: 1 },
     tradingModes: ['cascade'],  
     // maxCandles: 86400, // 14 days of 1m candles 
     // maxCandles: 43200, // 14 days of 1m candles 
@@ -34,7 +34,7 @@ const OPTIMIZATION_CONFIG = {
     recentTradeFilter: {
         enabled: false,                    // Enable/disable recent trade filtering
         lookbackTrades: 5,               // Number of recent trades to examine
-        minProfitableTrades: 1,          // Minimum profitable trades required in lookback window
+        minProfitableTrades: 3,          // Minimum profitable trades required in lookback window
         requireConsecutiveProfits: true, // If true, requires consecutive profits (not just total count)
         minRecentWinRate: 0,            // Alternative: minimum win rate % in recent trades (0-100, 0 = disabled)
         excludeIfInsufficientTrades: true // If true, exclude configs with fewer than lookbackTrades total trades
@@ -46,20 +46,21 @@ const OPTIMIZATION_CONFIG = {
             
   
             {
-                interval: '3h',
+                interval: '2h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
-                lookbackRange: { start: 1, end: 1, step: 1 },
+                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
+                lookbackRange: { start: 2, end: 2, step: 1 },
                 minLegBarsRange: { start: 2, end: 2, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
+
             {
                 interval: '1h',
                 role: 'secondary',
-                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
-                lookbackRange: { start: 1, end: 1, step: 1 },
-                minLegBarsRange: { start: 4, end: 4, step: 1 },               
+                minSwingPctRange: { start: 0.1, end: 0.7, step: 0.1 },
+                lookbackRange: { start: 1, end: 5, step: 1 },
+                minLegBarsRange: { start: 1, end: 5, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
@@ -67,9 +68,9 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '1m',
                 role: 'secondary',
-                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
-                lookbackRange: { start: 5, end: 5, step: 1 },
-                minLegBarsRange: { start: 3, end: 3, step: 1 },               
+                minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
+                lookbackRange: { start: 3, end: 3, step: 1 },
+                minLegBarsRange: { start: 1, end: 1, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
@@ -413,8 +414,12 @@ function buildImmediateAggregatedCandles(oneMinCandles, timeframeMinutes) {
     const buckets = new Map();
     
     for (const candle of oneMinCandles) {
-        // Calculate bucket END time for proper timeframe representation
-        const bucketEnd = Math.ceil(candle.time / bucketSizeMs) * bucketSizeMs;
+        // Calculate bucket END time using UTC midnight alignment
+        const date = new Date(candle.time);
+        const utcMidnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+        const msSinceMidnight = candle.time - utcMidnight;
+        const intervalsSinceMidnight = Math.ceil(msSinceMidnight / bucketSizeMs);
+        const bucketEnd = utcMidnight + (intervalsSinceMidnight * bucketSizeMs);
         
         if (!buckets.has(bucketEnd)) {
             buckets.set(bucketEnd, []);
