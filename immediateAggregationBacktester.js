@@ -31,7 +31,7 @@ const BACKTEST_CONFIG = {
     delayReverseTime: 0,       // Time travel: go back N candles (0 = disabled, 1440 = 1 day, 2880 = 2 days)
     // delayReverseTime: days,       // Time travel: go back N candles (0 = disabled, 1440 = 1 day, 2880 = 2 days)
 
-    
+
     // Output settings
     showEveryNthTrade: 1,       // Show every Nth trade
     showFirstNTrades: 20,       // Always show first N trades
