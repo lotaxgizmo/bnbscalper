@@ -29,3 +29,6 @@ export {
   executeMarketOrder,
   quickMarketOrder
 } from './orderExecutor.js';
+
+// Telegram Notifications (using existing notifier)
+export { default as telegramNotifier } from '../telegramNotifier.js';

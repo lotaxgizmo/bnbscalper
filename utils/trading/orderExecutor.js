@@ -3,6 +3,7 @@ import { signedRequest } from '../../bybitClient.js';
 import { getAccountBalance, hasActivePosition, setIsolatedMargin, setLeverage, calcUsableFactor } from './accountManager.js';
 import { getMarketPrice, getInstrumentInfo } from './marketData.js';
 import { calculateTPSL, calculatePositionSize, calculateContractQty, convertSignalToSide } from './tradingCalculations.js';
+import telegramNotifier from '../telegramNotifier.js';
 
 /**
  * Execute a market order with full configuration
@@ -115,6 +116,24 @@ export async function executeMarketOrder(config) {
   console.log('✅ Order placed successfully!');
   if (stopLossPrice) console.log(`✅ Stop Loss set at: ${stopLossPrice.toFixed(4)}`);
   if (takeProfitPrice) console.log(`✅ Take Profit set at: ${takeProfitPrice.toFixed(4)}`);
+
+  // Send Telegram notification using existing notifier
+  try {
+    const direction = side === 'Buy' ? 'long' : 'short';
+    await telegramNotifier.notifyTradeOpened({
+      id: res.result.orderId,
+      direction: direction,
+      entryPrice,
+      entryTime: Date.now(),
+      positionSize: notional,
+      capitalUsed: notional / leverage, // Actual capital used (margin)
+      leverage,
+      stopLossPrice: stopLossPrice || null,
+      takeProfitPrice: takeProfitPrice || null
+    });
+  } catch (error) {
+    console.log(`⚠️  Telegram notification failed: ${error.message}`);
+  }
 
   return {
     success: true,

@@ -144,14 +144,27 @@ class TelegramNotifier {
         const direction = trade.direction === 'long' ? 'LONG' : 'SHORT';
         const timeFormatted = this.formatDate(trade.entryTime);
         
+        const stopLossText = trade.stopLossPrice ? `🛑 *Stop Loss:* $${this.formatPrice(trade.stopLossPrice)}\n` : '';
+        const takeProfitText = trade.takeProfitPrice ? `🎯 *Take Profit:* $${this.formatPrice(trade.takeProfitPrice)}\n` : '';
+        
+        // Debug log to check capitalUsed value
+        console.log('DEBUG: Trade data for Telegram:', {
+            capitalUsed: trade.capitalUsed,
+            positionSize: trade.positionSize,
+            leverage: trade.leverage
+        });
+        
+        const capitalText = trade.capitalUsed ? `💼 *Capital Used:* $${this.formatNumber(trade.capitalUsed)}\n` : '';
+        
         const message = `${emoji} *TRADE OPENED: ${direction} #${trade.id} ${emoji2}*\n` +
         `------------------------------------------\n` +
         `------------------------------------------\n` +
             `💰 *Entry:* $${this.formatPrice(trade.entryPrice)}\n` +
             `💵 *Size:* $${this.formatNumber(trade.positionSize)}\n` +
+            capitalText +
             `⚡ *Leverage:* ${trade.leverage}x\n` +
-            `🛑 *Stop Loss:* $${this.formatPrice(trade.stopLossPrice)}\n` +
-            `🎯 *Take Profit:* $${this.formatPrice(trade.takeProfitPrice)}\n` +
+            stopLossText +
+            takeProfitText +
             `⏰ *Time:* ${timeFormatted}\n`;
             
         await this.sendMessage(message);

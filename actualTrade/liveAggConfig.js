@@ -1,6 +1,7 @@
 // multiPivotConfig.js
 // Configuration for multi-timeframe pivot confirmation system
 
+
 export const multiPivotConfig = {
     // Enable/disable multi-timeframe analysis
     enabled: true,
@@ -12,45 +13,36 @@ export const multiPivotConfig = {
         {
             interval: '3h',
             role: 'primary',   // Additional confirmation
-            minSwingPct: 0.1,       // Same settings for easy testing
-            lookback: 4,
-            minLegBars: 4,          // Same settings for easy testing
+            minSwingPct: 0.2,       // Same settings for easy testing
+            lookback: 1,
+            minLegBars: 2,          // Same settings for easy testing
             weight: 1,
             opposite: false
         },
 
         {
             interval: '1h',
-            role: 'secondary',   // Additional confirmation
+            role: 'primary',   // Additional confirmation
             minSwingPct: 0.1,       // Same settings for easy testing
             lookback: 1,
-            minLegBars: 5,          // Same settings for easy testing
+            minLegBars: 4,          // Same settings for easy testing
             weight: 1,
             opposite: false
         },
 
         {
-            interval: '30m',
-            role: 'secondary',   // Additional confirmation
-            minSwingPct: 0.3,   // Same settings for easy testing
-            lookback: 2,
-            minLegBars: 2,          // Same settings for easy testing
+            interval: '1m',
+            role: 'primary',   // Additional confirmation
+            minSwingPct: 0.1,       // Same settings for easy testing
+            lookback: 5,
+            minLegBars: 3,          // Same settings for easy testing
             weight: 1,
             opposite: false
         },
- 
-        {   
-            interval: '1m',
-            role: 'execution',      // Final execution timeframe
-            minSwingPct: 0.1,       // Same settings for easy testing
-            lookback: 2,
-            minLegBars: 4,          // Same settings for easy testing
-            weight: 1,
-            opposite: false
-        }
+
     ],
+ 
     
-    // Cascade confirmation settings
     cascadeSettings: {
         minTimeframesRequired: 2,      // 🔧 REQUIRE: Primary + 2 others (3/4 timeframes)
         // How long to wait for confirmation from smaller timeframes (in minutes)
