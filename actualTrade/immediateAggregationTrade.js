@@ -50,8 +50,8 @@ const SNAPSHOT_CONFIG = {
     
     
     // === TRADE EXECUTION PARAMETERS ===
-    takeProfitPercent: 0.1,         // Take profit percentage (0.6 = 0.6%)
-    stopLossPercent: 0.1,           // Stop loss percentage (0.4 = 0.4%)
+    takeProfitPercent: 0.6,         // Take profit percentage (0.6 = 0.6%)
+    stopLossPercent: 0.5,           // Stop loss percentage (0.4 = 0.4%)
 };
 
 import {

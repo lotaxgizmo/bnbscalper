@@ -27,7 +27,7 @@ const BACKTEST_CONFIG = {
     // maxCandles: 4320,          // 3 days of 1m candles for testing
     // maxCandles: 2880,          // 2 days of 1m candles for testing 
     // maxCandles: 1440,          // 2 days of 1m candles for testing 
-    // maxCandles: 1,          // 2 days of 1m candles for testing 
+    // maxCandles: 2,          // 2 days of 1m candles for testing 
     delayReverseTime: 0,       // Time travel: go back N candles (0 = disabled, 1440 = 1 day, 2880 = 2 days)
     // delayReverseTime: days,       // Time travel: go back N candles (0 = disabled, 1440 = 1 day, 2880 = 2 days)
 
