@@ -15,7 +15,7 @@ export const tradeConfig = {
 
 
     takeProfit: 0.9,
-    stopLoss: 0.75,
+    stopLoss: 0.4,
     // leverage: 100,
     leverage: 80,
 
@@ -27,8 +27,8 @@ export const tradeConfig = {
     // 'flip': Close opposite trades and open new trade in opposite direction
     // 'close': Only close opposite trades, don't open new trade
 
-    // noTradeDays: [],
-    noTradeDays: ['M'],
+    noTradeDays: [],
+    // noTradeDays: ['M'],
     // noTradeDays: ['M', 'T', 'W', 'Th', 'F', 'Sa', 'Su'],
 
     // Trailing stop loss settings
@@ -59,7 +59,7 @@ export const tradeConfig = {
 
 
  
-    initialCapital: 100,
+    initialCapital: 50,
     riskPerTrade: 100,
  
 
