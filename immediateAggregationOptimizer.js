@@ -8,17 +8,17 @@ const daysamount = 2;
 const days = 1440 * daysamount;
 
 const OPTIMIZATION_CONFIG = {
-    takeProfitRange: { start: 0.6, end: 0.6, step: 0.1 },
-    stopLossRange: { start: 0.4, end: 0.4, step: 0.1 },
-    leverageRange: { start: 80, end: 80, step: 1 },
+    takeProfitRange: { start: 0.1, end: 2, step: 0.1 },
+    stopLossRange: { start: 0.1, end: 0.9, step: 0.1 },
+    leverageRange: { start: 50, end: 50, step: 1 },
     tradingModes: ['cascade'],  
     // maxCandles: 86400, // 14 days of 1m candles 
     // maxCandles: 43200, // 14 days of 1m candles 
     // maxCandles: 30240, // 14 days of 1m candles 
-    // maxCandles: 20160, // 14 days of 1m candles 
+    maxCandles: 20160, // 14 days of 1m candles 
     // maxCandles: 15840, // 14 days of 1m candles 
     // maxCandles: 11520, // 14 days of 1m candles 
-    maxCandles: 10080, // 7 days of 1m candles 
+    // maxCandles: 10080, // 7 days of 1m candles 
     // maxCandles: 5760, // 4 days of 1m candles 
     // maxCandles: 4320, // 3 days of 1m candles 
     // maxCandles: 2880, // 2 days of 1m candles 

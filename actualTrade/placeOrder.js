@@ -14,14 +14,14 @@ export async function executeTradeFromSignal(signalData) {
   const TRADING_CONFIG = {
     symbol: symbol,
     signal: tradeSignal,
-    leverage: 80,                // leverage to use
+    leverage: 50,                // leverage to use
     amountMode: 'percentage',    // 'percentage' or 'fixed'
     usePercentage: 100,          // 100% = all-in (before buffer)
     fixedAmount: 100,            // USDT amount if fixed mode
-    upperLimit: 50000,           // Max notional cap
+    upperLimit: 20000,           // Max notional cap
     
     slTpMode: tpsl ? 'fixed' : 'percentage',  // Use fixed prices from cascade
-    stopLoss: tpsl ? tpsl.stopLossPrice : 0.4,     // Use cascade-calculated SL price
+    stopLoss: tpsl ? tpsl.stopLossPrice : 0.5,     // Use cascade-calculated SL price
     takeProfit: tpsl ? tpsl.takeProfitPrice : 0.6, // Use cascade-calculated TP price
 
     tradeOnActive: false         // Allow trading when active positions exist
