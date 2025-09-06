@@ -15,9 +15,7 @@ const OPTIMIZATION_CONFIG = {
     // maxCandles: 86400, // 14 days of 1m candles 
     // maxCandles: 43200, // 14 days of 1m candles 
     // maxCandles: 30240, // 14 days of 1m candles 
-    // maxCandles: 20160, // 14 days of 1m candles 
-    // maxCandles: 15840, // 14 days of 1m candles 
-    // maxCandles: 11520, // 14 days of 1m candles 
+    // maxCandles: 20160, // 14 days of 1m candles  
     maxCandles: 10080, // 7 days of 1m candles 
     // maxCandles: 5760, // 4 days of 1m candles 
     // maxCandles: 4320, // 3 days of 1m candles 
