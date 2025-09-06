@@ -4,6 +4,9 @@
 
 // ===== OPTIMIZATION CONFIGURATION =====
 
+// Pivot detection price mode: 'close' or 'open'
+const PIVOT_PRICE_MODE = 'close';  // 'close' = use candle close prices, 'open' = use candle open prices
+
 const daysamount = 2;
 const days = 1440 * daysamount;
 
@@ -56,9 +59,9 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '2h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
-                lookbackRange: { start: 1, end: 1, step: 1 },
-                minLegBarsRange: { start: 2, end: 2, step: 1 },               
+                minSwingPctRange: { start: 0.1, end: 0.7, step: 0.1 },
+                lookbackRange: { start: 1, end: 5, step: 1 },
+                minLegBarsRange: { start: 1, end: 5, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
@@ -67,8 +70,8 @@ const OPTIMIZATION_CONFIG = {
                 interval: '1h',
                 role: 'primary',
                 minSwingPctRange: { start: 0.7, end: 0.7, step: 0.1 },
-                lookbackRange: { start: 3, end: 3, step: 1 },
-                minLegBarsRange: { start: 2, end: 2, step: 1 },               
+                lookbackRange: { start: 5, end: 5, step: 1 },
+                minLegBarsRange: { start: 3, end: 3, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             }, 
@@ -76,8 +79,8 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '1m',
                 role: 'primary',
-                minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
-                lookbackRange: { start: 2, end: 2, step: 1 },
+                minSwingPctRange: { start: 0.4, end: 0.4, step: 0.1 },
+                lookbackRange: { start: 5, end: 5, step: 1 },
                 minLegBarsRange: { start: 1, end: 1, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
@@ -341,8 +344,8 @@ function detectPivotsVectorized(candles, config) {
     if (candles.length < 2) return pivots;
     
     // Pre-extract price arrays for vectorized operations
-    const highs = candles.map(c => pivotDetectionMode === 'close' ? c.close : c.high);
-    const lows = candles.map(c => pivotDetectionMode === 'close' ? c.close : c.low);
+    const highs = candles.map(c => PIVOT_PRICE_MODE === 'close' ? c.close : (PIVOT_PRICE_MODE === 'open' ? c.open : c.high));
+    const lows = candles.map(c => PIVOT_PRICE_MODE === 'close' ? c.close : (PIVOT_PRICE_MODE === 'open' ? c.open : c.low));
     const times = candles.map(c => c.time);
     
     // Vectorized pivot detection
