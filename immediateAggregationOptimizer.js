@@ -59,9 +59,9 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '2h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.1, end: 0.7, step: 0.1 },
-                lookbackRange: { start: 1, end: 5, step: 1 },
-                minLegBarsRange: { start: 1, end: 5, step: 1 },               
+                minSwingPctRange: { start: 0.6, end: 0.6, step: 0.1 },
+                lookbackRange: { start: 1, end: 1, step: 1 },
+                minLegBarsRange: { start: 2, end: 2, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
@@ -69,9 +69,9 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '1h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.7, end: 0.7, step: 0.1 },
-                lookbackRange: { start: 5, end: 5, step: 1 },
-                minLegBarsRange: { start: 3, end: 3, step: 1 },               
+                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
+                lookbackRange: { start: 1, end: 1, step: 1 },
+                minLegBarsRange: { start: 1, end: 1, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             }, 
