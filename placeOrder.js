@@ -10,10 +10,10 @@ const TRADING_CONFIG = {
   // leverage: 50,                // leverage to use
   leverage: 80,                // leverage to use
   amountMode: 'percentage',    // 'percentage' or 'fixed'
-  usePercentage: 100,          // 100% = all-in (before buffer)
+  usePercentage: 5,          // 100% = all-in (before buffer)
   fixedAmount: 100,            // USDT amount if fixed mode
   // upperLimit: 200000,           // Max notional cap
-  upperLimit: 250000,           // Max notional cap
+  upperLimit: 20000,           // Max notional cap
   
   slTpMode: 'percentage',      // 'percentage' or 'fixed'
   // stopLoss: null,               // Stop loss: 0.5% if percentage mode, or exact price if fixed mode

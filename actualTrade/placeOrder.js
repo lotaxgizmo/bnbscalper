@@ -60,15 +60,15 @@ export async function executeTradeFromSignal(signalData) {
 const STANDALONE_CONFIG = {
   symbol: 'SOLUSDT',           // change symbol here
   signal: 'Buy',               // 'Buy'/'long' = long, 'Sell'/'short' = short
-  leverage: 80,                // leverage to use
+  leverage: 50,                // leverage to use
   amountMode: 'percentage',    // 'percentage' or 'fixed'
   usePercentage: 100,          // 100% = all-in (before buffer)
   fixedAmount: 100,            // USDT amount if fixed mode
-  upperLimit: 50000,           // Max notional cap
+  upperLimit: 20000,           // Max notional cap
   
   slTpMode: 'percentage',      // 'percentage' or 'fixed'
   stopLoss: 0.5,               // Stop loss: 0.5% if percentage mode, or exact price if fixed mode
-  takeProfit: 1.0,             // Take profit: 1.0% if percentage mode, or exact price if fixed mode
+  takeProfit: 0.6,             // Take profit: 1.0% if percentage mode, or exact price if fixed mode
 
   tradeOnActive: false         // Allow trading when active positions exist
 };

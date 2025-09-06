@@ -29,7 +29,8 @@ const axiosInstance = axios.create({
     proxy: false // must be false when using a custom agent
 });
 
-const BASE_URL = 'https://api-testnet.bybit.com';
+const BASE_URL = 'https://api.bybit.com';
+// const BASE_URL = 'https://api-testnet.bybit.com';
 const API_KEY = process.env.BYBIT_API_KEY;
 const API_SECRET = process.env.BYBIT_API_SECRET;
 

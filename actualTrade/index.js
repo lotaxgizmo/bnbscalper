@@ -3,6 +3,7 @@
 
 import { runImmediateAggregationSnapshot } from './immediateAggregationTrade.js';
 import { executeTradeFromSignal } from './placeOrder.js';
+import telegramNotifier from '../utils/telegramNotifier.js';
 
 // ===== ORCHESTRATOR CONFIGURATION =====
 const ORCHESTRATOR_CONFIG = {
@@ -35,6 +36,21 @@ async function runOrchestrator() {
     console.log('🎯 CASCADE TRADING ORCHESTRATOR STARTED');
     console.log(`⚙️  Config: Execute=${ORCHESTRATOR_CONFIG.executeOnReady}, DryRun=${ORCHESTRATOR_CONFIG.dryRun}, Interval=${ORCHESTRATOR_CONFIG.checkInterval}s`);
     console.log('=' .repeat(60));
+    
+    // Send startup notification to Telegram
+    try {
+        const startupMessage = `🚀 *CASCADE ORCHESTRATOR STARTED*\n\n` +
+            `⚙️ *Execute Mode:* ${ORCHESTRATOR_CONFIG.executeOnReady ? 'LIVE' : 'DISABLED'}\n` +
+            `🧪 *Dry Run:* ${ORCHESTRATOR_CONFIG.dryRun ? 'ON' : 'OFF'}\n` +
+            `⏱️ *Check Interval:* ${ORCHESTRATOR_CONFIG.checkInterval}s\n` +
+            `📅 *Started:* ${new Date().toLocaleString()}\n\n` +
+            `Ready to monitor cascade signals...`;
+        
+        await telegramNotifier.sendMessage(startupMessage);
+        console.log('✅ Startup notification sent to Telegram');
+    } catch (error) {
+        console.log(`⚠️  Failed to send startup notification: ${error.message}`);
+    }
     
     let cycleCount = 0;
     

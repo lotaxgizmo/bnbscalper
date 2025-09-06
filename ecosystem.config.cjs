@@ -8,5 +8,12 @@ module.exports = {
       ignore_watch: ["node_modules", "logs"],
       max_memory_restart: "1G"
     },
+    {
+      name: "livetrade",
+      script: "./actualTrade/index.js",
+      watch: true,
+      ignore_watch: ["node_modules", "logs"],
+      max_memory_restart: "1G"
+    },
   ]
 };
