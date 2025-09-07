@@ -57,7 +57,7 @@ export const tradeConfig = {
 
 
  
-    initialCapital: 50,
+    initialCapital: 20,
     riskPerTrade: 100,
 
 
