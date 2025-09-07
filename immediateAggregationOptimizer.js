@@ -7,11 +7,11 @@
 // Pivot detection price mode: 'close' or 'open'
 const PIVOT_PRICE_MODE = 'close';  // 'close' = use candle close prices, 'open' = use candle open prices
 
-const daysamount = 2;
+const daysamount = 12;
 const days = 1440 * daysamount;
 
 const OPTIMIZATION_CONFIG = {
-    takeProfitRange: { start: 1, end: 1, step: 0.1 },
+    takeProfitRange: { start: 1.5, end: 1.5, step: 0.1 },
     stopLossRange: { start: 0.5, end: 0.5, step: 0.1 },
     leverageRange: { start: 50, end: 50, step: 1 },
     tradingModes: ['cascade'],  
@@ -27,7 +27,7 @@ const OPTIMIZATION_CONFIG = {
     tradeDirection: ['both'],
     // tradeDirection: ['both', 'alternate'],
     // delayReverseTime: 4320,
-    delayReverseTime: 0,
+    delayReverseTime: days,
     
     minimumTimeframes: 3,
 
@@ -50,8 +50,8 @@ const OPTIMIZATION_CONFIG = {
                 interval: '2h',
                 role: 'primary',
                 minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
-                lookbackRange: { start: 2, end: 2, step: 1 },
-                minLegBarsRange: { start: 2, end: 2, step: 1 },               
+                lookbackRange: { start: 1, end: 1, step: 1 },
+                minLegBarsRange: { start: 4, end: 4, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]  
             },
@@ -59,9 +59,9 @@ const OPTIMIZATION_CONFIG = {
             {
                 interval: '1h',
                 role: 'primary',
-                minSwingPctRange: { start: 0.2, end: 0.2, step: 0.1 },
-                lookbackRange: { start: 2, end: 2, step: 1 },
-                minLegBarsRange: { start: 3, end: 3, step: 1 },               
+                minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
+                lookbackRange: { start: 3, end: 3, step: 1 },
+                minLegBarsRange: { start: 4, end: 4, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             },
@@ -71,8 +71,8 @@ const OPTIMIZATION_CONFIG = {
                 interval: '1m',
                 role: 'primary',
                 minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
-                lookbackRange: { start: 3, end: 3, step: 1 },
-                minLegBarsRange: { start: 5, end: 5, step: 1 },               
+                lookbackRange: { start: 1, end: 1, step: 1 },
+                minLegBarsRange: { start: 1, end: 1, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             }, 

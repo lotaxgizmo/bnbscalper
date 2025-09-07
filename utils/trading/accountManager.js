@@ -6,7 +6,18 @@ import { signedRequest } from '../../bybitClient.js';
  * Linear formula: 100x→90%, 80x→91%
  */
 export function calcUsableFactor(leverage) {
-  const factor = -0.0005 * leverage + 0.95;
+  let factor;
+  
+  if (leverage <= 50) {
+    // For 1x-50x: 1x=100%, 50x=94.5%
+    // Using: factor = -0.001122 * leverage + 1.001122
+    factor = -0.001122 * leverage + 1.001122;
+  } else {
+    // For 51x-100x: 50x=94.5%, 100x=90%
+    // Using: factor = -0.0009 * leverage + 0.99
+    factor = -0.0009 * leverage + 0.99;
+  }
+  
   // Clamp between 0.85 and 0.99 to be safe
   return Math.max(0.85, Math.min(0.99, factor));
 }
