@@ -14,10 +14,10 @@ export const tradeConfig = {
     // entryDelayMinutes: 60,
 
 
-    takeProfit: 0.9,
-    stopLoss: 0.4,
+    takeProfit: 0.6,
+    stopLoss: 0.5,
     // leverage: 100,
-    leverage: 80,
+    leverage: 50,
 
     // Flip mode: close opposite and switch to new confirmed signal 
     // switchOnOppositeSignal: true,       
@@ -59,7 +59,7 @@ export const tradeConfig = {
 
 
  
-    initialCapital: 50,
+    initialCapital: 20,
     riskPerTrade: 100,
  
 

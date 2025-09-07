@@ -11,7 +11,7 @@ const daysamount = 2;
 const days = 1440 * daysamount;
 
 const OPTIMIZATION_CONFIG = {
-    takeProfitRange: { start: 0.6, end: 0.6, step: 0.1 },
+    takeProfitRange: { start: 1.5, end: 1.5, step: 0.1 },
     stopLossRange: { start: 0.5, end: 0.5, step: 0.1 },
     leverageRange: { start: 50, end: 50, step: 1 },
     tradingModes: ['cascade'],  
@@ -46,24 +46,14 @@ const OPTIMIZATION_CONFIG = {
 
             
   
-            // {
-            //     interval: '6h',
-            //     role: 'primary',
-            //     minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
-            //     lookbackRange: { start: 1, end: 1, step: 1 },
-            //     minLegBarsRange: { start: 5, end: 5, step: 1 },               
-            //     weight: 1,
-            //     oppositeRange: [false]
-            // },
-
             {
                 interval: '2h',
                 role: 'primary',
                 minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
                 lookbackRange: { start: 2, end: 2, step: 1 },
-                minLegBarsRange: { start: 1, end: 1, step: 1 },               
+                minLegBarsRange: { start: 2, end: 2, step: 1 },               
                 weight: 1,
-                oppositeRange: [false]
+                oppositeRange: [false]  
             },
 
             {
@@ -74,27 +64,18 @@ const OPTIMIZATION_CONFIG = {
                 minLegBarsRange: { start: 2, end: 2, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
-            }, 
+            },
+ 
            
             {
                 interval: '1m',
                 role: 'primary',
                 minSwingPctRange: { start: 0.1, end: 0.1, step: 0.1 },
-                lookbackRange: { start: 2, end: 2, step: 3 },
+                lookbackRange: { start: 3, end: 3, step: 1 },
                 minLegBarsRange: { start: 5, end: 5, step: 1 },               
                 weight: 1,
                 oppositeRange: [false]
             }, 
-            
-            // {
-            //     interval: '1m',
-            //     role: 'secondary',
-            //     minSwingPctRange: { start: 0.1, end: 0.7, step: 0.1 },
-            //     lookbackRange: { start: 1, end: 5, step: 1 },
-            //     minLegBarsRange: { start: 1, end: 5, step: 1 },               
-            //     weight: 1,
-            //     oppositeRange: [false]
-            // },
              
            
         ]
